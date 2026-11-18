@@ -101,13 +101,17 @@ function phonePanel(m, con) {
     [p.sent > 0, `נשלחו מהטלפון ${p.sent} הקלטות`, p.lastSync ? 'לא נמצאו הקלטות חדשות בתיקייה. בודקים שהקלטת שיחות דלוקה בטלפון' : p.paired ? 'הטלפון עוד לא חיפש הקלטות' : 'החיפוש בהקלטות יתחיל לבד מיד אחרי החיבור לרובוט'],
   ];
   const needFix = !p.folder || !p.callLog || !p.battery || !p.notify;
+  // The robot of the LBV Google account belongs to the owner. Logged in as someone else, the phone has no robot to join.
+  const meNow = home.me || {}, other = !p.paired && !con.app && meNow.id && meNow.id !== 'owner';
   const el = h(`<div class="hs-phone">
     <b class="hs-phone__t">מצב הטלפון</b>
+    ${other ? `<p class="hs-phone__who">באפליקציה נכנסת בתור <b>${esc(meNow.name || '')}</b>. הרובוט של LBV מחובר לחשבון של הבעלים, ולכן הטלפון לא מתחבר. יוצאים ונכנסים עם שם המשתמש של הבעלים והסיסמה הראשית.</p><button type="button" class="btn btn--gold btn--sm" data-switch>לצאת ולהיכנס כבעלים</button>` : ''}
     <ul>${rows.map(([ok, yes, no]) => `<li class="${ok ? 'is-ok' : 'is-no'}"><i class="dot ${ok ? 'ok' : 'no'}"></i>${ok ? yes : no}</li>`).join('')}</ul>
     <small>${p.lastSync ? `בדיקה אחרונה בטלפון: ${ago(new Date(p.lastSync).toISOString())}` : ''}${p.err ? ` · תקלה אחרונה: ${esc(String(p.err).slice(0, 120))}` : ''} ${p.pairSt && !p.paired ? ` · חיבור: ${esc(String(p.pairSt).slice(0, 20))}` : ''} · גרסה ${esc(p.version)}</small>
     <div class="hs-phone__act">${needFix ? '<button type="button" class="btn btn--gold btn--sm" data-fix>לסדר את ההרשאות</button>' : ''}${p.paired ? '<button type="button" class="btn btn--line btn--sm" data-sync>לבדוק הקלטות עכשיו</button>' : con.app ? '<button type="button" class="btn btn--gold btn--sm" data-pair>לחבר את הטלפון</button>' : ''}</div>
   </div>`);
   $('[data-fix]', el)?.addEventListener('click', () => window.LBVApp.approvals());
+  $('[data-switch]', el)?.addEventListener('click', async () => { try { await fetch('/api/login', { method: 'DELETE' }); } catch (e) {} location.href = '/admin/?out=' + Date.now() + '#apphome'; });
   $('[data-pair]', el)?.addEventListener('click', () => { (window.LBVApp.pairNow || window.LBVApp.syncNow)?.call(window.LBVApp); ctx.toast('מחברים את הטלפון לרובוט', 'info'); setTimeout(() => again(), 4000); });
   $('[data-sync]', el)?.addEventListener('click', () => { window.LBVApp.syncNow?.(); ctx.toast('הטלפון בודק עכשיו את ההקלטות', 'info'); setTimeout(() => again(), 20000); });
   return el;
