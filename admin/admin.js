@@ -343,7 +343,7 @@ function appTiles() {
     { id: 'appholidays', title: 'חגים', sub: 'סוכות, פסח וכל הנופשים', icon: 'M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.4 6.8 19.1l1-5.8L3.5 9.2l5.9-.9z' },
     { id: 'appsite', title: 'עריכת האתר', sub: 'טקסטים, תמונות, סרטונים', icon: ICON.pencil, need: 'w-home' },
     { id: 'inbox', title: 'פניות', sub: 'מי השאיר פרטים באתר', icon: ICON.inbox, badge: open || 0 },
-  ].filter(t => pageAllowed(t.need || t.id)).concat(SYSTEMS.filter(t => has(t.id)));
+  ].filter(t => pageAllowed(t.need || t.id)).concat(SYSTEMS.filter(t => has(t.id)).map(t => ({ ...t, href: '/api/config?sso=' + t.id })));
 }
 /** The other LBV systems (their own sites and logins). Inside the Android app they open in the app too. */
 const SYSTEMS = [
@@ -1260,7 +1260,9 @@ async function users(pg) {
     // The owner: a username of their choice, with the main password.
     const o = html(`<div class="user"><span class="user__ava">★</span>
       <div><b>הבעלים (אתם)</b><small>נכנסים עם שם המשתמש הזה והסיסמה הראשית${own.last ? ' · נכנס לאחרונה ' + date(own.last) : ''}</small></div>
-      <div class="row-tools"><input aria-label="שם המשתמש של הבעלים" dir="ltr" value="${esc(own.username)}" style="width:150px"><button type="button" class="btn btn--dark btn--sm">שמירת שם המשתמש</button></div></div>`);
+      <div class="row-tools"><input aria-label="שם המשתמש של הבעלים" dir="ltr" value="${esc(own.username)}" style="width:150px"><button type="button" class="btn btn--dark btn--sm">שמירת שם המשתמש</button></div>
+      <label class="user__mail"><span>המייל שלכם בשמחה, בגאלה ובהרשמה לחגים</span><input type="email" dir="ltr" value="${esc(own.email || '')}" placeholder="name@example.com"></label></div>`);
+    $('.user__mail input', o).addEventListener('change', async e => { const r2 = await fetch('/api/users?id=owner', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: e.target.value }) }); toast(r2.ok ? 'המייל נשמר' : 'המייל לא תקין', r2.ok ? 'ok' : 'err'); });
     $('button', o).addEventListener('click', async () => {
       const v = $('input', o).value.trim().toLowerCase();
       if (!/^[a-z0-9._-]{3,30}$/.test(v)) return toast('שם משתמש: 3 תווים לפחות, באנגלית או מספרים', 'err');
@@ -1274,9 +1276,11 @@ async function users(pg) {
         <div><b>${esc(u.name)}</b><small dir="auto">${esc(u.username)} · ${u.last ? 'נכנס לאחרונה ' + date(u.last) : 'עוד לא נכנס'}</small></div>
         <div class="row-tools"><select aria-label="הרשאה">${['admin', 'editor', 'sales'].map(k => `<option value="${k}" ${u.role === k ? 'selected' : ''}>${ROLE[k][0]}</option>`).join('')}</select>
           <button type="button" class="btn btn--line btn--sm" data-pw>סיסמה חדשה</button><button type="button" class="icon icon--del" data-del title="הסרה">✕</button></div>
+        <label class="user__mail"><span>המייל של ${esc(u.name)} בשמחה, בגאלה ובהרשמה לחגים</span><input type="email" dir="ltr" value="${esc(u.email || '')}" placeholder="name@example.com"></label>
         <fieldset class="user__areas"><legend>מה ${esc(u.name)} רואה באפליקציה</legend>${(u.may || []).map(a => `<label class="chk"><input type="checkbox" value="${a}" ${(u.areas || []).includes(a) ? 'checked' : ''}><span>${AREA_NAME[a] || a}</span></label>`).join('')}</fieldset></div>`);
       const patch = async b => { const r2 = await fetch(`/api/users?id=${encodeURIComponent(u.id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) }); toast(r2.ok ? 'עודכן' : 'לא הצלחנו לעדכן', r2.ok ? 'ok' : 'err'); };
       $('select', row).addEventListener('change', async e => { await patch({ role: e.target.value }); load(); });
+      $('.user__mail input', row).addEventListener('change', e => patch({ email: e.target.value }));
       $$('.user__areas input', row).forEach(x => x.addEventListener('change', () => patch({ areas: $$('.user__areas input', row).filter(y => y.checked).map(y => y.value) })));
       $('[data-pw]', row).addEventListener('click', () => { const pw = prompt(`סיסמה חדשה ל${u.name} (לפחות 8 תווים):`); if (pw && pw.length >= 8) patch({ password: pw }); else if (pw) toast('הסיסמה קצרה מדי', 'err'); });
       $('[data-del]', row).addEventListener('click', async () => { if (!confirm(`להסיר את ${u.name}? הוא לא יוכל להיכנס יותר.`)) return; const r2 = await fetch(`/api/users?id=${encodeURIComponent(u.id)}`, { method: 'DELETE' }); if (r2.ok) { toast('הוסר'); load(); } else toast('לא הצלחנו להסיר', 'err'); });

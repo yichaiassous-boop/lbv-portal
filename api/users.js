@@ -20,7 +20,7 @@ export default async function handler(req, res) {
   const owner = await loadOwner();
   if (req.method === 'GET') {
     const users = await Promise.all(list.map(async u => ({ ...publicUser(u), areas: await areasOf({ id: u.id, r: u.role }), may: AREAS.filter(a => roleCan(u.role, a)) })));
-    return res.status(200).json({ owner: { username: owner.username, last: owner.last || '' }, users, areas: AREAS });
+    return res.status(200).json({ owner: { username: owner.username, email: owner.email || '', last: owner.last || '' }, users, areas: AREAS });
   }
 
   let b = {};
@@ -29,6 +29,9 @@ export default async function handler(req, res) {
   const username = String(b.username || '').trim().toLowerCase();
   const name = String(b.name || '').trim().slice(0, 60);
   const pw = String(b.password || '');
+  // The e-mail of this person's account in Simha / Gala / the holiday booking (the one-tap entry from the app, see config.js)
+  const email = typeof b.email === 'string' ? b.email.trim().toLowerCase().slice(0, 254) : null;
+  if (email && !/^[^\s@<>"']{1,64}@[^\s@<>"']{1,190}\.[a-z]{2,}$/i.test(email)) return res.status(400).json({ error: 'email' });
 
   if (req.method === 'POST') {
     if (!name || !/^[a-z0-9._-]{3,30}$/.test(username) || pw.length < 8 || !role) return res.status(400).json({ error: 'invalid' });
@@ -41,6 +44,7 @@ export default async function handler(req, res) {
   const id = new URL(req.url, 'http://x').searchParams.get('id') || '';
   // The owner's own username.
   if (id === 'owner' && req.method === 'PATCH') {
+    if (email !== null && !username) { await saveOwner({ ...owner, email }); return res.status(200).json({ ok: true }); }
     if (!/^[a-z0-9._-]{3,30}$/.test(username)) return res.status(400).json({ error: 'invalid' });
     if (list.some(u => u.username === username)) return res.status(409).json({ error: 'taken' });
     await saveOwner({ ...owner, username });
@@ -54,7 +58,8 @@ export default async function handler(req, res) {
     if (role) u.role = role;
     if (pw) { if (pw.length < 8) return res.status(400).json({ error: 'short' }); u.hash = hashPassword(pw); }
     if (Array.isArray(b.areas)) { try { await setAreas(u.id, u.role, b.areas); } catch (e) { return res.status(503).json({ error: 'not-configured' }); } }
-    if (name || role || pw) await saveUsers(list);
+    if (email !== null) u.email = email;
+    if (name || role || pw || email !== null) await saveUsers(list);
     return res.status(200).json({ ok: true, areas: await areasOf({ id: u.id, r: u.role }) });
   }
   if (req.method === 'DELETE') {

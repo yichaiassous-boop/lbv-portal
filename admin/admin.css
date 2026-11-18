@@ -477,3 +477,7 @@ input:focus, textarea:focus, select:focus { outline: none; border-color: var(--g
 .user__areas .chk { white-space: nowrap; display: inline-flex; align-items: center; gap: 7px; padding: 7px 12px; border-radius: 99px; border: 1px solid var(--line); background: #fff; cursor: pointer; font-size: .9rem; }
 .user__areas .chk:has(input:checked) { border-color: var(--gold, #C9A24A); background: #FBF6EA; }
 .user__areas input { accent-color: #B8892E; margin: 0; }
+
+/* the e-mail a manager has in Simha / Gala / the holiday booking (one-tap entry from the app) */
+.user__mail { grid-column: 1 / -1; display: grid; gap: 4px; font-size: .8rem; color: var(--ink-3, #667); }
+.user__mail input { max-width: 320px; }

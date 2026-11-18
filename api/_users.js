@@ -24,4 +24,4 @@ export async function loadOwner() { const o = await readJson(OWNER_KEY, {}); ret
 export const saveOwner = o => writeJson(OWNER_KEY, o);
 
 /** What the admin page may see about a manager (never the password hash). */
-export const publicUser = u => ({ id: u.id, name: u.name, username: u.username, role: u.role, at: u.at, last: u.last || '' });
+export const publicUser = u => ({ id: u.id, name: u.name, username: u.username, role: u.role, email: u.email || '', at: u.at, last: u.last || '' });
