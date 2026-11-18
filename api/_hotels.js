@@ -290,7 +290,7 @@ export default async function hotelsHandler(req, res) {
           count: hs.length, avail: hs.filter(h => h.avail === 'available' || h.avail === 'partial').length, follow: hs.filter(h => h.status === 'followup').length };
       }));
       const managers = await managerList(req);
-      return send(res, 200, { me: { id: uid, name: s.n, role: s.r }, mode: u.mode || { on: false }, connection: await (async () => { const r = (await robotOf(uid)).u; return { connected: !!r.keyHash, ping: r.ping || null, last: r.lastCall || null, skipped: r.skipped || 0, app: !!r.app?.url, appLast: r.app?.last || null }; })(), surveys, managers });
+      return send(res, 200, { me: { id: uid, name: s.n, role: s.r }, mode: u.mode || { on: false }, windows: (u.windows || []).slice(-60), connection: await (async () => { const r = (await robotOf(uid)).u; return { connected: !!r.keyHash, ping: r.ping || null, last: r.lastCall || null, skipped: r.skipped || 0, app: !!r.app?.url, appLast: r.app?.last || null }; })(), surveys, managers });
     }
 
     // "חיבור האפליקציה": the robot's address + the app secret, handed only to the logged-in owner of that robot

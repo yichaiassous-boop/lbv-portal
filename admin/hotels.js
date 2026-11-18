@@ -36,7 +36,7 @@ export async function hotelsPage(pg, c) {
   ctx = c;
   if (!home) {
     pg.append(h('<p class="hint">טוען…</p>'));
-    try { home = await api('GET'); } catch (e) { pg.innerHTML = ''; if (e.message === 'not-configured') pg.append(notReady()); else fail(e); return; }
+    try { home = await api('GET'); pushWindows(); } catch (e) { pg.innerHTML = ''; if (e.message === 'not-configured') pg.append(notReady()); else fail(e); return; }
     pg.innerHTML = '';
   }
   if (openSurvey && (!cur || cur.survey.id !== openSurvey)) {
@@ -50,7 +50,37 @@ export async function hotelsPage(pg, c) {
   if (!wizSeen) { const st0 = stepsState(), i = st0.findIndex(x => !x.done); if (i >= 0 && !(st0[i].id === 'rec' && !phoneUA())) setTimeout(() => openWizard(i), 500); else wizSeen = true; }
 }
 const again = () => ctx.rerender();
-async function refreshHome() { home = await api('GET'); }
+async function refreshHome() { home = await api('GET'); pushWindows(); }
+/** Inside the phone app: tell it when check mode was on, so only those calls go up by themselves. */
+function pushWindows() {
+  try {
+    if (!window.LBVApp?.setWindows || !home) return;
+    const w = (home.windows || []).map(x => ({ from: Date.parse(x.from) || 0, to: x.to ? Date.parse(x.to) || 0 : 0 })).filter(x => x.from);
+    window.LBVApp.setWindows(JSON.stringify(w));
+  } catch (e) {}
+}
+/** Inside the phone app: calls on this phone with that number / contact, and whether each has a recording. */
+function phoneFind(q) {
+  try { return window.LBVApp?.findCalls ? JSON.parse(window.LBVApp.findCalls(String(q || '')) || '[]') : null; } catch (e) { return null; }
+}
+/** "יש הקלטות בטלפון": a box with the calls found and one button that brings their recordings. */
+function phoneRecsBox(q, list, intro) {
+  const recs = list.filter(x => x.rec), todo = recs.filter(x => !x.sent);
+  const box = h(`<div class="hs-ans hs-ans--phone hs-prec">
+    <p class="hs-ans__q">${intro}</p>
+    <ul class="hs-prec__l">${list.slice(0, 8).map(x => `<li><b><bdi>${esc(x.name || x.number)}</bdi></b> · ${relDay(x.at)} (${when(x.at)}) · ${Math.max(1, Math.round(x.dur / 60))} דק' · ${x.rec ? (x.sent ? 'ההקלטה כבר במערכת' : 'יש הקלטה בטלפון') : 'בלי הקלטה'}</li>`).join('')}</ul>
+    <div class="row-tools hs-ans__yn"></div></div>`);
+  const yn = $('.hs-ans__yn', box);
+  if (todo.length) {
+    const go = h(`<button class="btn btn--gold btn--sm" type="button">להביא ${todo.length === 1 ? 'את ההקלטה' : `את ${todo.length} ההקלטות`}</button>`);
+    go.addEventListener('click', () => {
+      window.LBVApp.fetchCalls(JSON.stringify(todo.map(x => x.key)));
+      yn.innerHTML = '<p class="hs-wait">ההקלטות עולות עכשיו מהטלפון. בעוד כ-5 דקות הן יופיעו כאן, ואז אפשר לבקש סיכום.</p>';
+    });
+    yn.append(go);
+  }
+  return box;
+}
 async function refreshSurvey() { cur = await api('GET', '?survey=' + encodeURIComponent(openSurvey)); }
 
 function notReady() {
@@ -76,7 +106,7 @@ function modeBar() {
     if (!m.on && !home.surveys.length) return ctx.toast('קודם פותחים כרטיסייה', 'info');
     try {
       const r = await api('POST', '', { op: 'mode', on: !m.on, surveyId: m.on ? undefined : $('.hs-sel', el)?.value });
-      home.mode = r.mode; ctx.toast(r.mode.on ? 'מצב בדיקה הודלק. אפשר להתחיל להתקשר' : 'מצב בדיקה כובה'); again();
+      home.mode = r.mode; refreshHome().catch(() => {}); ctx.toast(r.mode.on ? 'מצב בדיקה הודלק. אפשר להתחיל להתקשר' : 'מצב בדיקה כובה'); again();
     } catch (e) { fail(e); }
   });
   $('[data-connect]', el)?.addEventListener('click', e => { e.preventDefault(); openWizard(Math.max(0, stepsState().findIndex(x => !x.done))); });
@@ -101,7 +131,8 @@ function phonePanel(m, con) {
     // what the phone found in the folder (from 1.11): how many, the newest, how many wait for Wi-Fi
     ...(p.found >= 0 && p.lastSync ? [[p.found > 0, `בתיקייה יש ${p.found} הקלטות מחצי השנה האחרונה${p.newest ? ` · האחרונה ${ago(new Date(p.newest).toISOString())}` : ''}`, 'בתיקייה שנבחרה אין הקלטות מחצי השנה האחרונה. כנראה זו לא התיקייה של הקלטות השיחות']] : []),
     ...(p.waiting > 0 ? [[false, '', `${p.waiting} הקלטות ישנות מחכות ל-Wi-Fi. "לשלוח הכול עכשיו" שולח גם בלי Wi-Fi`]] : []),
-    [p.sent > 0, `נשלחו מהטלפון ${p.sent} הקלטות`, p.lastSync ? (p.found > 0 ? 'עוד לא נשלחה אף הקלטה' : 'לא נמצאו הקלטות חדשות בתיקייה. בודקים שהקלטת שיחות דלוקה בטלפון') : p.paired ? 'הטלפון עוד לא חיפש הקלטות' : 'החיפוש בהקלטות יתחיל לבד מיד אחרי החיבור לרובוט'],
+    // from 1.14 only calls made while check mode is on go up by themselves, or the ones asked for by number
+    [p.sent > 0 || (!!p.lastSync && !p.err), p.sent > 0 ? `נשלחו מהטלפון ${p.sent} הקלטות. עולות לבד רק שיחות שנעשו כשמצב בדיקה דלוק` : 'עולות לבד רק שיחות שנעשו כשמצב בדיקה דלוק. הקלטות ישנות מביאים לפי מספר, בחיפוש למטה', p.lastSync ? 'השליחה מהטלפון נתקעה. רואים את התקלה למטה' : p.paired ? 'הטלפון עוד לא בדק הקלטות' : 'הבדיקה תתחיל לבד מיד אחרי החיבור לרובוט'],
   ];
   const needFix = !p.folder || !p.callLog || !p.battery || !p.notify;
   // The robot of the LBV Google account belongs to the owner. Logged in as someone else, the phone has no robot to join.
@@ -153,8 +184,11 @@ function lookupCard() {
     out.innerHTML = '';
     if (look.results == null) return;
     const phone = (look.phone || []).filter(pc => !look.results.some(r => r.last?.file?.id === pc.id));
+    const local = (look.local || []).filter(x => !x.sent || !phone.length);
+    if (local.length) out.append(phoneRecsBox(look.text, local, (n => local.some(x => x.rec && !x.sent) ? `בטלפון הזה יש ${n === 1 ? 'שיחה מוקלטת אחת' : n + ' שיחות מוקלטות'} עם "<bdi>${esc(look.text)}</bdi>"` : `בטלפון הזה יש ${local.length === 1 ? 'שיחה אחת' : local.length + ' שיחות'} עם "<bdi>${esc(look.text)}</bdi>"`)(local.filter(x => x.rec).length)));
     if (!look.results.length && !phone.length) {
-      out.append(h(look.indexed
+      if (local.length) return;
+      out.append(h(look.local ? `<p class="hint">לא מצאתי שיחה עם "${esc(look.text)}" בטלפון, וגם לא מלון כזה באף כרטיסייה.</p>` : look.indexed
         ? `<p class="hint">לא מצאתי שיחה עם "${esc(look.text)}" בטלפון, וגם לא מלון כזה באף כרטיסייה.</p>`
         : `<p class="hint hint--box">עוד אין שיחות מהטלפון במערכת, כי הטלפון עוד לא מחובר. אחרי שלבי החיבור, כל השיחות שבטלפון ייבדקו כאן לפי מספר. <a href="#" data-wiz>לשלבי החיבור</a></p>`));
       $('[data-wiz]', out)?.addEventListener('click', e => { e.preventDefault(); openWizard(Math.max(0, stepsState().findIndex(x => !x.done))); });
@@ -241,6 +275,7 @@ function lookupCard() {
     look.text = $('#hs-look-in', c).value.trim(); look.open = null;
     if (!look.text) { look.results = null; return draw(); }
     try { const r = await api('GET', '?lookup=' + encodeURIComponent(look.text)); look.results = r.results; look.phone = r.phone || []; look.indexed = r.indexed; } catch (e2) { fail(e2); look.results = null; }
+    look.local = phoneFind(look.text);
     draw();
   });
   draw();
@@ -608,6 +643,8 @@ function hotelForm(sv, x) {
     try {
       const saved = await api('POST', '', { op: 'hotel', surveyId: sv.id, id: x?.id, ...d });
       addOpen = false; addPrefill = null; await refreshSurvey(); openHotel = saved.id; ctx.toast('נשמר'); again();
+      const found = d.phone && !x ? (phoneFind(d.phone) || []).filter(y => y.rec && !y.sent) : [];
+      if (found.length) setTimeout(() => { const host = $('.hs-hotel') || $('#hs-look')?.parentElement; if (host) host.prepend(phoneRecsBox(d.phone, found, `רגע: עם המספר הזה כבר יש ${found.length === 1 ? 'הקלטה' : found.length + ' הקלטות'} בטלפון. להביא ${found.length === 1 ? 'אותה' : 'אותן'}?`)); }, 300);
     } catch (e2) { fail(e2); }
   });
   return f;

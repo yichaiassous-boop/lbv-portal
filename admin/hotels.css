@@ -205,3 +205,6 @@ mark { background: #FCE7A8; color: inherit; padding: 0 2px; border-radius: 3px; 
 .hs-phone__who { margin: 6px 0 8px; padding: 10px 12px; border-radius: 12px; background: #FBF1DC; color: #6B4E10; font-size: .88rem; line-height: 1.5; }
 
 .hs-wiz__desk { margin: 0; padding: 14px 16px; border-radius: 14px; background: #EEF2FB; color: #1B2A5A; line-height: 1.6; font-weight: 600; }
+
+/* calls found on this phone (number / contact) with a button that brings their recordings */
+.hs-prec__l { margin: 6px 0 10px; padding-inline-start: 18px; display: grid; gap: 4px; font-size: .88rem; color: #3A4560; }
