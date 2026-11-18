@@ -206,3 +206,6 @@
 @media (prefers-reduced-motion: reduce) {
   .inv, .ah-tile, .rc__cue, .rc__bar i { transition: none; }
 }
+
+/* the other LBV systems (Simha, Gala): their own sites */
+.ah-tile--sys .ah-tile__ic { background: var(--leaf); color: var(--night); }

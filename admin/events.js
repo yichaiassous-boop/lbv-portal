@@ -299,10 +299,12 @@ export async function appHome(pg, c, tiles) {
     pg.append(empty);
   }
   const [lead, ...rest] = tiles;
-  const grid = h(`<nav class="ah-grid" aria-label="האפליקציה">${[lead, ...rest].filter(Boolean).map((t, i) => `<button type="button" class="ah-tile${i === 0 ? ' ah-tile--lead' : ''}" data-go="${t.id}">
+  const grid = h(`<nav class="ah-grid" aria-label="האפליקציה">${[lead, ...rest].filter(Boolean).map((t, i) => `<button type="button" class="ah-tile${i === 0 ? ' ah-tile--lead' : ''}${t.href ? ' ah-tile--sys' : ''}" ${t.href ? `data-href="${esc(t.href)}"` : `data-go="${t.id}"`}>
       <span class="ah-tile__ic">${`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="${t.icon}"/></svg>`}</span>
       <span class="ah-tile__tx"><b>${esc(t.title)}</b><small>${esc(t.sub)}</small></span>${t.badge ? `<span class="ah-tile__n" aria-label="${t.badge} חדשות">${t.badge}</span>` : ''}</button>`).join('')}</nav>`);
   $$('[data-go]', grid).forEach(b => b.addEventListener('click', () => c.go(b.dataset.go)));
+  // the other systems: same window (inside the Android app they stay in the app; back returns here)
+  $$('[data-href]', grid).forEach(b => b.addEventListener('click', () => { location.href = b.dataset.href; }));
   pg.append(grid);
   const up = upcoming(5).filter(e => e.id !== next?.id).slice(0, 4);
   if (up.length) {

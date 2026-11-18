@@ -320,8 +320,14 @@ function appTiles() {
     { id: 'remote', title: 'השלט', sub: 'המסך של האירוע', icon: ICON.screens },
     { id: 'appsite', title: 'עריכת האתר', sub: 'טקסטים, תמונות, סרטונים', icon: ICON.pencil, need: 'w-home' },
     { id: 'inbox', title: 'פניות', sub: 'מי השאיר פרטים באתר', icon: ICON.inbox, badge: open || 0 },
-  ].filter(t => pageAllowed(t.need || t.id));
+  ].filter(t => pageAllowed(t.need || t.id)).concat(['owner', 'admin'].includes(me?.role) ? SYSTEMS : []);
 }
+/** The other LBV systems (their own sites and logins). Inside the Android app they open in the app too. */
+const SYSTEMS = [
+  { id: 'simha', href: 'https://allset.lbv-event.com/admin', title: 'שמחה', sub: 'הזמנות לחתונה', icon: 'M3 7l9 6 9-6M3 7v11h18V7M3 7h18' },
+  { id: 'gala', href: 'https://impact.lbv-event.com/admin', title: 'ערבי גאלה', sub: 'הערבים והתרומות', icon: 'M12 3c1 3.5 4.5 5.5 4.5 9.5a4.5 4.5 0 0 1-9 0c0-2 1-3.2 2-4.2.3 1.6 1 2.4 2 2.7-.6-2.6-.3-5.3.5-8z' },
+];
+
 /** The bar at the bottom of the app: home, calendar, hotels, remote, site. */
 function appBar() {
   if ($('.ab')) return;
