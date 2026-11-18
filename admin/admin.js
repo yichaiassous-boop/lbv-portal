@@ -11,9 +11,27 @@ const DIR = { he: 'rtl', fr: 'ltr', en: 'ltr' };
 const E = window.LBVEdit;
 import { QUOTE_DEFAULTS } from "../quote/defaults.js";
 import { hotelsPage } from "./hotels.js";
-import { eventsPage, remotePage, appHome, appSite } from "./events.js";
+import { eventsPage, remotePage, appHome, appSite, appHolidays } from "./events.js";
 const IN_APP = document.documentElement.classList.contains("lbv-app");   // inside the LBV phone app (or the iPhone home-screen app)
 
+// An old version of the phone app can't be used: the site asks to update first (from 1.7 the app checks by itself too).
+// The minimum is in app/version.json (min = versionCode, name = versionName).
+(async () => {
+  const v = (navigator.userAgent.match(/LBVCalls\/([\d.]+)/) || [])[1];
+  if (!v) return;
+  try {
+    const j = await (await fetch('/app/version.json', { cache: 'no-store' })).json();
+    const x = String(v).split('.').map(Number), y = String(j.name || '').split('.').map(Number);
+    let older = false;
+    for (let k = 0; k < Math.max(x.length, y.length); k++) { if ((x[k] || 0) !== (y[k] || 0)) { older = (x[k] || 0) < (y[k] || 0); break; } }
+    if (!older) return;
+    const w = document.createElement('div');
+    w.className = 'upd'; w.setAttribute('role', 'dialog'); w.setAttribute('aria-modal', 'true');
+    w.innerHTML = `<div class="upd__card"><small class="upd__brand">La Belle Vie</small><h2>יש גרסה חדשה</h2><p>כדי להמשיך צריך לעדכן את האפליקציה. לוחצים "הורדת העדכון", פותחים את הקובץ שירד ומאשרים "עדכון". הכניסה וההרשאות נשמרות.</p><button type="button" class="btn btn--gold">הורדת העדכון</button><small>בטלפון עכשיו: ${v.replace(/[^\d.]/g, '')} · החדשה: ${String(j.name).replace(/[^\d.]/g, '')}</small></div>`;
+    w.querySelector('button').addEventListener('click', () => window.open(location.origin + '/app/lbv-calls.apk?v=' + Number(j.min || 0), '_blank'));
+    document.body.append(w);
+  } catch (e) {}
+})();
 let me = null; // the logged-in manager: { name, role, areas }
 /** Does this manager have this area of the app (set by the owner in "מנהלים והרשאות")? */
 const has = a => !me || me.role === 'owner' || (me.areas || []).includes(a);
@@ -285,7 +303,7 @@ const GROUPS = () => [
     { id: 'inbox', title: 'פניות ונרשמים', sub: 'כל מי שהשאיר פרטים באתר: בקשות להצעת מחיר והרשמות לעדכונים', badge: true },
     { id: 'quotes', title: 'הצעות מחיר', sub: 'בונים הצעת מחיר ממותגת, שולחים ללקוח בוואטסאפ ורואים מתי הוא מאשר' },
     { id: 'mail', title: 'מייל לנרשמים', sub: 'עדכון לכל מי שנרשם, מהמייל של החברה' }] },
-  ...(IN_APP ? [{ id: 'app', name: 'בית', pages: [{ id: 'apphome', title: 'בית', sub: '' }, { id: 'appsite', title: 'עריכת האתר', sub: '' }] }] : []),
+  ...(IN_APP ? [{ id: 'app', name: 'בית', pages: [{ id: 'apphome', title: 'בית', sub: '' }, { id: 'appholidays', title: 'חגים', sub: '' }, { id: 'appsite', title: 'עריכת האתר', sub: '' }] }] : []),
   { id: 'events', name: 'לוח אירועים', pages: [{ id: 'events', title: 'לוח אירועים', sub: 'כל האירועים של LBV במקום אחד: מתי, איפה, עם מי, ובאיזה מצב' }] },
   { id: 'screens', name: 'השלט', pages: [{ id: 'remote', title: 'השלט של המסכים', sub: 'שליטה מהטלפון במסך של האירוע' }] },
   { id: 'hotels', name: 'בדיקת מלונות', pages: [{ id: 'hotels', title: 'בדיקת מלונות', sub: 'מתקשרים למלונות, והמערכת ממלאת לבד מהשיחות: פרטים, זמינות, מחירים, מיילים וסיכום' }] },
@@ -308,6 +326,7 @@ function pageAllowed(id) {
   if (['inbox', 'mail', 'quotes', 'dashboard'].includes(id)) return canDo('leads') && has('leads');
   if (id === 'users') return canDo('users');
   if (id === 'apphome') return true;
+  if (id === 'appholidays') return canDo('content') && has('site');
   if (id === 'events') return has('events');
   if (id === 'hotels') return has('hotels');   // each sees only their own surveys and those shared with them
   if (id === 'remote') return has('remote');
@@ -321,6 +340,7 @@ function appTiles() {
     { id: 'events', title: 'לוח אירועים', sub: 'מה, מתי ואיפה', icon: ICON.events },
     { id: 'hotels', title: 'בדיקת מלונות', sub: 'שיחות, מחירים, זמינות', icon: ICON.hotels },
     { id: 'remote', title: 'השלט', sub: 'המסך של האירוע', icon: ICON.screens },
+    { id: 'appholidays', title: 'חגים', sub: 'סוכות, פסח וכל הנופשים', icon: 'M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.4 6.8 19.1l1-5.8L3.5 9.2l5.9-.9z' },
     { id: 'appsite', title: 'עריכת האתר', sub: 'טקסטים, תמונות, סרטונים', icon: ICON.pencil, need: 'w-home' },
     { id: 'inbox', title: 'פניות', sub: 'מי השאיר פרטים באתר', icon: ICON.inbox, badge: open || 0 },
   ].filter(t => pageAllowed(t.need || t.id)).concat(SYSTEMS.filter(t => has(t.id)));
@@ -328,7 +348,7 @@ function appTiles() {
 /** The other LBV systems (their own sites and logins). Inside the Android app they open in the app too. */
 const SYSTEMS = [
   { id: 'simha', href: 'https://allset.lbv-event.com/admin', title: 'שמחה', sub: 'הזמנות לחתונה', icon: 'M3 7l9 6 9-6M3 7v11h18V7M3 7h18' },
-  { id: 'gala', href: 'https://impact.lbv-event.com/admin', title: 'ערבי גאלה', sub: 'הערבים והתרומות', icon: 'M12 3c1 3.5 4.5 5.5 4.5 9.5a4.5 4.5 0 0 1-9 0c0-2 1-3.2 2-4.2.3 1.6 1 2.4 2 2.7-.6-2.6-.3-5.3.5-8z' },
+  { id: 'gala', href: 'https://impact.lbv-event.com/', title: 'ערבי גאלה', sub: 'הערבים והתרומות', icon: 'M12 3c1 3.5 4.5 5.5 4.5 9.5a4.5 4.5 0 0 1-9 0c0-2 1-3.2 2-4.2.3 1.6 1 2.4 2 2.7-.6-2.6-.3-5.3.5-8z' },
 ];
 
 /** The bar at the bottom of the app: home, calendar, hotels, remote, site. */
@@ -382,6 +402,11 @@ function render() {
   if (page === 'events') return eventsPage(pg, actx);
   if (page === 'remote') return remotePage(pg, actx);
   if (page === 'apphome') return appHome(pg, actx, appTiles());
+  if (page === 'appholidays') {
+    const asks = {};
+    leads.forEach(l => { if (l.interest) asks[l.interest] = (asks[l.interest] || 0) + 1; });
+    return appHolidays(pg, actx, state.trips || [], asks);
+  }
   if (page === 'appsite') return appSite(pg, actx, allPages().filter(p => p.group === 'site' || p.group === 'people' || ['contact', 'banners'].includes(p.id)));
   if (page === 'hotels') return hotelsPage(pg, { toast, showLogin, rerender: () => page === 'hotels' && render() });
   ({ dashboard, inbox, mail, quotes, team, contact, banners, stats, guide, support, users, account })[page](pg);

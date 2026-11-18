@@ -361,6 +361,24 @@ export async function appHome(pg, c, tiles) {
 }
 
 /** "עריכת האתר" inside the app: the parts of the site, as a list. */
+/** "חגים" inside the app: the holiday stays (Sukkot, Pesach…) as cards; a card opens its page to change it. */
+export function appHolidays(pg, c, trips, asks) {
+  ctx = c;
+  const ST = { open: ['ההרשמה פתוחה', 'is-open'], soon: ['בקרוב', 'is-soon'], ended: ['הסתיים', 'is-ended'], hidden: ['מוסתר באתר', 'is-ended'] };
+  const img = u => { u = String(u || ''); return /^media\//.test(u) ? '/' + u : /^(https:\/\/|\/)/.test(u) ? u : ''; };   // site paths are from the root, not /admin/
+  const sec = h(`<section class="hol">
+    <div class="hol__head"><h2>החגים שלנו</h2><button type="button" class="btn btn--gold btn--sm" data-add>+ חג חדש</button></div>
+    ${trips.length ? '' : '<p class="hint">עוד אין חגים באתר. מוסיפים את הראשון.</p>'}
+    <div class="hol__list">${trips.map(t => { const st = ST[t.status] || ST.soon, n = asks[t.id] || 0; return `<button type="button" class="hol__card" data-trip="${esc(t.id)}">
+      <span class="hol__img"${img(t.image) ? ` style="background-image:url('${esc(img(t.image))}')"` : ''}>${img(t.image) ? '' : esc((t.he?.name || 'ח').charAt(0))}</span>
+      <span class="hol__tx"><b>${esc(t.he?.name || 'חג')}</b><small>${esc(t.he?.place || '')}</small>
+      <span class="hol__meta"><i class="hol__st ${st[1]}">${st[0]}</i>${n ? `<i class="hol__n">${n} פניות</i>` : ''}</span></span></button>`; }).join('')}</div>
+  </section>`);
+  $$('[data-trip]', sec).forEach(b => b.addEventListener('click', () => c.go('trip-' + b.dataset.trip)));
+  $('[data-add]', sec).addEventListener('click', () => c.go('w-holidays'));
+  pg.append(sec);
+}
+
 export function appSite(pg, c, pages) {
   ctx = c;
   pg.append(h(`<section class="card"><div class="card__head"><div><h2>עריכת האתר</h2><p>בוחרים חלק באתר, משנים, ולוחצים "שמירה ופרסום".</p></div></div>

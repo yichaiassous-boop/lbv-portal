@@ -224,3 +224,32 @@
 .cal__hol { display: block; overflow: hidden; max-width: 100%; color: #8A6516; font-size: .62rem; font-weight: 700; line-height: 1.15; white-space: nowrap; text-overflow: ellipsis; }
 .cal-day__hol { margin: 2px 0 0; color: #8A6516; font-weight: 700; }
 @media (min-width: 860px) { .cal__hol { font-size: .72rem; white-space: normal; } }
+
+/* "חגים" in the app: the holiday stays as cards */
+.hol { display: grid; gap: 14px; }
+.hol__head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.hol__head h2 { margin: 0; font: 700 1.35rem/1.2 "Frank Ruhl Libre", serif; color: var(--night); }
+.hol__list { display: grid; gap: 12px; }
+.hol__card { display: grid; grid-template-columns: 96px 1fr; gap: 14px; align-items: center; padding: 10px; border: 1px solid var(--line, #E3E6EE); border-radius: 20px; background: #fff; text-align: start; cursor: pointer; font: inherit; color: inherit; }
+.hol__card:active { transform: scale(.99); }
+.hol__img { width: 96px; height: 96px; border-radius: 14px; background: var(--night) center / cover no-repeat; }
+.hol__tx { display: grid; gap: 3px; min-width: 0; }
+.hol__tx b { font: 700 1.2rem/1.2 "Frank Ruhl Libre", serif; color: var(--night); }
+.hol__tx small { color: var(--ink-3, #667); font-size: .85rem; }
+.hol__meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.hol__meta i { font-style: normal; font-size: .76rem; font-weight: 700; padding: 3px 9px; border-radius: 99px; }
+.hol__st.is-open { background: #E6F6EC; color: #17703F; }
+.hol__st.is-soon { background: #FBF1DC; color: #8A6516; }
+.hol__st.is-ended { background: #EEF0F4; color: #5B6478; }
+.hol__n { background: var(--night); color: #F6DC97; }
+@media (min-width: 860px) { .hol__list { grid-template-columns: 1fr 1fr; } }
+
+/* an old version of the phone app: update first (admin.js, app/version.json) */
+.upd { position: fixed; inset: 0; z-index: 9999; display: grid; place-items: center; padding: 22px; background: radial-gradient(120% 80% at 50% 0%, #1B2A5A 0%, #0B1533 60%); }
+.upd__card { display: grid; gap: 12px; max-width: 420px; padding: 26px 22px; border-radius: 24px; background: #FBF8F1; text-align: center; box-shadow: 0 30px 60px -30px rgba(0,0,0,.6); }
+.upd__card h2 { margin: 0; font: 700 1.7rem/1.2 "Frank Ruhl Libre", serif; color: #0B1533; }
+.upd__card p { margin: 0; color: #4A5470; line-height: 1.55; }
+.upd__card .btn { min-height: 52px; font-size: 1.05rem; }
+.upd__card small { color: #8A93A8; font-size: .78rem; }
+.upd__brand { color: #B8892E !important; font-weight: 700; letter-spacing: .15em; }
+.hol__img { display: grid; place-items: center; color: #E3B65C; font: 700 2.2rem/1 "Frank Ruhl Libre", serif; }
