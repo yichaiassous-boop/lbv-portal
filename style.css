@@ -445,7 +445,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 
 /* The demo screen sits in a dimmed event hall, like the projector on the night. */
 .venue { position: relative; padding: clamp(18px, 4vw, 48px); border-radius: 28px; overflow: hidden; isolation: isolate; }
-.venue::before { content: ""; position: absolute; inset: -20px; z-index: -2; background: url("media/banner-tables.jpg") center / cover; filter: blur(10px) brightness(.45) saturate(1.2); }
+.venue::before { content: ""; position: absolute; inset: -20px; z-index: -2; background: url("media/events-hall.jpg") center / cover; filter: blur(10px) brightness(.45) saturate(1.2); }
 .venue::after { content: ""; position: absolute; inset: 0; z-index: -1; background: radial-gradient(ellipse at 50% 0%, rgba(227,182,92,.28), transparent 60%); }
 .screen { box-shadow: 0 0 0 1px rgba(227,182,92,.45), 0 0 60px rgba(227,182,92,.18), 0 40px 80px -30px rgba(0,0,0,.9); }
 .screen__head { display: flex; align-items: center; gap: 14px; margin: -8px 0 26px; padding-bottom: 16px; border-bottom: 1px solid rgba(227,182,92,.3); }
@@ -1446,3 +1446,6 @@ html[lang="he"] .hero__title { font-weight: 800; }
   .tryit__card { scroll-snap-align: start; }
 }
 @media (prefers-reduced-motion: reduce) { .tryit__card { transition: none; } .tryit__card:hover { transform: none; } }
+
+/* Séjours door photo: keep the faces on stage in frame (owner 18.11) */
+.doors .door__thumb[src*="holiday-stage"], .door__thumb[src*="holiday-stage"] { object-position: center 52%; }
