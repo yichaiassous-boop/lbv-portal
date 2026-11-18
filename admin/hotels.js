@@ -93,22 +93,22 @@ function phonePanel(m, con) {
   if (!p.version) return null;
   const rows = [
     [con.connected, 'הרובוט של גוגל מחובר', 'הרובוט של גוגל עוד לא מחובר'],
-    [p.paired, 'הטלפון מחובר לרובוט', 'הטלפון עוד לא מחובר לרובוט. בודקים שנכנסתם כבעלים'],
+    [p.paired, 'הטלפון מחובר לרובוט', con.app ? 'הטלפון עוד לא מחובר לרובוט. סוגרים ופותחים את האפליקציה' : 'הרובוט עוד לא פתוח לטלפון. זה צעד חד-פעמי בחשבון הגוגל, לא בטלפון'],
     [!!p.folder, `תיקיית ההקלטות: ${esc(p.folder)}`, 'לא נבחרה תיקיית ההקלטות'],
     [p.callLog, 'יש גישה ליומן השיחות', 'אין גישה ליומן השיחות'],
     [p.battery, 'האפליקציה רצה ברקע', 'הטלפון עלול לעצור את האפליקציה ברקע'],
     [!!m.on, 'מצב בדיקה דולק', 'מצב בדיקה כבוי: שיחות לא נקראות'],
-    [p.sent > 0, `נשלחו מהטלפון ${p.sent} הקלטות`, p.lastSync ? 'לא נמצאו הקלטות חדשות בתיקייה. בודקים שהקלטת שיחות דלוקה בטלפון' : 'הטלפון עוד לא חיפש הקלטות'],
+    [p.sent > 0, `נשלחו מהטלפון ${p.sent} הקלטות`, p.lastSync ? 'לא נמצאו הקלטות חדשות בתיקייה. בודקים שהקלטת שיחות דלוקה בטלפון' : p.paired ? 'הטלפון עוד לא חיפש הקלטות' : 'החיפוש בהקלטות יתחיל לבד מיד אחרי החיבור לרובוט'],
   ];
   const needFix = !p.folder || !p.callLog || !p.battery || !p.notify;
   const el = h(`<div class="hs-phone">
     <b class="hs-phone__t">מצב הטלפון</b>
     <ul>${rows.map(([ok, yes, no]) => `<li class="${ok ? 'is-ok' : 'is-no'}"><i class="dot ${ok ? 'ok' : 'no'}"></i>${ok ? yes : no}</li>`).join('')}</ul>
     <small>${p.lastSync ? `בדיקה אחרונה בטלפון: ${ago(new Date(p.lastSync).toISOString())}` : ''}${p.err ? ` · תקלה אחרונה: ${esc(String(p.err).slice(0, 120))}` : ''} · גרסה ${esc(p.version)}</small>
-    <div class="hs-phone__act">${needFix ? '<button type="button" class="btn btn--gold btn--sm" data-fix>לסדר את ההרשאות</button>' : ''}<button type="button" class="btn btn--line btn--sm" data-sync>לבדוק הקלטות עכשיו</button></div>
+    <div class="hs-phone__act">${needFix ? '<button type="button" class="btn btn--gold btn--sm" data-fix>לסדר את ההרשאות</button>' : ''}${p.paired ? '<button type="button" class="btn btn--line btn--sm" data-sync>לבדוק הקלטות עכשיו</button>' : ''}</div>
   </div>`);
   $('[data-fix]', el)?.addEventListener('click', () => window.LBVApp.approvals());
-  $('[data-sync]', el).addEventListener('click', () => { window.LBVApp.syncNow?.(); ctx.toast('הטלפון בודק עכשיו את ההקלטות', 'info'); setTimeout(() => again(), 20000); });
+  $('[data-sync]', el)?.addEventListener('click', () => { window.LBVApp.syncNow?.(); ctx.toast('הטלפון בודק עכשיו את ההקלטות', 'info'); setTimeout(() => again(), 20000); });
   return el;
 }
 
