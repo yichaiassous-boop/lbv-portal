@@ -345,10 +345,13 @@
     from.sheet.scrollTop = from.top;
   }
   let openSheetEl = null, pageY = 0;
+  // The bottom bar and the top menu switch between main windows: their Back always leads home, not to the window you came from.
+  let freshOpen = false;
+  document.addEventListener('click', e => { if (e.target.closest('.dock a[href^="#"], .bar__nav a[href^="#"]')) freshOpen = true; }, true);
   function openSheet(sheet, target) {
     if (openSheetEl !== sheet) {
-      if (!openSheetEl) {
-        pageY = scrollY;
+      if (!openSheetEl || freshOpen) {
+        if (!openSheetEl) pageY = scrollY;
         // A window that belongs to another (Sukkot → Holidays) goes back there even when opened straight from the page.
         const parent = sheet.dataset.parent && document.getElementById(sheet.dataset.parent);
         setBack(sheet, parent ? { sheet: parent, top: 0 } : null);
@@ -358,6 +361,7 @@
       sheet.classList.add('is-open');
       document.body.classList.add('has-sheet');
       openSheetEl = sheet;
+      freshOpen = false;
       sheet.scrollTop = 0;
       dispatchEvent(new CustomEvent('sheet:change', { detail: sheet.id }));
     }
@@ -367,6 +371,7 @@
       if (panel && panel.hidden && window.lbvShowModule) lbvShowModule(panel.dataset.mod);
       setTimeout(() => target.scrollIntoView({ block: 'start', behavior: 'instant' }), 60);
     }
+    freshOpen = false;
     sheet.querySelector('.sheet__close').focus({ preventScroll: true });
   }
   function closeSheet(clearHash) {

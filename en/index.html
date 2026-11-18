@@ -59,6 +59,7 @@
     <p class="hero__lead">Events, galas, stays and trips: we organize everything, and you enjoy every minute.</p>
     <nav class="paths" aria-label="What are you looking for?">
       <a class="path" href="#events"><span class="path__ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h4l-.5 5a1.5 1.5 0 0 1-3 0zM9 9.5V19M6.5 19h5M13 3h4l-.5 5a1.5 1.5 0 0 1-3 0zM15 9.5V19M12.5 19h5"/></svg></span><span class="path__txt"><b>Events</b><small>Weddings, bar mitzvahs and galas</small></span><span class="path__go" aria-hidden="true"></span></a>
+      <a class="path" href="#gala"><span class="path__ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 10c0 5.5-7 10-7 10z"/></svg></span><span class="path__txt"><b>Non-profits</b><small>Galas and fundraisers</small></span><span class="path__go" aria-hidden="true"></span></a>
       <a class="path" href="#holidays"><span class="path__ic"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="10" r="3.5"/><path d="M12 2.5v2M12 15.5v2M4.5 10h2M17.5 10h2M6.7 4.7l1.4 1.4M15.9 13.9l1.4 1.4M6.7 15.3l1.4-1.4M15.9 6.1l1.4-1.4M3 21c3-2 6-2 9 0s6 2 9 0"/></svg></span><span class="path__txt"><b>Stays &amp; trips</b><small>Holidays at the hotel and group trips</small></span><span class="path__go" aria-hidden="true"></span></a>
       <a class="path" href="#wedding"><span class="path__ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3.5 6l8.5 7 8.5-7"/></svg></span><span class="path__txt"><b>AllSet Invitations</b><small>Invitations, RSVPs and seating</small></span><span class="path__go" aria-hidden="true"></span></a>
     </nav>
@@ -141,6 +142,19 @@
       <li><a href="#faq"><b>Frequently asked questions</b><span>What is included, the sukkah, how far ahead to book</span></a></li>
       <li><a href="#contact"><b>Request a quote</b><span>A few details, and we get back to you the same day</span></a></li>
     </ul>
+  </div>
+</section>
+
+<!-- ============ TRY IT (live demos) ============ -->
+<section class="tryit" id="try" aria-labelledby="try-title">
+  <div class="wrap">
+    <h2 class="h2" id="try-title">Try it yourself</h2>
+    <p class="lead">Three live demos, with sample data.</p>
+    <div class="tryit__row">
+      <a class="tryit__card" href="#gala-demo"><img src="../media/event-gala.jpg" alt="" loading="lazy"><span class="tryit__txt"><b>Live donation screen</b><small>What the hall sees during the appeal</small></span><span class="tryit__go">Try it</span></a>
+      <a class="tryit__card" href="#control-room"><img src="../media/control-room-en.jpg" alt="" loading="lazy"><span class="tryit__txt"><b>Gala dashboard</b><small>Tickets, donations and arrivals in real time</small></span><span class="tryit__go">Try it</span></a>
+      <a class="tryit__card" href="#hall"><img src="../media/banner-tables.jpg" alt="" loading="lazy"><span class="tryit__txt"><b>Wedding seating plan</b><small>One click, and every family has its table</small></span><span class="tryit__go">Try it</span></a>
+    </div>
   </div>
 </section>
 
@@ -486,9 +500,9 @@
 
     <ul class="modules" role="tablist" aria-label="Parts of the gala">
       <li><button type="button" role="tab" aria-selected="false" data-mod="production"><span class="modules__ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h10v11H7zM3 15h18v3H3zM7 11h10"/></svg></span><b>Producing the evening</b><small>Venue, catering, program and stage</small></button></li>
-      <li><button type="button" role="tab" aria-selected="false" data-mod="system" data-tab="t-raffle"><span class="modules__ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M9 6v12M15 6v12"/></svg></span><b>The gala system</b><small>Live screen and raffles</small></button></li>
+      <li><button type="button" role="tab" aria-selected="false" data-mod="system" data-tab="t-raffle"><span class="modules__ic"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M9 6v12M15 6v12"/></svg></span><b>Raffles</b><small>On the big screen in the hall</small></button></li>
       <li><button type="button" role="tab" aria-selected="false" data-mod="system" data-tab="t-tickets"><span class="modules__ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h18v3a2 2 0 0 0 0 4v3H3v-3a2 2 0 0 0 0-4z"/><path d="M15 7v10" stroke-dasharray="2 2"/></svg></span><b>Ticket sales</b><small>From the phone, every payment method</small></button></li>
-      <li><button type="button" role="tab" aria-selected="false" data-mod="system" data-tab="t-donate"><span class="modules__ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 10c0 5.5-7 10-7 10z"/></svg></span><b>Donations system</b><small>Live giving and pledges</small></button></li>
+      <li><button type="button" role="tab" aria-selected="false" data-mod="system" data-tab="t-donate"><span class="modules__ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.5-7-10a4 4 0 0 1 7-2.5A4 4 0 0 1 19 10c0 5.5-7 10-7 10z"/></svg></span><b>Live giving</b><small>Amounts and names on screen, plus pledges</small></button></li>
       <li><button type="button" role="tab" aria-selected="false" data-mod="phoning"><span class="modules__ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h4l1.5 5-2.5 1.5a11 11 0 0 0 5.5 5.5l1.5-2.5 5 1.5v4a2 2 0 0 1-2 2A16 16 0 0 1 4 5a2 2 0 0 1 2-2z"/></svg></span><b>Call center</b><small>Volunteers call the donors</small></button></li>
       <li><button type="button" role="tab" aria-selected="false" data-mod="dream" class="modules__dream"><span class="modules__ic"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2z"/></svg></span><b>And anything you dream of</b><small>Tell us, and we will build it</small></button></li>
     </ul>
@@ -697,11 +711,11 @@
 </section>
 
 <!-- ============ WEDDING APP ============ -->
-<section class="wedding sheet" data-hero="real-simha-models-fr.jpg" id="wedding" data-title="Wedding app" aria-labelledby="wedding-title">
+<section class="wedding sheet" data-hero="real-simha-models-fr.jpg" id="wedding" data-title="AllSet Invitations" aria-labelledby="wedding-title">
   <div class="wrap split split--rev">
     <div class="split__text">
-      <h2 class="h2" id="wedding-title" data-hero-title>Wedding app</h2>
-      <p class="lead">Instead of chasing guests on the phone and doing the seating chart in a spreadsheet until 2 am.</p>
+      <h2 class="h2" id="wedding-title" data-hero-title>AllSet Invitations</h2>
+      <p class="lead">A digital invitation, RSVPs and the seating plan for your wedding. No more chasing guests on the phone, and no spreadsheet until 2 am.</p>
       <ul class="ticks">
         <li><b>A beautiful digital invitation</b> Four designs in several colour harmonies, or in colours you pick yourself. The Photo design takes your photo and your logo. You choose what appears on the card: a countdown, a blessing, the parents. Change it at any time.</li>
         <li><b>Sent on WhatsApp, family by family</b> From your own phone: each family gets its personal link, and nothing is sent without you.</li>
