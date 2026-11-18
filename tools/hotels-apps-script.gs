@@ -20,6 +20,8 @@
  *   FOLDER      the name of the Drive folder with the recordings (e.g. "הקלטות שיחות")
  * Then run  setup()  once and allow the permissions.
  * For the phone app: Deploy → New deployment → Web app, "Execute as: Me", "Who has access: Anyone".
+ * getUrl() can report a dead address: put the deployment's /exec address in the script property APP_URL
+ * (in the LBV account it is written straight into tick(), 18.11).
  * (Anyone can reach the address, but only the app has the secret; without it nothing is saved.)
  */
 
@@ -57,7 +59,7 @@ function tick() {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(1000)) return;
   try {
-    try { site('post', 'app', { url: ScriptApp.getService().getUrl() || '', secret: P('APP_SECRET'), last: P('APP_LAST') }); } catch (e) { console.error('app', e); }
+    try { site('post', 'app', { url: P('APP_URL') || ScriptApp.getService().getUrl() || '', secret: P('APP_SECRET'), last: P('APP_LAST') }); } catch (e) { console.error('app', e); }
     const st = site('get', 'status');
     try { recordings(st); } catch (e) { console.error('recordings', e); }
     try { indexCalls(); } catch (e) { console.error('index', e); }
