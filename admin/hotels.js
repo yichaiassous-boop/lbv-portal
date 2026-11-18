@@ -47,7 +47,7 @@ export async function hotelsPage(pg, c) {
   pg.append(modeBar());
   if (openSurvey && cur) surveyView(pg); else { pg.append(lookupCard()); homeView(pg); }
   lastSeen = lastSeen || home.connection?.last || null; startPolling();
-  if (!wizSeen) { const i = stepsState().findIndex(x => !x.done); if (i >= 0) setTimeout(() => openWizard(i), 500); else wizSeen = true; }
+  if (!wizSeen) { const st0 = stepsState(), i = st0.findIndex(x => !x.done); if (i >= 0 && !(st0[i].id === 'rec' && !phoneUA())) setTimeout(() => openWizard(i), 500); else wizSeen = true; }
 }
 const again = () => ctx.rerender();
 async function refreshHome() { home = await api('GET'); }
@@ -324,6 +324,7 @@ const marks = () => { try { return JSON.parse(localStorage.getItem('hs-setup') |
 function markStep(id) { try { localStorage.setItem('hs-setup', JSON.stringify({ ...marks(), [id]: 1 })); } catch (e) {} }
 const standalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone;
 const inApp = () => document.documentElement.classList.contains('lbv-app');
+const phoneUA = () => /android|iphone|ipad/i.test(navigator.userAgent);
 function stepsState() { const all = stepsAll(); return inApp() ? all.filter(x => x.id === 'google') : all; }
 function stepsAll() {
   const con = home.connection || {}, m = marks();
@@ -364,7 +365,7 @@ function openWizard(i) {
   const x = st[i], con = home.connection || {};
   const act = {
     google: `<button class="btn btn--gold" type="button" data-go>${con.connected ? 'מחובר. הלאה' : 'יצירת מפתח'}</button>`,
-    rec: `<a class="btn btn--gold" href="/app/lbv-calls.apk" download data-dl>1. הורדת האפליקציה</a><button class="btn btn--dark" type="button" data-go>2. חיבור האפליקציה</button>`,
+    rec: phoneUA() ? `<a class="btn btn--gold" href="/app/lbv-calls.apk" download data-dl>1. הורדת האפליקציה</a><button class="btn btn--dark" type="button" data-go>2. חיבור האפליקציה</button>` : `<p class="hs-wiz__desk">את השלב הזה עושים בטלפון, לא במחשב: פותחים את האפליקציה LBV, נכנסים עם שם המשתמש של הבעלים, ובדף "מלונות" לוחצים "לחבר את הטלפון".</p>`,
     notify: `<button class="btn btn--gold" type="button" data-go>${x.done ? 'מאושר. הלאה' : 'לאפשר התראות'}</button>`,
     home: `<button class="btn btn--gold" type="button" data-go>${x.done ? 'יש אייקון. סיום' : 'הוספה למסך הבית'}</button>`,
   }[x.id];
@@ -385,7 +386,7 @@ function openWizard(i) {
   w.addEventListener('click', e => { if (e.target === w) { w.remove(); again(); } });
   $('[data-copy]', w)?.addEventListener('click', () => copy(newKey, 'המפתח הועתק'));
   $('[data-done]', w)?.addEventListener('click', () => { markStep('rec'); next(); });
-  $('[data-go]', w).addEventListener('click', async e => {
+  $('[data-go]', w)?.addEventListener('click', async e => {
     if (x.id === 'google') {
       if (con.connected) return next();
       try { newKey = (await api('POST', '', { op: 'connect' })).key; await refreshHome(); openWizard(i); } catch (e2) { fail(e2); }
