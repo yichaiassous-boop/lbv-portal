@@ -253,3 +253,11 @@
 .upd__card small { color: #8A93A8; font-size: .78rem; }
 .upd__brand { color: #B8892E !important; font-weight: 700; letter-spacing: .15em; }
 .hol__img { display: grid; place-items: center; color: #E3B65C; font: 700 2.2rem/1 "Frank Ruhl Libre", serif; }
+
+/* "בית" in the middle of the bar, raised above it in a gold circle */
+.lbv-app .ab { overflow: visible; }
+.lbv-app .ab a.ab__home { padding-top: 0; background: none; color: #F6DC97; }
+.lbv-app .ab a.ab__home svg { box-sizing: content-box; width: 26px; height: 26px; padding: 13px; margin-top: -26px; border-radius: 50%; color: #0B1430; background: linear-gradient(160deg, #F1D48A, #C9A44C); box-shadow: 0 10px 22px -8px rgba(201,164,76,.85), 0 0 0 5px #0B1430; }
+.lbv-app .ab a.ab__home[aria-current] { background: none; color: #fff; }
+.lbv-app .ab a.ab__home[aria-current] svg { color: #0B1430; }
+.lbv-app .ab a.ab__home::after { display: none; }

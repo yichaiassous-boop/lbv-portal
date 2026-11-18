@@ -354,12 +354,14 @@ const SYSTEMS = [
 /** The bar at the bottom of the app: home, calendar, hotels, remote, site. */
 function appBar() {
   if ($('.ab')) return;
-  const items = [['apphome', 'בית', ICON.home], ['events', 'לוח', ICON.events], ['hotels', 'מלונות', ICON.hotels], ['remote', 'השלט', ICON.screens], ['appsite', 'האתר', ICON.pencil]]
+  // "בית" always sits in the middle, raised (the rest split around it).
+  const items = [['events', 'לוח', ICON.events], ['hotels', 'מלונות', ICON.hotels], ['remote', 'השלט', ICON.screens], ['appsite', 'האתר', ICON.pencil]]
     .filter(([id]) => pageAllowed(id === 'appsite' ? 'w-home' : id));
+  items.splice(Math.floor(items.length / 2), 0, ['apphome', 'בית', ICON.home]);
   const nav = document.createElement('nav');
   nav.className = 'ab';
   nav.setAttribute('aria-label', 'ניווט');
-  nav.innerHTML = items.map(([id, t, ic]) => `<a href="#${id}" data-p="${id}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="${ic}"/></svg><span>${t}</span></a>`).join('');
+  nav.innerHTML = items.map(([id, t, ic]) => `<a href="#${id}" data-p="${id}"${id === 'apphome' ? ' class="ab__home"' : ''}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="${ic}"/></svg><span>${t}</span></a>`).join('');
   nav.addEventListener('click', e => { const a = e.target.closest('a'); if (!a) return; e.preventDefault(); go(a.dataset.p); });
   document.body.append(nav);
   $$('.ab a').forEach(a => a.toggleAttribute('aria-current', a.dataset.p === page));
