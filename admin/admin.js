@@ -348,6 +348,7 @@ function appTiles() {
 /** The other LBV systems (their own sites and logins). Inside the Android app they open in the app too. */
 const SYSTEMS = [
   { id: 'simha', href: 'https://allset.lbv-event.com/admin', title: 'שמחה', sub: 'הזמנות לחתונה', icon: 'M3 7l9 6 9-6M3 7v11h18V7M3 7h18' },
+  { id: 'booking', href: 'https://booking.lbv-event.com/admin', title: 'הרשמה לחגים', sub: 'ההרשמות לנופשים בחגים', icon: 'M4 5h16v15H4zM4 10h16M9 3v4M15 3v4M8 14h3M8 17h6' },
   { id: 'gala', href: 'https://impact.lbv-event.com/', title: 'ערבי גאלה', sub: 'הערבים והתרומות', icon: 'M12 3c1 3.5 4.5 5.5 4.5 9.5a4.5 4.5 0 0 1-9 0c0-2 1-3.2 2-4.2.3 1.6 1 2.4 2 2.7-.6-2.6-.3-5.3.5-8z' },
 ];
 
@@ -1235,7 +1236,7 @@ const ROLE = {
 };
 const CAN = { content: ['owner', 'admin', 'editor'], leads: ['owner', 'admin', 'sales'], mail: ['owner', 'admin', 'sales'], users: ['owner'] };
 const canDo = perm => CAN[perm].includes(me?.role || 'owner');
-const AREA_NAME = { events: 'לוח אירועים', hotels: 'בדיקת מלונות', remote: 'השלט', simha: 'שמחה', gala: 'ערבי גאלה', site: 'עריכת האתר', leads: 'פניות והצעות מחיר' };
+const AREA_NAME = { events: 'לוח אירועים', hotels: 'בדיקת מלונות', remote: 'השלט', simha: 'שמחה', gala: 'ערבי גאלה', booking: 'הרשמה לחגים', site: 'עריכת האתר', leads: 'פניות והצעות מחיר' };
 async function users(pg) {
   const c = card('מנהלים והרשאות', 'כל מנהל נכנס עם שם משתמש וסיסמה משלו, ורואה רק את מה שמותר לו');
   c.append(html(`<div class="roles">${Object.entries(ROLE).map(([k, [n, d]]) => `<div><b>${n}</b>${d}</div>`).join('')}</div>`));
