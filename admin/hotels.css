@@ -197,7 +197,7 @@ mark { background: #FCE7A8; color: inherit; padding: 0 2px; border-radius: 3px; 
 .lbv-app .hb { position: sticky; top: 0; z-index: 20; }
 .lbv-app .hb__row { justify-content: center; padding-block: 10px; }
 .lbv-app .hb__brand { pointer-events: none; }
-.lbv-app .hb__brand b::after { content: " · סקר מלונות"; font-weight: 600; }
+.lbv-app .hb__brand b::after { content: " · בדיקת מלונות"; font-weight: 600; }
 .lbv-app .pagehead { display: none; }
 .lbv-app .main { padding-top: 12px; }
 .lbv-app body { -webkit-tap-highlight-color: transparent; }

@@ -286,7 +286,7 @@ const GROUPS = () => [
   ...(IN_APP ? [{ id: 'app', name: 'בית', pages: [{ id: 'apphome', title: 'בית', sub: '' }, { id: 'appsite', title: 'עריכת האתר', sub: '' }] }] : []),
   { id: 'events', name: 'לוח אירועים', pages: [{ id: 'events', title: 'לוח אירועים', sub: 'כל האירועים של LBV במקום אחד: מתי, איפה, עם מי, ובאיזה מצב' }] },
   { id: 'screens', name: 'השלט', pages: [{ id: 'remote', title: 'השלט של המסכים', sub: 'שליטה מהטלפון במסך של האירוע' }] },
-  { id: 'hotels', name: 'סקר מלונות', pages: [{ id: 'hotels', title: 'סקר מלונות', sub: 'מתקשרים למלונות, והמערכת ממלאת לבד מהשיחות: פרטים, זמינות, מחירים, מיילים וסיכום' }] },
+  { id: 'hotels', name: 'בדיקת מלונות', pages: [{ id: 'hotels', title: 'בדיקת מלונות', sub: 'מתקשרים למלונות, והמערכת ממלאת לבד מהשיחות: פרטים, זמינות, מחירים, מיילים וסיכום' }] },
   { id: 'site', name: 'עמודי האתר', pages: windows() },
   { id: 'people', name: 'צוות', pages: [{ id: 'team', title: 'צוות ודבר המנכ״ל', sub: 'תמונות, שמות ותפקידים, והמכתב של אילן', lang: true }] },
   { id: 'settings', name: 'הגדרות', pages: [
@@ -316,7 +316,7 @@ function appTiles() {
   const open = leads.filter(l => !l.handled).length;
   return [
     { id: 'events', title: 'לוח אירועים', sub: 'מה, מתי ואיפה', icon: ICON.events },
-    { id: 'hotels', title: 'סקר מלונות', sub: 'שיחות, מחירים, זמינות', icon: ICON.hotels },
+    { id: 'hotels', title: 'בדיקת מלונות', sub: 'שיחות, מחירים, זמינות', icon: ICON.hotels },
     { id: 'remote', title: 'השלט', sub: 'המסך של האירוע', icon: ICON.screens },
     { id: 'appsite', title: 'עריכת האתר', sub: 'טקסטים, תמונות, סרטונים', icon: ICON.pencil, need: 'w-home' },
     { id: 'inbox', title: 'פניות', sub: 'מי השאיר פרטים באתר', icon: ICON.inbox, badge: open || 0 },

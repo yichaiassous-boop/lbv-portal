@@ -107,7 +107,7 @@ function cleanPrices(list) {
 function cleanSurvey(b, old = {}) {
   return {
     ...old,
-    title: str(b.title ?? old.title, 120) || 'סקר מלונות',
+    title: str(b.title ?? old.title, 120) || 'בדיקת מלונות',
     kind: str(b.kind ?? old.kind, 40),            // שבת חתן / בר מצווה / חתונה / חג / אחר
     from: str(b.from ?? old.from, 10), to: str(b.to ?? old.to, 10),
     need: str(b.need ?? old.need, 300),          // e.g. "40 חדרים, 2 מבוגרים + 2 ילדים"

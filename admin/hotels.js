@@ -54,7 +54,7 @@ async function refreshHome() { home = await api('GET'); }
 async function refreshSurvey() { cur = await api('GET', '?survey=' + encodeURIComponent(openSurvey)); }
 
 function notReady() {
-  return h(`<section class="card"><h2>סקר מלונות</h2><p class="hint hint--box">כדי שהסקר יעבוד צריך שמסד הנתונים של האתר (Upstash Redis, אותו אחד של הסטטיסטיקה) יהיה מחובר בפרויקט ב-Vercel.</p></section>`);
+  return h(`<section class="card"><h2>בדיקת מלונות</h2><p class="hint hint--box">כדי שהסקר יעבוד צריך שמסד הנתונים של האתר (Upstash Redis, אותו אחד של הסטטיסטיקה) יהיה מחובר בפרויקט ב-Vercel.</p></section>`);
 }
 
 /* ---------- survey mode: the big switch (made for the phone) ---------- */
@@ -63,7 +63,7 @@ function modeBar() {
   const sv = home.surveys.find(s => s.id === m.surveyId);
   const el = h(`<section class="hs-mode ${m.on ? 'is-on' : ''}">
     <div class="hs-mode__txt">
-      <b>${m.on ? 'מצב סקר פעיל' : 'מצב סקר כבוי'}</b>
+      <b>${m.on ? 'מצב בדיקה פעיל' : 'מצב בדיקה כבוי'}</b>
       <span>${m.on ? `כל שיחה מעכשיו נכנסת ל<b>${esc(sv?.title || 'סקר')}</b> · מאז ${when(m.since)}` : 'שיחות לא נקראות. מדליקים לפני שמתחילים להתקשר למלונות.'}</span>
     </div>
     <div class="hs-mode__act">
@@ -76,7 +76,7 @@ function modeBar() {
     if (!m.on && !home.surveys.length) return ctx.toast('קודם פותחים כרטיסייה', 'info');
     try {
       const r = await api('POST', '', { op: 'mode', on: !m.on, surveyId: m.on ? undefined : $('.hs-sel', el)?.value });
-      home.mode = r.mode; ctx.toast(r.mode.on ? 'מצב סקר הודלק. אפשר להתחיל להתקשר' : 'מצב סקר כובה'); again();
+      home.mode = r.mode; ctx.toast(r.mode.on ? 'מצב בדיקה הודלק. אפשר להתחיל להתקשר' : 'מצב בדיקה כובה'); again();
     } catch (e) { fail(e); }
   });
   $('[data-connect]', el)?.addEventListener('click', e => { e.preventDefault(); openWizard(Math.max(0, stepsState().findIndex(x => !x.done))); });
@@ -306,7 +306,7 @@ function stepsAll() {
       why: 'הטלפון יודיע לך כש:', items: ['שיחה עם מלון נקלטה ונכנסה לכרטיסייה', 'סיכום שביקשת על שיחה מוכן'],
       fine: 'ההתראות מגיעות כשהסקר פתוח בטלפון, גם ברקע. אנדרואיד מקפיץ עכשיו "לאפשר התראות?" ולוחצים "אישור".' },
     { id: 'home', done: !!m.home || standalone(), title: 'אייקון על מסך הבית',
-      why: 'כדי שהסקר ייפתח בלחיצה אחת, כמו אפליקציה:', items: ['אייקון "סקר מלונות" עם הלוגו של LBV', 'נפתח ישר לכרטיסיות ולמתג "מצב סקר"'],
+      why: 'כדי שהבדיקה תיפתח בלחיצה אחת, כמו אפליקציה:', items: ['אייקון "LBV" עם הלוגו של LBV', 'נפתח ישר לכרטיסיות ולמתג "מצב סקר"'],
       fine: 'כרום מקפיץ "להוסיף למסך הבית?" ולוחצים "הוספה". אם לא קפץ: בכרום לוחצים ⋮ למעלה ואז "הוספה למסך הבית".' },
   ];
 }
@@ -460,7 +460,7 @@ function surveyView(pg) {
     const hits = new Map();
     if (words.length) rows = rows.filter(x => { const m = searchHotel(x, words); if (m) hits.set(x.id, m); return !!m; });
     rows.sort(sortBy === 'name' ? (a, b) => a.name.localeCompare(b.name, 'he') : sortBy === 'recent' ? (a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || '') : (a, b) => (a.min ?? 1e12) - (b.min ?? 1e12));
-    if (!hotels.length) listEl.append(h(`<p class="hint hint--box">עוד אין מלונות בכרטיסייה. לוחצים "הוספת מלון", או מדליקים "מצב סקר" למעלה ומתקשרים: כל שיחה עם מלון נכנסת לכאן לבד אחרי כמה דקות.</p>`));
+    if (!hotels.length) listEl.append(h(`<p class="hint hint--box">עוד אין מלונות בכרטיסייה. לוחצים "הוספת מלון", או מדליקים "מצב בדיקה" למעלה ומתקשרים: כל שיחה עם מלון נכנסת לכאן לבד אחרי כמה דקות.</p>`));
     else if (!rows.length) listEl.append(h('<p class="hint">לא נמצא כלום.</p>'));
     for (const x of rows) {
       const [an, ac] = AV[x.avail] || AV.unknown;
