@@ -143,6 +143,8 @@ const canSee = (s, sv) => sv && (isOwner(s) || sv.by?.id === meId(s) || (sv.shar
 const canManage = (s, sv) => sv && (isOwner(s) || sv.by?.id === meId(s));
 
 async function userRec(id) { return (await getJ(K.users, id)) || { mode: { on: false }, windows: [] }; }
+/** The robot this person's phone works with: his own if he installed one, otherwise the company's (the owner's). */
+async function robotOf(id) { const u = await userRec(id); return (u.keyHash && u.app?.url) || id === 'owner' ? { id, u } : { id: 'owner', u: await userRec('owner') }; }
 const saveUser = (id, u) => setJ(K.users, id, u);
 
 /* ---------- merging what Gemini heard into a hotel ---------- */
@@ -288,12 +290,12 @@ export default async function hotelsHandler(req, res) {
           count: hs.length, avail: hs.filter(h => h.avail === 'available' || h.avail === 'partial').length, follow: hs.filter(h => h.status === 'followup').length };
       }));
       const managers = await managerList(req);
-      return send(res, 200, { me: { id: uid, name: s.n, role: s.r }, mode: u.mode || { on: false }, connection: { connected: !!u.keyHash, ping: u.ping || null, last: u.lastCall || null, skipped: u.skipped || 0, app: !!u.app?.url, appLast: u.app?.last || null }, surveys, managers });
+      return send(res, 200, { me: { id: uid, name: s.n, role: s.r }, mode: u.mode || { on: false }, connection: await (async () => { const r = (await robotOf(uid)).u; return { connected: !!r.keyHash, ping: r.ping || null, last: r.lastCall || null, skipped: r.skipped || 0, app: !!r.app?.url, appLast: r.app?.last || null }; })(), surveys, managers });
     }
 
     // "חיבור האפליקציה": the robot's address + the app secret, handed only to the logged-in owner of that robot
     if (req.method === 'POST' && body.op === 'pair') {
-      const u = await userRec(uid);
+      const u = (await robotOf(uid)).u;
       if (!u.app?.url || !u.app?.secret) return send(res, 409, { error: 'no-robot' });
       return send(res, 200, { url: u.app.url, secret: u.app.secret });
     }
@@ -442,7 +444,14 @@ async function script(req, res, what, userId, b) {
       if (m.t === 'mail-out' && m.threadId && Date.now() - Date.parse(m.at) < 60 * 864e5) threads.push({ surveyId: sv.id, hotelId: h.id, threadId: m.threadId, seen: (h.log || []).filter(x => x.t === 'mail-in').map(x => x.msgId) });
     // Phone calls the owner asked to summarize ("you talked a week ago, want a summary?" → yes)
     const asks = (await allJ(K.calls)).filter(c => c.owner === userId && c.ask && !c.sum).slice(0, 3).map(c => ({ id: c.id, name: c.name, at: c.at }));
-    return send(res, 200, { windows: u.windows || [], mode: u.mode || { on: false }, surveys: active, outbox, threads, asks });
+    let windows = u.windows || [], mode = u.mode || { on: false };
+    if (userId === 'owner') {
+      const all = Object.entries((await kv.hgetall(K.users)) || {}).map(([id, v]) => [id, typeof v === 'string' ? JSON.parse(v) : v]);
+      const riders = all.filter(([id, x]) => id !== 'owner' && !(x.keyHash && x.app?.url));
+      windows = windows.concat(...riders.map(([, x]) => x.windows || [])).sort((a2, b2) => String(a2.from).localeCompare(String(b2.from))).slice(-600);
+      if (!mode.on) mode = (riders.map(([, x]) => x.mode).find(x => x?.on)) || mode;
+    }
+    return send(res, 200, { windows, mode, surveys: active, outbox, threads, asks });
   }
 
   // The robot's web-app address (for the phone app) + when the app last sent a recording
