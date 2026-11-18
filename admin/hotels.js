@@ -384,18 +384,27 @@ function notify(title, body) {
   try { navigator.serviceWorker?.getRegistration('/admin/').then(r => r ? r.showNotification(title, { body, icon: '/media/icon-gold.png', lang: 'he', dir: 'rtl' }) : new Notification(title, { body, icon: '/media/icon-gold.png' })); } catch (e) {}
 }
 // While the page is open (also in the background): tell about new calls and ready summaries.
-let lastSeen = null, pollT = null;
+let lastSeen = null, pollT = null, pollSig = null;
 function startPolling() {
   if (pollT) return;
+  // Every 30 seconds: what changed on another screen (the phone app, a call that came in, the computer) shows here by itself.
   pollT = setInterval(async () => {
-    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+    if (document.hidden || !document.querySelector('#page .hs-acts, #page .hs-setup, #page .hs-look, #page .card')) return;
     try {
       const r = await fetch('/api/hotels'); if (!r.ok) return; const j = await r.json();
       const last = j.connection?.last || null;
-      if (lastSeen && last && last !== lastSeen) notify('שיחה חדשה עם מלון נקלטה', 'פותחים את סקר המלונות לראות מה נכנס');
+      if (lastSeen && last && last !== lastSeen && typeof Notification !== 'undefined' && Notification.permission === 'granted') notify('שיחה חדשה עם מלון נקלטה', 'פותחים את סקר המלונות לראות מה נכנס');
       lastSeen = last;
+      const sig = JSON.stringify([last, (j.surveys || []).map(x => [x.id, x.count, x.avail, x.follow, x.updatedAt || x.title])]);
+      const busy = document.activeElement?.matches?.('input, textarea, select') || document.querySelector('#page form:not(.hs-look__f), .hs-wiz, .hs-look__out:not(:empty), dialog[open]');
+      if (sig === pollSig || busy) { if (!busy) pollSig = sig; return; }   // nothing new, or a form is open: try again next time
+      const first = pollSig === null; pollSig = sig;
+      if (first) return;
+      home = j;
+      if (cur) { try { cur = await api('GET', '?survey=' + encodeURIComponent(cur.survey.id)); } catch (e) {} }
+      const y = scrollY; again(); requestAnimationFrame(() => scrollTo(0, y));
     } catch (e) {}
-  }, 120e3);
+  }, 30e3);
 }
 async function copy(text, ok) { try { await navigator.clipboard.writeText(text); ctx.toast(ok); } catch (e) { prompt('העתיקו:', text); } }
 
