@@ -1695,8 +1695,9 @@ async function openApp() {
   $('#storageWarn').hidden = storage !== 'none';
   $$('#langPick button').forEach(x => x.setAttribute('aria-selected', String(x.dataset.lang === lang)));
   const start = location.hash.slice(1);
-  go(allPages().some(p => p.id === start) ? start : 'dashboard');
-  setTimeout(() => tour(false), 600);
+  const inApp = document.documentElement.classList.contains('lbv-app');   // inside the phone app "LBV שיחות": only the hotel survey
+  go(inApp ? 'hotels' : allPages().some(p => p.id === start) ? start : 'dashboard');
+  if (!inApp) setTimeout(() => tour(false), 600);
   $('#me').onclick = () => go('account');
   $('#me').title = 'החשבון שלי';
   $('#me').innerHTML = !me ? '' : me.role === 'owner' ? '<span>הבעלים</span><small>כל ההרשאות</small>' : `${esc(me.name)}<small>${ROLE[me.role]?.[0] || ''}</small>`;

@@ -191,3 +191,13 @@ mark { background: #FCE7A8; color: inherit; padding: 0 2px; border-radius: 3px; 
 @keyframes hsUp { from { transform: translateY(40px); opacity: 0; } }
 @keyframes hsFade { from { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .hs-wiz, .hs-wiz__sheet { animation: none; } }
+
+/* ---------- inside the phone app "LBV שיחות": an app screen, not the website ---------- */
+.lbv-app .hb__row > :not(.hb__brand), .lbv-app #groups, .lbv-app .hb__tabs, .lbv-app #pageSub, .lbv-app #langPick { display: none !important; }
+.lbv-app .hb { position: sticky; top: 0; z-index: 20; }
+.lbv-app .hb__row { justify-content: center; padding-block: 10px; }
+.lbv-app .hb__brand { pointer-events: none; }
+.lbv-app .hb__brand b::after { content: " · סקר מלונות"; font-weight: 600; }
+.lbv-app .pagehead { display: none; }
+.lbv-app .main { padding-top: 12px; }
+.lbv-app body { -webkit-tap-highlight-color: transparent; }

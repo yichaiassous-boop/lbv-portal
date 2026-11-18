@@ -288,7 +288,9 @@ if ('serviceWorker' in navigator) navigator.serviceWorker.register('/admin/sw.js
 const marks = () => { try { return JSON.parse(localStorage.getItem('hs-setup') || '{}'); } catch (e) { return {}; } };
 function markStep(id) { try { localStorage.setItem('hs-setup', JSON.stringify({ ...marks(), [id]: 1 })); } catch (e) {} }
 const standalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone;
-function stepsState() {
+const inApp = () => document.documentElement.classList.contains('lbv-app');
+function stepsState() { const all = stepsAll(); return inApp() ? all.filter(x => x.id === 'google') : all; }
+function stepsAll() {
   const con = home.connection || {}, m = marks();
   return [
     { id: 'google', done: !!con.connected, title: 'חיבור לחשבון הגוגל של LBV',
@@ -310,8 +312,8 @@ function stepsState() {
 function connectCard() {
   const st = stepsState(), n = st.filter(x => x.done).length;
   const c = h(`<section class="card hs-setup">
-    <div class="card__head"><div><h2>חיבור למערכת: ${n} מתוך 4</h2><p>${n === 4 ? 'הכול מחובר.' : 'ארבעה אישורים, פעם אחת. אחריהם הכול עובד לבד.'}</p></div>
-    ${n < 4 ? '<div class="row-tools"><button class="btn btn--gold" type="button" data-wiz>להמשיך בחיבור</button></div>' : ''}</div>
+    <div class="card__head"><div><h2>חיבור למערכת: ${n} מתוך ${st.length}</h2><p>${n === st.length ? 'הכול מחובר.' : st.length === 1 ? 'שלב אחד, פעם אחת. אחריו הכול עובד לבד.' : 'ארבעה אישורים, פעם אחת. אחריהם הכול עובד לבד.'}</p></div>
+    ${n < st.length ? '<div class="row-tools"><button class="btn btn--gold" type="button" data-wiz>להמשיך בחיבור</button></div>' : ''}</div>
     <ol class="hs-setup__list">${st.map((x, i) => `<li class="${x.done ? 'ok' : ''}"><button type="button" data-i="${i}"><i>${x.done ? '✓' : i + 1}</i><b>${esc(x.title)}</b><span>${x.done ? 'מחובר' : 'לא עדיין'}</span></button></li>`).join('')}</ol>
   </section>`);
   $('[data-wiz]', c)?.addEventListener('click', () => openWizard(st.findIndex(x => !x.done)));
@@ -333,7 +335,7 @@ function openWizard(i) {
   }[x.id];
   const w = h(`<div class="hs-wiz" role="dialog" aria-modal="true" aria-label="${esc(x.title)}"><div class="hs-wiz__sheet">
     <div class="hs-wiz__dots">${st.map((y, j) => `<i class="${y.done ? 'ok' : ''} ${j === i ? 'cur' : ''}"></i>`).join('')}</div>
-    <small class="hs-wiz__k">שלב ${i + 1} מתוך 4${x.done ? ' · מחובר' : ''}</small>
+    <small class="hs-wiz__k">שלב ${i + 1} מתוך ${st.length}${x.done ? ' · מחובר' : ''}</small>
     <h3>${esc(x.title)}</h3>
     <p>${esc(x.why)}</p>
     <ul>${x.items.map(t => `<li>${esc(t)}</li>`).join('')}</ul>
@@ -696,6 +698,7 @@ function downloadCsv(sv, hotels) {
     ...combos.map(k => { const p = (x.prices || []).find(p => ([p.level, p.board].filter(Boolean).join(' · ') || 'מחיר') === k); return p ? `${p.price ?? ''} ${p.per || ''}`.trim() : ''; }),
     x.min ?? '', ST[x.status] || '', dmy(x.followUp), x.followWhat, x.summary, x.notes]);
   const csv = '﻿' + [head, ...rows].map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\r\n');
+  if (window.LBVApp?.share) { window.LBVApp.share(`${sv.title}.csv`, csv); return; }   // inside the phone app: share / save the file
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
   a.download = `${sv.title}.csv`;
