@@ -11,10 +11,7 @@ import { redis, redisReady } from './_redis.js';
 
 export const SCREENS_HOST = 'https://lbv-screens.vercel.app';
 const STEPS = ['WELCOME', 'FLAME', 'FULL', 'THANKS'];
-const ACTIONS = ['play', 'screen', 'black', 'pause', 'resume', 'restart'];
-const FOLDERS = ['Video', 'Karaoke'];
 const DEFAULTS = { link: null, step: 'WELCOME', epoch: 1, prices: { plaques: 2600, noms: 520, mots: 0, lettres: 0 }, updatedAt: new Date(0).toISOString() };
-const EMPTY_ORDER = { seq: 0, action: 'screen', folder: null, index: null, at: 0 };
 
 /* ---------- raw keys (Redis, or the local JSON file of the preview server) ---------- */
 const LOCAL = () => process.env.LBV_LOCAL_DATA || '';
@@ -66,13 +63,13 @@ async function gala(link) {
 
 /** Everything the remote screen shows. The evening link is sent only as "set / not set" plus its host. */
 export async function screensState() {
-  const [s, order, player] = await Promise.all([settings(), json('screens:video-order', EMPTY_ORDER), json('screens:video-player', null)]);
+  const [s, player] = await Promise.all([settings(), json('screens:video-player', null)]);
   const l = parseLink(s.link);
   return {
     step: s.step, epoch: s.epoch, prices: s.prices, updatedAt: s.updatedAt,
     link: { set: !!l, host: l ? new URL(l.origin).host : '' },
     gala: await gala(s.link),
-    video: { order, player: player && { files: player.files || { Video: [], Karaoke: [] }, mode: player.mode, folder: player.folder, index: player.index, playing: !!player.playing, at: player.at } },
+    video: { live: !!player && Date.now() - (player.at || 0) < 15000, playing: !!player?.playing },
     now: Date.now(),
   };
 }
@@ -97,24 +94,10 @@ export async function screensChange(b) {
   return { ok: true };
 }
 
-/** { action, folder?, index? } → a new order for the projector's video player (lbv-screens/api/video.ts). */
-export async function videoOrder(b) {
-  const action = String(b.action || '');
-  if (!ACTIONS.includes(action)) return { error: 'bad-action' };
-  let folder = null, index = null;
-  if (action === 'play') {
-    if (!FOLDERS.includes(b.folder) || !Number.isInteger(b.index) || b.index < 0 || b.index > 500) return { error: 'bad-file' };
-    folder = b.folder; index = b.index;
-  }
-  const prev = await json('screens:video-order', EMPTY_ORDER);
-  const order = { seq: (prev.seq || 0) + 1, action, folder, index, at: Date.now() };
-  await set('screens:video-order', JSON.stringify(order));
-  return { ok: true, order };
-}
-
-/** A one-time ticket to open the projector page ("screen" = the evening, "video" = the video player). */
+/** A one-time ticket to open a page of lbv-screens: "screen" = the evening on the projector,
+ *  "video" = the video player on the projector, "videoremote" = the video show-control remote. */
 export async function openTicket(what) {
-  if (!['screen', 'video'].includes(what)) return { error: 'bad-page' };
+  if (!['screen', 'video', 'videoremote'].includes(what)) return { error: 'bad-page' };
   const t = crypto.randomBytes(16).toString('hex');
   await set('screens:open:' + t, what, 600);
   return { ok: true, url: `${SCREENS_HOST}/api/open?t=${t}` };

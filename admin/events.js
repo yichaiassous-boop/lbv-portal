@@ -163,15 +163,8 @@ const CUES = [
   { id: 'THANKS', t: 'תודה', s: 'Merci, בסוף הערב' },
 ];
 const GALA_ERR = { NO_LINK: 'עוד לא הודבק הקישור של הערב', LINK_REFUSED: 'אתר הגאלה לא מכיר את הקישור. אולי נוצר קישור חדש לערב', OFFLINE: 'אין חיבור לאתר הגאלה כרגע' };
-const VIDEO_ACTS = [
-  { a: 'screen', t: 'מסך הערב', i: 'M3 5h18v12H3zM8 21h8M12 17v4' },
-  { a: 'black', t: 'מסך שחור', i: 'M4 4h16v16H4z' },
-  { a: 'pause', t: 'עצירה', i: 'M8 5v14M16 5v14' },
-  { a: 'resume', t: 'המשך', i: 'M7 4l13 8-13 8z' },
-  { a: 'restart', t: 'מההתחלה', i: 'M4 12a8 8 0 1 0 3-6.2M4 4v4h4' },
-];
 const openHint = () => (window.LBVApp || !matchMedia('(min-width: 860px)').matches ? 'שולחים קישור למחשב של המקרן' : 'בכרטיסייה חדשה, במחשב הזה');
-let rTimer = null, rBusy = false, rState = null, rTab = 'Video';
+let rTimer = null, rBusy = false, rState = null;
 const money = (n, cur) => (typeof n === 'number' ? n.toLocaleString('he-IL') + ' ' + (cur && cur !== 'EUR' ? cur : '€') : '–');
 const svg = d => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>`;
 
@@ -184,15 +177,13 @@ export async function remotePage(pg, c) {
   const send = async (op, body, okMsg) => {
     if (rBusy) return; rBusy = true; root.classList.add('is-busy');
     try { const j = await api('POST', '', { op, ...body }); if (j.state) { rState = j.state; draw(); } if (okMsg) ctx.toast(okMsg); return j; }
-    catch (e) { const m = { 'bad-link': 'הקישור לא תקין. צריך את הקישור המלא של הערב, שמסתיים ב-#s=…&k=…', 'bad-price': 'מחיר לא תקין', 'bad-file': 'הסרטון לא נמצא' }[e.message]; m ? ctx.toast(m, 'err') : fail(e); }
+    catch (e) { const m = { 'bad-link': 'הקישור לא תקין. צריך את הקישור המלא של הערב, שמסתיים ב-#s=…&k=…', 'bad-price': 'מחיר לא תקין' }[e.message]; m ? ctx.toast(m, 'err') : fail(e); }
     finally { rBusy = false; root.classList.remove('is-busy'); }
   };
   function draw() {
     if (!document.body.contains(root)) { clearInterval(rTimer); return; }
-    const s = rState, g = s.gala, v = s.video || {}, p = v.player;
+    const s = rState, g = s.gala;
     const pct = g.ok && g.goal ? Math.min(100, Math.round((g.raised || 0) / g.goal * 100)) : 0;
-    const live = p && Date.now() - (p.at || 0) < 15000;
-    const files = (p?.files?.[rTab] || []);
     const focus = document.activeElement && root.contains(document.activeElement) && document.activeElement.matches('input') ? document.activeElement.name : null;
     if (focus) return;   // don't redraw under the fingers
     root.innerHTML = `
@@ -211,11 +202,8 @@ export async function remotePage(pg, c) {
         <button type="button" class="rc__big" data-open="video">${svg('M4 6h11v12H4zM15 10l5-3v10l-5-3')}<span><b>פתיחת נגן הסרטונים</b><small>${openHint()}</small></span></button>
       </section>
       <section class="rc__video">
-        <div class="rc__vhead"><h2>סרטונים</h2><span class="rc__dot${live ? ' is-live' : ''}">${live ? (p.playing ? 'מנגן עכשיו' : 'הנגן מחובר') : 'הנגן לא פתוח'}</span></div>
-        <div class="rc__acts">${VIDEO_ACTS.map(x => `<button type="button" data-act="${x.a}">${svg(x.i)}<small>${x.t}</small></button>`).join('')}</div>
-        <div class="rc__tabs" role="tablist">${['Video', 'Karaoke'].map(f => `<button type="button" role="tab" aria-selected="${rTab === f}" data-tab="${f}">${f === 'Video' ? 'סרטונים' : 'קריוקי'}</button>`).join('')}</div>
-        ${files.length ? `<ol class="rc__files">${files.map((n, i) => `<li><button type="button" data-play="${i}" class="${p.folder === rTab && p.index === i ? 'is-on' : ''}"><span>${esc(n.replace(/\.[a-z0-9]+$/i, ''))}</span>${svg('M7 4l13 8-13 8z')}</button></li>`).join('')}</ol>`
-          : `<p class="rc__empty">${live ? 'אין קבצים בתיקייה הזאת במחשב של המקרן' : 'פותחים את נגן הסרטונים במחשב של המקרן, והרשימה תופיע כאן'}</p>`}
+        <div class="rc__vhead"><h2>סרטונים וקריוקי</h2><span class="rc__dot${s.video.live ? ' is-live' : ''}">${s.video.live ? (s.video.playing ? 'מנגן עכשיו' : 'הנגן מחובר') : 'הנגן לא פתוח'}</span></div>
+        <button type="button" class="rc__big rc__big--gold" data-open="videoremote">${svg('M4 6h11v12H4zM15 10l5-3v10l-5-3')}<span><b>שלט הסרטונים</b><small>תוכנית הערב, סרטונים וקריוקי</small></span></button>
       </section>
       <details class="rc__set">
         <summary>הגדרות הערב</summary>
@@ -230,17 +218,16 @@ export async function remotePage(pg, c) {
     if (root.dataset.open === '1') $('.rc__set', root).open = true;
     $('.rc__set', root).addEventListener('toggle', e => { root.dataset.open = e.target.open ? '1' : ''; });
     $$('[data-step]', root).forEach(b => b.addEventListener('click', () => send('screens', { step: b.dataset.step })));
-    $$('[data-act]', root).forEach(b => b.addEventListener('click', () => send('video', { action: b.dataset.act })));
-    $$('[data-tab]', root).forEach(b => b.addEventListener('click', () => { rTab = b.dataset.tab; draw(); }));
-    $$('[data-play]', root).forEach(b => b.addEventListener('click', () => send('video', { action: 'play', folder: rTab, index: +b.dataset.play })));
     // On the projector's computer: opens the page in a new tab. On a phone: shares or copies a one-time
     // link (10 minutes) to open on the projector's computer.
     $$('[data-open]', root).forEach(b => b.addEventListener('click', async () => {
-      const here = !window.LBVApp && matchMedia('(min-width: 860px)').matches;
+      const mine = b.dataset.open === 'videoremote';
+      const here = !window.LBVApp && (mine || matchMedia('(min-width: 860px)').matches);
       const w = here ? window.open('', '_blank') : null;   // a browser blocks a window opened after the await
       const j = await send('open', { page: b.dataset.open });
       if (!j?.url) { w?.close(); return; }
       if (w) { w.opener = null; w.location = j.url; return; }
+      if (mine) { location.href = j.url; return; }
       const what = b.dataset.open === 'video' ? 'נגן הסרטונים' : 'מסך הערב';
       if (navigator.share) { try { await navigator.share({ title: what, text: what + ' (קישור לפעם אחת, ל-10 דקות)', url: j.url }); return; } catch (e) { if (e.name === 'AbortError') return; } }
       try { await navigator.clipboard.writeText(j.url); ctx.toast('הקישור הועתק. פותחים אותו במחשב של המקרן בתוך 10 דקות'); }
@@ -250,7 +237,7 @@ export async function remotePage(pg, c) {
     $('.rc__prices', root).addEventListener('submit', e => { e.preventDefault(); const f = e.target; send('screens', { prices: { plaques: f.plaques.value, noms: f.noms.value, mots: f.mots.value, lettres: f.lettres.value } }, 'המחירים נשמרו'); });
     $('[data-new]', root).addEventListener('click', () => { if (confirm('להתחיל ערב חדש? הלהבה והריבועים יתרוקנו.')) send('screens', { newEvening: true }, 'התחיל ערב חדש'); });
   }
-  const tick = async () => { if (rBusy || document.hidden) return; try { const n = await get(); if (!document.body.contains(root)) { clearInterval(rTimer); return; } const sig = x => JSON.stringify({ ...x, now: 0, video: { ...x.video, player: x.video?.player && { ...x.video.player, at: Date.now() - x.video.player.at < 15000 } } }); if (sig(n) === sig(rState)) return; rState = n; draw(); } catch (e) { if (e.message === 'forbidden') { root.innerHTML = '<p class="rc__wait">השלט פתוח רק לבעלים ולמנהלים.</p>'; clearInterval(rTimer); } } };
+  const tick = async () => { if (rBusy || document.hidden) return; try { const n = await get(); if (!document.body.contains(root)) { clearInterval(rTimer); return; } const sig = x => JSON.stringify({ ...x, now: 0 }); if (sig(n) === sig(rState)) return; rState = n; draw(); } catch (e) { if (e.message === 'forbidden') { root.innerHTML = '<p class="rc__wait">השלט פתוח רק לבעלים ולמנהלים.</p>'; clearInterval(rTimer); } } };
   try { rState = await get(); draw(); } catch (e) { root.innerHTML = `<p class="rc__wait">${e.message === 'forbidden' ? 'השלט פתוח רק לבעלים ולמנהלים.' : 'אין חיבור למסכים כרגע. נסו שוב בעוד רגע.'}</p>`; return; }
   rTimer = setInterval(tick, 3000);
 }

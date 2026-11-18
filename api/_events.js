@@ -13,12 +13,11 @@
 //   POST { op:"event", … }             → create / update an event
 //   DELETE ?id=<id>                    → delete an event
 //   POST { op:"screens", step|link|prices|newEvening } → change the evening screen
-//   POST { op:"video", action, folder?, index? }       → order the video player
-//   POST { op:"open", page:"screen"|"video" }          → one-time link to open the projector page
+//   POST { op:"open", page:"screen"|"video"|"videoremote" } → one-time link to a page of lbv-screens
 import crypto from 'node:crypto';
 import { isAuthed, readBody } from './_lib.js';
 import { hotelsReady, kv, getJ, setJ, allJ } from './_hotels.js';
-import { screensState, screensChange, videoOrder, openTicket } from './_screens.js';
+import { screensState, screensChange, openTicket } from './_screens.js';
 
 const K = { events: 'ev:all' };
 const KINDS = ['wedding', 'barmitzvah', 'batmitzvah', 'shabbat', 'gala', 'holiday', 'other'];
@@ -68,9 +67,9 @@ export default async function eventsHandler(req, res) {
       const events = (await allJ(K.events)).sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || '')));
       return send(res, 200, { me: { name: who, role }, can: may, events });
     }
-    if (req.method === 'POST' && ['screens', 'video', 'open'].includes(body.op)) {
+    if (req.method === 'POST' && ['screens', 'open'].includes(body.op)) {
       if (!may.remote) return send(res, 403, { error: 'forbidden' });
-      const r = body.op === 'screens' ? await screensChange(body) : body.op === 'video' ? await videoOrder(body) : await openTicket(body.page);
+      const r = body.op === 'screens' ? await screensChange(body) : await openTicket(body.page);
       if (r.error) return send(res, 400, r);
       return send(res, 200, body.op === 'open' ? r : { ...r, state: await screensState() });
     }
