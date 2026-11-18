@@ -10,6 +10,7 @@ const LNAME = { he: 'עברית', fr: 'צרפתית', en: 'אנגלית' };
 const DIR = { he: 'rtl', fr: 'ltr', en: 'ltr' };
 const E = window.LBVEdit;
 import { QUOTE_DEFAULTS } from "../quote/defaults.js";
+import { hotelsPage } from "./hotels.js";
 
 let me = null; // the logged-in manager: { name, role }
 let state = null, saved = '', storage = 'none', lang = 'he', page = 'dashboard', scopeId = 'top', leads = [], leadsReady = false;
@@ -254,6 +255,7 @@ const ICON = {
   site: 'M3 5h18v14H3zM3 9h18M7 7h.01M10 7h.01',
   people: 'M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM2 21v-1a6 6 0 0 1 12 0v1M16 3.5a4 4 0 0 1 0 7.5M22 21v-1a6 6 0 0 0-4-5.6',
   settings: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 7 19.4l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 3 13.7H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.6 7l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 10.3 3V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0 1.2 2.9H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z',
+  hotels: 'M3 21V7l9-4 9 4v14M3 21h18M8 10h.01M12 10h.01M16 10h.01M8 14h.01M12 14h.01M16 14h.01M10 21v-3h4v3',
   help: 'M12 18h.01M9.2 9a3 3 0 1 1 4.1 2.8c-.8.4-1.3 1-1.3 1.9V14M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z',
 };
 /** The parts of the site, in the order they appear; each becomes one tab with everything about it. */
@@ -275,6 +277,7 @@ const GROUPS = () => [
     { id: 'inbox', title: 'פניות ונרשמים', sub: 'כל מי שהשאיר פרטים באתר: בקשות להצעת מחיר והרשמות לעדכונים', badge: true },
     { id: 'quotes', title: 'הצעות מחיר', sub: 'בונים הצעת מחיר ממותגת, שולחים ללקוח בוואטסאפ ורואים מתי הוא מאשר' },
     { id: 'mail', title: 'מייל לנרשמים', sub: 'עדכון לכל מי שנרשם, מהמייל של החברה' }] },
+  { id: 'hotels', name: 'סקר מלונות', pages: [{ id: 'hotels', title: 'סקר מלונות', sub: 'מתקשרים למלונות, והמערכת ממלאת לבד מהשיחות: פרטים, זמינות, מחירים, מיילים וסיכום' }] },
   { id: 'site', name: 'עמודי האתר', pages: windows() },
   { id: 'people', name: 'צוות', pages: [{ id: 'team', title: 'צוות ודבר המנכ״ל', sub: 'תמונות, שמות ותפקידים, והמכתב של אילן', lang: true }] },
   { id: 'settings', name: 'הגדרות', pages: [
@@ -292,6 +295,7 @@ const myGroups = () => GROUPS().map(g => ({ ...g, pages: g.pages.filter(p => pag
 function pageAllowed(id) {
   if (['inbox', 'mail', 'quotes'].includes(id)) return canDo('leads');
   if (id === 'users') return canDo('users');
+  if (id === 'hotels') return true;   // every manager: each sees only their own surveys and those shared with them
   if (id === 'dashboard') return canDo('leads');
   if (['guide', 'support', 'stats', 'account'].includes(id)) return true;
   return canDo('content');
@@ -326,6 +330,7 @@ function render() {
   const pg = $('#page');
   pg.innerHTML = '';
   if (page.startsWith('w-') || page.startsWith('trip-')) return windowPage(pg, page);
+  if (page === 'hotels') return hotelsPage(pg, { toast, showLogin, rerender: () => page === 'hotels' && render() });
   ({ dashboard, inbox, mail, quotes, team, contact, banners, stats, guide, support, users, account })[page](pg);
 }
 $$('#langPick button').forEach(b => b.addEventListener('click', () => {

@@ -30,6 +30,17 @@ const check = (pw, h) => { const [salt, v] = String(h).split(':'); return !!salt
 const body = req => new Promise((ok, bad) => { const b = []; req.on('data', d => b.push(d)); req.on('end', () => ok(Buffer.concat(b))); req.on('error', bad); });
 
 async function api(req, res, p) {
+  if (p === '/api/hotels') {
+    // The real handler (api/_hotels.js), with its data in data/hotels.local.json and this server's login.
+    process.env.LBV_LOCAL_DATA = path.join(root, 'data', 'hotels.local.json');
+    const { default: hotels } = await import('../api/_hotels.js');
+    const s = authed(req);
+    req.lbvUser = s ? { id: s.id || (s.r === 'owner' ? 'owner' : s.n), n: s.n, r: s.r } : null;
+    req.lbvUsers = [{ id: 'owner', name: 'הבעלים' }, ...loadUsers().map(u => ({ id: u.id, name: u.name }))];
+    if (req.method === 'POST' || req.method === 'PUT') { const raw = (await body(req)).toString(); req.body = raw ? JSON.parse(raw) : {}; }
+    res.status = code => ({ json: obj => json(res, code, obj) });
+    return hotels(req, res);
+  }
   if (p === '/api/config') { const s = authed(req); return json(res, 200, { storage: 'local', configured: Boolean(PASSWORD), authed: !!s, user: s ? { name: s.n, role: s.r } : null, leads: true }); }
   if (p === '/api/login') {
     if (req.method === 'DELETE') { res.writeHead(204, { 'Set-Cookie': 'lbv_admin=; Path=/; Max-Age=0' }); return res.end(); }
@@ -37,8 +48,8 @@ async function api(req, res, p) {
     const uname = String(username || '').trim().toLowerCase();
     let user = null;
     const o = loadOwner();
-    if ((!uname || uname === o.username) && PASSWORD && (password === PASSWORD || (o.hash && check(password, o.hash)))) user = { n: 'הבעלים', r: 'owner' };
-    else if (uname) { const u = loadUsers().find(x => x.username === uname); if (u && check(password, u.hash)) user = { n: u.name, r: u.role }; }
+    if ((!uname || uname === o.username) && PASSWORD && (password === PASSWORD || (o.hash && check(password, o.hash)))) user = { id: 'owner', n: 'הבעלים', r: 'owner' };
+    else if (uname) { const u = loadUsers().find(x => x.username === uname); if (u && check(password, u.hash)) user = { id: u.id, n: u.name, r: u.role }; }
     if (!user) return json(res, 401, { error: 'wrong-password' });
     const id = crypto.randomUUID(); sessions.set(id, user);
     res.writeHead(200, { 'Content-Type': 'application/json', 'Set-Cookie': `lbv_admin=${id}; Path=/; HttpOnly; SameSite=Strict` });

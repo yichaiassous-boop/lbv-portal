@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { list, put, get, del } from '@vercel/blob';
 import { isAuthed, can, readBody } from './_lib.js';
 import { leadsToken, leadsReady } from './_leads.js';
+import hotelsHandler from './_hotels.js';
 
 // Quotes (הצעות מחיר) built in the admin, kept in the PRIVATE store next to the requests:
 //   quotes/q-<id>/v….json   one quote      quotes/_catalog/v….json   the chapters (services) and default texts
@@ -110,6 +111,8 @@ const forClient = q => {
 };
 
 export default async function handler(req, res) {
+  // /api/hotels is served here (see vercel.json) so the site stays within the plan's function count.
+  if (new URL(req.url, 'http://x').searchParams.has('_h')) return hotelsHandler(req, res);
   res.setHeader('Cache-Control', 'no-store');
   if (!leadsReady()) return res.status(503).json({ error: 'not-configured' });
   const url = new URL(req.url, 'http://x');
