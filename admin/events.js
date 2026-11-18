@@ -163,7 +163,7 @@ const CUES = [
   { id: 'THANKS', t: 'תודה', s: 'Merci, בסוף הערב' },
 ];
 const GALA_ERR = { NO_LINK: 'עוד לא הודבק הקישור של הערב', LINK_REFUSED: 'אתר הגאלה לא מכיר את הקישור. אולי נוצר קישור חדש לערב', OFFLINE: 'אין חיבור לאתר הגאלה כרגע' };
-const openHint = () => (window.LBVApp || !matchMedia('(min-width: 860px)').matches ? 'שולחים קישור למחשב של המקרן' : 'בכרטיסייה חדשה, במחשב הזה');
+const openHint = () => (window.LBVApp || !matchMedia('(min-width: 860px)').matches ? 'מהטלפון: נשלח קישור לפעם אחת, ופותחים אותו במחשב של המקרן' : 'נפתח בכרטיסייה חדשה במחשב הזה, וגוררים אותה למקרן');
 let rTimer = null, rBusy = false, rState = null;
 const money = (n, cur) => (typeof n === 'number' ? n.toLocaleString('he-IL') + ' ' + (cur && cur !== 'EUR' ? cur : '€') : '–');
 const svg = d => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>`;
@@ -186,30 +186,53 @@ export async function remotePage(pg, c) {
     const pct = g.ok && g.goal ? Math.min(100, Math.round((g.raised || 0) / g.goal * 100)) : 0;
     const focus = document.activeElement && root.contains(document.activeElement) && document.activeElement.matches('input') ? document.activeElement.name : null;
     if (focus) return;   // don't redraw under the fingers
+    const dot = `<span class="rc__dot${s.video.live ? ' is-live' : ''}">${s.video.live ? (s.video.playing ? 'מנגן עכשיו' : 'הנגן פתוח על המקרן') : 'הנגן עוד לא פתוח'}</span>`;
     root.innerHTML = `
-      <section class="rc__stage">
-        <p class="rc__lbl">מה מוצג עכשיו על המקרן</p>
-        <div class="rc__cues">${CUES.map(q => `<button type="button" class="rc__cue${s.step === q.id ? ' is-on' : ''}" data-step="${q.id}" aria-pressed="${s.step === q.id}"><b>${q.t}</b><small>${q.s}</small></button>`).join('')}</div>
+      <section class="rc__prep">
+        <h2>הכנת הערב</h2>
+        <ol class="rc__steps">
+          <li class="rc__step${s.link.set ? ' is-done' : ' is-now'}">
+            <span class="rc__n" aria-hidden="true">${s.link.set ? svg('M5 12l5 5 9-10') : '1'}</span>
+            <div class="rc__body">
+              <b>הקישור של המסך מיונתן</b>
+              <small>${s.link.set ? `מחובר לאתר <bdi dir="ltr">${esc(s.link.host)}</bdi>. מדביקים קישור חדש רק כדי להחליף.` : 'מעתיקים מדף הניהול של הגאלה את קישור המסך (זה שמסתיים ב-<bdi dir="ltr">#s=…&amp;k=…</bdi>) ומדביקים כאן.'}</small>
+              <form class="rc__link"><input name="link" type="url" dir="ltr" autocomplete="off" spellcheck="false" aria-label="הקישור של המסך" placeholder="${s.link.set ? 'הדבקת קישור חדש' : 'https://…/live-screen#s=…&k=…'}"><button class="btn btn--gold btn--sm" type="submit">${s.link.set ? 'החלפה' : 'שמירה'}</button></form>
+            </div>
+          </li>
+          <li class="rc__step${s.link.set ? ' is-now' : ''}">
+            <span class="rc__n" aria-hidden="true">2</span>
+            <div class="rc__body">
+              <b>מסך הערב על המקרן</b>
+              <small>${openHint()}</small>
+              <button type="button" class="rc__big" data-open="screen">${svg('M3 5h18v12H3zM8 21h8M12 17v4')}<span><b>פתיחת מסך הערב</b><small>הלהבה, התרומות והאותיות</small></span></button>
+            </div>
+          </li>
+          <li class="rc__step">
+            <span class="rc__n" aria-hidden="true">3</span>
+            <div class="rc__body">
+              <div class="rc__vhead"><b>הסרטונים</b>${dot}</div>
+              <small>קודם פותחים את הנגן במחשב של המקרן, ואז שולטים בו מהשלט.</small>
+              <div class="rc__pair">
+                <button type="button" class="rc__big" data-open="video">${svg('M4 6h11v12H4zM15 10l5-3v10l-5-3')}<span><b>פתיחת נגן הסרטונים</b><small>על המקרן</small></span></button>
+                <button type="button" class="rc__big rc__big--gold" data-open="videoremote">${svg('M7 3h10v18H7zM12 7v.01M10 11h4M10 14h4')}<span><b>שלט הסרטונים</b><small>תוכנית הערב, סרטונים וקריוקי</small></span></button>
+              </div>
+            </div>
+          </li>
+        </ol>
       </section>
-      <section class="rc__gala${g.ok ? '' : ' is-off'}">
+      <section class="rc__live">
+        <h2>במהלך הערב</h2>
+        <p class="rc__lbl">מה מוצג עכשיו על מסך הערב</p>
+        <div class="rc__cues">${CUES.map(q => `<button type="button" class="rc__cue${s.step === q.id ? ' is-on' : ''}" data-step="${q.id}" aria-pressed="${s.step === q.id}"><b>${q.t}</b><small>${q.s}</small></button>`).join('')}</div>
+        <div class="rc__gala${g.ok ? '' : ' is-off'}">
         ${g.ok ? `<div class="rc__sum"><span><small>נאסף עד עכשיו</small><b>${money(g.raised, g.currency)}</b></span><span class="rc__goal"><small>היעד</small><b>${money(g.goal, g.currency)}</b></span></div>
           <div class="rc__bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><i style="width:${pct}%"></i></div>
           <p class="rc__donor">${g.lastDonor ? `תרומה אחרונה: <b>${esc(g.lastDonor)}</b>` : 'עוד אין תרומות הערב'}</p>`
         : `<p class="rc__off">${esc(GALA_ERR[g.error] || 'אין חיבור לאתר הגאלה')}</p>`}
-      </section>
-      <section class="rc__open">
-        <button type="button" class="rc__big" data-open="screen">${svg('M3 5h18v12H3zM8 21h8M12 17v4')}<span><b>פתיחת מסך הערב</b><small>${openHint()}</small></span></button>
-        <button type="button" class="rc__big" data-open="video">${svg('M4 6h11v12H4zM15 10l5-3v10l-5-3')}<span><b>פתיחת נגן הסרטונים</b><small>${openHint()}</small></span></button>
-      </section>
-      <section class="rc__video">
-        <div class="rc__vhead"><h2>סרטונים וקריוקי</h2><span class="rc__dot${s.video.live ? ' is-live' : ''}">${s.video.live ? (s.video.playing ? 'מנגן עכשיו' : 'הנגן מחובר') : 'הנגן לא פתוח'}</span></div>
-        <button type="button" class="rc__big rc__big--gold" data-open="videoremote">${svg('M4 6h11v12H4zM15 10l5-3v10l-5-3')}<span><b>שלט הסרטונים</b><small>תוכנית הערב, סרטונים וקריוקי</small></span></button>
+        </div>
       </section>
       <details class="rc__set">
-        <summary>הגדרות הערב</summary>
-        <form class="rc__link"><label class="f">הקישור של הערב <small>מדף הניהול של הגאלה (מסתיים ב-#s=…&k=…)${s.link.set ? ` · מחובר ל-${esc(s.link.host)}` : ''}</small>
-          <input name="link" type="url" dir="ltr" autocomplete="off" spellcheck="false" placeholder="${s.link.set ? 'מחובר. מדביקים כאן רק כדי להחליף' : 'https://…/live-screen#s=…&k=…'}"></label>
-          <button class="btn btn--gold btn--sm" type="submit">שמירת הקישור</button></form>
+        <summary>מחירי החבילות וערב חדש</summary>
         <form class="rc__prices"><p class="rc__lbl">מחירי החבילות ביורו (0 = לא נספר)</p>
           <div class="f2">${[['plaques', 'Plaques'], ['noms', 'Noms'], ['mots', 'Mots'], ['lettres', 'Lettres']].map(([k, t]) => `<label class="f">${t}<input name="${k}" type="number" min="0" step="0.01" inputmode="decimal" dir="ltr" value="${esc(s.prices[k])}"></label>`).join('')}</div>
           <button class="btn btn--gold btn--sm" type="submit">שמירת המחירים</button></form>
@@ -233,7 +256,7 @@ export async function remotePage(pg, c) {
       try { await navigator.clipboard.writeText(j.url); ctx.toast('הקישור הועתק. פותחים אותו במחשב של המקרן בתוך 10 דקות'); }
       catch (e) { prompt('הקישור למחשב של המקרן (לפעם אחת, ל-10 דקות):', j.url); }
     }));
-    $('.rc__link', root).addEventListener('submit', e => { e.preventDefault(); const u = e.target.link.value.trim(); if (u) send('screens', { link: u }, 'הקישור של הערב נשמר').then(() => { e.target.link.value = ''; }); });
+    $('.rc__link', root).addEventListener('submit', e => { e.preventDefault(); const u = e.target.link.value.trim(); if (u) send('screens', { link: u }, 'הקישור של המסך נשמר').then(() => { e.target.link.value = ''; }); });
     $('.rc__prices', root).addEventListener('submit', e => { e.preventDefault(); const f = e.target; send('screens', { prices: { plaques: f.plaques.value, noms: f.noms.value, mots: f.mots.value, lettres: f.lettres.value } }, 'המחירים נשמרו'); });
     $('[data-new]', root).addEventListener('click', () => { if (confirm('להתחיל ערב חדש? הלהבה והריבועים יתרוקנו.')) send('screens', { newEvening: true }, 'התחיל ערב חדש'); });
   }

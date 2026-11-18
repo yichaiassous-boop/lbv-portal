@@ -165,20 +165,43 @@
 .rc__set form { display: grid; gap: 10px; margin-bottom: 16px; }
 .rc__set .f { color: #DCE3F2; }
 .rc__set .f small { color: var(--mist); }
-.rc__set .f input { background: #0A1230; color: #fff; border-color: rgba(255,255,255,.14); }
+.rc .f input { background: #0A1230; color: #fff; border-color: rgba(255,255,255,.14); }
 .rc__set .f input::placeholder { color: #6B789B; }
 .rc__set .btn { justify-self: start; }
 .rc__new { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,.08); }
 .rc__new p { margin: 0; color: var(--mist); font-size: .86rem; }
 .rc__new .btn--danger { justify-self: start; background: transparent; color: #FCA5A5; box-shadow: inset 0 0 0 1px rgba(252,165,165,.4); }
 
+
+/* the remote: the evening is prepared in 3 steps (link, evening screen, videos), then run */
+.rc__prep h2, .rc__live h2 { margin-bottom: 14px; }
+.rc__steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+.rc__step { position: relative; display: grid; grid-template-columns: 34px 1fr; gap: 12px; padding-bottom: 18px; }
+.rc__step:last-child { padding-bottom: 0; }
+.rc__step:not(:last-child)::after { content: ""; position: absolute; inset-inline-start: 16px; top: 36px; bottom: 4px; width: 1px; background: rgba(215,180,106,.28); }
+.rc__n { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; font: 700 1rem/1 "Frank Ruhl Libre", serif; color: var(--hair); box-shadow: inset 0 0 0 1px rgba(215,180,106,.5); }
+.rc__n svg { width: 18px; height: 18px; }
+.rc__step.is-now .rc__n { background: var(--leaf); color: var(--night); box-shadow: 0 0 0 5px rgba(227,182,92,.14); }
+.rc__step.is-done .rc__n { background: rgba(74,222,128,.14); color: #86EFAC; box-shadow: inset 0 0 0 1px rgba(134,239,172,.45); }
+.rc__body { display: grid; gap: 6px; min-width: 0; padding-top: 5px; }
+.rc__body > b, .rc__vhead > b { font-size: 1.04rem; color: #fff; }
+.rc__body > small { color: var(--mist); font-size: .84rem; line-height: 1.45; }
+.rc__body .rc__big { margin-top: 4px; }
+.rc__body .rc__vhead { margin-bottom: 0; }
+.rc__link { display: flex; gap: 8px; margin-top: 4px; }
+.rc__link input { flex: 1; min-width: 0; padding: 11px 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,.14); background: #0A1230; color: #fff; font: inherit; font-size: .9rem; }
+.rc__link input::placeholder { color: #6B789B; }
+.rc__link input:focus { outline: 2px solid var(--hair); outline-offset: 1px; }
+.rc__step.is-now .rc__link input { border-color: rgba(215,180,106,.7); }
+.rc__link .btn { flex: none; }
+.rc__pair { display: grid; gap: 8px; margin-top: 4px; }
+.rc__gala { margin-top: 14px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,.08); }
 @media (min-width: 860px) {
   .rc { padding: 18px; grid-template-columns: 1.15fr 1fr; align-items: start; }
-  .rc__stage, .rc__gala, .rc__open { grid-column: 1; }
-  .rc__video { grid-column: 2; grid-row: 1 / span 2; }
-  .rc__set { grid-column: 1 / -1; }
-  .rc__cues { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-  .rc__open { grid-template-columns: 1fr 1fr; }
+  .rc__prep { grid-column: 1; grid-row: 1 / span 2; }
+  .rc__live { grid-column: 2; }
+  .rc__set { grid-column: 2; }
+  .rc__pair { grid-template-columns: 1fr 1fr; }
 }
 @media (prefers-reduced-motion: reduce) {
   .inv, .ah-tile, .rc__cue, .rc__bar i { transition: none; }
