@@ -1,5 +1,11 @@
 {
   "rewrites": [
     { "source": "/api/hotels", "destination": "/api/quotes?_h=1" }
+  ],
+  "headers": [
+    { "source": "/app/(.*)\\.apk", "headers": [
+      { "key": "Content-Type", "value": "application/vnd.android.package-archive" },
+      { "key": "Cache-Control", "value": "no-cache" }
+    ] }
   ]
 }

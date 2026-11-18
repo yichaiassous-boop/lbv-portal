@@ -9,6 +9,7 @@
  *   4. sends that to the site (/api/hotels), which adds it to the right hotel;
  *   5. sends the e-mails written in the admin, from this Gmail, and brings back the hotels' replies;
  *   6. keeps one Google Sheet per survey up to date;
+ *   0. receives the recordings from the phone app "LBV שיחות" (doPost below) and keeps them in the Drive folder;
  *   7. tells the site which recordings exist on the phone (file name, number and time only, nothing is listened to),
  *      so "did I already talk to this number?" finds every call; a call is summarized only when the owner asks.
  *
@@ -17,7 +18,9 @@
  *   LBV_KEY     the key from the admin (סקר מלונות → חיבור הטלפון)
  *   GEMINI_KEY  the Gemini API key
  *   FOLDER      the name of the Drive folder with the recordings (e.g. "הקלטות שיחות")
- * Then run  setup()  once and allow the permissions. That's all.
+ * Then run  setup()  once and allow the permissions.
+ * For the phone app: Deploy → New deployment → Web app, "Execute as: Me", "Who has access: Anyone".
+ * (Anyone can reach the address, but only the app has the secret; without it nothing is saved.)
  */
 
 const MODEL = 'gemini-3.5-flash';
@@ -29,6 +32,9 @@ function props() { return PropertiesService.getScriptProperties(); }
 function P(k) { return props().getProperty(k) || ''; }
 
 function setup() {
+  if (!P('APP_SECRET')) props().setProperty('APP_SECRET', Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, ''));
+  if (!P('FOLDER')) props().setProperty('FOLDER', 'הקלטות שיחות');
+  recFolder();
   ScriptApp.getProjectTriggers().forEach(t => ScriptApp.deleteTrigger(t));
   ScriptApp.newTrigger('tick').timeBased().everyMinutes(5).create();
   if (!P('SINCE')) props().setProperty('SINCE', new Date(Date.now() - 24 * 3600e3).toISOString());
@@ -51,6 +57,7 @@ function tick() {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(1000)) return;
   try {
+    try { site('post', 'app', { url: ScriptApp.getService().getUrl() || '', secret: P('APP_SECRET'), last: P('APP_LAST') }); } catch (e) { console.error('app', e); }
     const st = site('get', 'status');
     try { recordings(st); } catch (e) { console.error('recordings', e); }
     try { indexCalls(); } catch (e) { console.error('index', e); }
@@ -63,7 +70,12 @@ function tick() {
 
 /* ---------- 1–4: call recordings ---------- */
 /** When the call was recorded: from the file name (…_251118_143022…, 20251118_143022, 2025-11-18 14-30-22) or the file's date. */
+/** What the phone app wrote on the file: number, contact name, start time, length, direction. */
+function meta(file) { try { return JSON.parse(file.getDescription() || '{}'); } catch (e) { return {}; } }
+function phoneOf(file) { return meta(file).phone || phoneFromName(file.getName()); }
 function recordedAt(file) {
+  const md = meta(file);
+  if (md.at) return new Date(md.at);
   const n = file.getName();
   let m = n.match(/(20\d{2})[-_.]?(\d{2})[-_.]?(\d{2})[ _T-]?(\d{2})[-_.:]?(\d{2})[-_.:]?(\d{2})/);
   if (m) return new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
@@ -103,7 +115,7 @@ function recordings(st) {
       const sv = (st.surveys || []).find(s => s.id === w.surveyId);
       if (sv) {
         const result = listen(f, sv, at);
-        if (result && result.relevant) { result.hotel = result.hotel || {}; if (!result.hotel.phone) result.hotel.phone = phoneFromName(f.getName()); }
+        if (result && result.relevant) { result.hotel = result.hotel || {}; if (!result.hotel.phone) result.hotel.phone = phoneOf(f); }
         site('post', 'call', { surveyId: sv.id, at: at.toISOString(), file: { id: f.getId(), name: f.getName(), url: f.getUrl() }, result: result });
         done++;
       }
@@ -131,7 +143,7 @@ function indexCalls() {
   const files = allRecordings(since).slice(0, 600);
   for (let i = 0; i < files.length; i += 200) {
     const part = files.slice(i, i + 200);
-    site('post', 'index', { items: part.map(f => ({ id: f.getId(), name: f.getName(), phone: phoneFromName(f.getName()), at: recordedAt(f).toISOString(), url: f.getUrl() })) });
+    site('post', 'index', { items: part.map(f => ({ id: f.getId(), name: (meta(f).contact ? meta(f).contact + ' · ' : '') + f.getName(), phone: phoneOf(f), at: recordedAt(f).toISOString(), url: f.getUrl() })) });
     props().setProperty('INDEX_SINCE', part[part.length - 1].getDateCreated().toISOString());
   }
   if (!files.length && !P('INDEX_SINCE')) { site('post', 'index', { items: [] }); props().setProperty('INDEX_SINCE', since.toISOString()); }
@@ -165,7 +177,7 @@ function listen(file, sv, at) {
   if (!sv) return gemini(part, [
     'This is a recording of a phone call made from the work phone of La Belle Vie (in Hebrew: לה בל וי), an Israeli events and holiday company.',
     'The owner asked for a summary of this call, to remember what was said (for example what a hotel said about availability or prices).',
-    'The recording file name (may contain the phone number or contact name): ' + file.getName(),
+    'The recording file name (may contain the phone number or contact name): ' + file.getName() + (file.getDescription() ? '. From the phone call log: ' + file.getDescription() : ''),
     'The call was recorded on ' + Utilities.formatDate(at || new Date(), 'Asia/Jerusalem', 'EEEE yyyy-MM-dd HH:mm') + ' (Israel time).',
     'Answer in JSON only, in Hebrew. summary: what the call was about and everything decided or said that matters (availability, prices, conditions, promises, what to do next). who: who the other side is (name, place) if said.',
     'keyQuotes: the sentences that matter as proof later, the exact words spoken, with the time in the recording (mm:ss) and who said it.',
@@ -180,7 +192,7 @@ function listen(file, sv, at) {
     'Survey: "' + sv.title + '". Dates needed: ' + (sv.from || '?') + ' to ' + (sv.to || '?') + '. What is needed: ' + (sv.need || '-') + '. Area: ' + (sv.area || '-') + '.',
     'Price levels used in this survey: ' + (sv.levels || []).join(', ') + '. Use one of these names for "level" when it fits, otherwise the hotel\'s own room name.',
     'Hotels already in the survey: ' + (known || 'none') + '. If this call is with one of them, use exactly the same name.',
-    'The recording file name (may contain the phone number or contact name): ' + file.getName(),
+    'The recording file name (may contain the phone number or contact name): ' + file.getName() + (file.getDescription() ? '. From the phone call log: ' + file.getDescription() : ''),
     'The call was recorded on ' + Utilities.formatDate(at || new Date(), 'Asia/Jerusalem', 'EEEE yyyy-MM-dd HH:mm') + ' (Israel time). Turn relative days ("ביום ראשון", "מחר", "בעוד שבוע") into a date.',
     'The company is written "La Belle Vie" (in Hebrew: לה בל וי).',
     '',
@@ -305,4 +317,27 @@ function sheets(st) {
     sh.getRange(1, 1, 1, w).setFontWeight('bold').setBackground('#f3ead7');
     sh.setFrozenRows(1);
   }
+}
+
+/* ---------- 0: the phone app sends each recording here ---------- */
+function recFolder() {
+  const n = P('FOLDER') || 'הקלטות שיחות';
+  const it = DriveApp.getFoldersByName(n);
+  return it.hasNext() ? it.next() : DriveApp.createFolder(n);
+}
+function doPost(e) {
+  const reply = o => ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON);
+  let b;
+  try { b = JSON.parse(e.postData.contents); } catch (err) { return reply({ ok: false, error: 'json' }); }
+  if (!b.secret || b.secret !== P('APP_SECRET')) return reply({ ok: false, error: 'secret' });
+  if (b.op !== 'upload' || !b.data || !b.name) return reply({ ok: false, error: 'op' });
+  const folder = recFolder();
+  const name = String(b.name).slice(0, 200);
+  const same = folder.getFilesByName(name);
+  while (same.hasNext()) if (same.next().getSize() === Number(b.size)) return reply({ ok: true, dup: true });
+  const c = b.call || {};
+  const f = folder.createFile(Utilities.newBlob(Utilities.base64Decode(b.data), b.mime || 'audio/mp4', name));
+  f.setDescription(JSON.stringify({ phone: c.phone || '', contact: c.contact || '', at: c.at || b.modified || '', duration: c.duration || '', dir: c.dir || '' }));
+  props().setProperty('APP_LAST', new Date().toISOString());
+  return reply({ ok: true });
 }

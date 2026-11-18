@@ -285,7 +285,6 @@ let newKey = '', wizStep = null, wizSeen = false, installEvt = null;
 addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; });
 addEventListener('appinstalled', () => { markStep('home'); });
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('/admin/sw.js', { scope: '/admin/' }).catch(() => {});
-const PLAY = 'https://play.google.com/store/apps/details?id=com.ttxapps.drivesync';
 const marks = () => { try { return JSON.parse(localStorage.getItem('hs-setup') || '{}'); } catch (e) { return {}; } };
 function markStep(id) { try { localStorage.setItem('hs-setup', JSON.stringify({ ...marks(), [id]: 1 })); } catch (e) {} }
 const standalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone;
@@ -296,10 +295,10 @@ function stepsState() {
       why: 'רובוט קטן בחשבון הגוגל של LBV שעושה את כל העבודה לבד:',
       items: ['קורא את תיקיית "הקלטות שיחות" בדרייב', 'שולח מיילים למלונות מהמייל של LBV וקורא את התשובות', 'מעדכן גיליון בגוגל שיטס'],
       fine: 'לוחצים "יצירת מפתח", ואת ההתקנה בחשבון של LBV עושים ביחד פעם אחת (כ-5 דקות). בהפעלה הראשונה גוגל מקפיץ חלון "לאשר גישה?" ולוחצים "אישור". השלב מסתמן לבד כשהרובוט מתחבר.' },
-    { id: 'rec', done: !!m.rec || !!con.last, title: 'שההקלטות יגיעו למערכת לבד',
-      why: 'הטלפון כבר מקליט כל שיחה. מתקינים פעם אחת אפליקציה חינמית שמעבירה את ההקלטות לדרייב של LBV:',
-      items: ['לוחצים על הכפתור: נפתחת חנות Google Play עם Autosync for Google Drive', 'מתקינים, ונכנסים עם חשבון הגוגל של LBV', 'בוחרים בטלפון את תיקיית הקלטות השיחות ומחברים אותה לתיקייה "הקלטות שיחות" בדרייב'],
-      fine: 'זה השלב היחיד שלא יכול לקפוץ מהאתר, כי אנדרואיד לא נותן לאתרים לגשת להקלטות.' },
+    { id: 'rec', done: !!con.appLast || !!con.last, title: 'האפליקציה LBV שיחות בטלפון',
+      why: 'אפליקציה קטנה של LBV ששולחת את הקלטות השיחות למערכת לבד. רק לוחצים "אישור":',
+      items: ['"הורדת האפליקציה", ואז "התקנה". בפעם הראשונה אנדרואיד שואל "לאפשר התקנה מהמקור הזה?" ולוחצים "אישור"', '"חיבור האפליקציה": האפליקציה נפתחת ומתחברת לבד', 'באפליקציה קופצים 4 אישורים: תיקיית ההקלטות, יומן השיחות, עבודה ברקע, התראות. לוחצים "אישור" בכל אחד'],
+      fine: 'עושים את זה בטלפון העבודה. השלב מסתמן לבד כשההקלטה הראשונה מגיעה.' },
     { id: 'notify', done: typeof Notification !== 'undefined' && Notification.permission === 'granted', title: 'התראות לטלפון',
       why: 'הטלפון יודיע לך כש:', items: ['שיחה עם מלון נקלטה ונכנסה לכרטיסייה', 'סיכום שביקשת על שיחה מוכן'],
       fine: 'ההתראות מגיעות כשהסקר פתוח בטלפון, גם ברקע. אנדרואיד מקפיץ עכשיו "לאפשר התראות?" ולוחצים "אישור".' },
@@ -328,7 +327,7 @@ function openWizard(i) {
   const x = st[i], con = home.connection || {};
   const act = {
     google: `<button class="btn btn--gold" type="button" data-go>${con.connected ? 'מחובר. הלאה' : 'יצירת מפתח'}</button>`,
-    rec: `<a class="btn btn--gold" href="${PLAY}" target="_blank" rel="noopener" data-go>פתיחת Google Play</a><button class="btn btn--line" type="button" data-done>כבר התקנתי</button>`,
+    rec: `<a class="btn btn--gold" href="/app/lbv-calls.apk" download data-dl>1. הורדת האפליקציה</a><button class="btn btn--dark" type="button" data-go>2. חיבור האפליקציה</button>`,
     notify: `<button class="btn btn--gold" type="button" data-go>${x.done ? 'מאושר. הלאה' : 'לאפשר התראות'}</button>`,
     home: `<button class="btn btn--gold" type="button" data-go>${x.done ? 'יש אייקון. סיום' : 'הוספה למסך הבית'}</button>`,
   }[x.id];
@@ -353,7 +352,18 @@ function openWizard(i) {
     if (x.id === 'google') {
       if (con.connected) return next();
       try { newKey = (await api('POST', '', { op: 'connect' })).key; await refreshHome(); openWizard(i); } catch (e2) { fail(e2); }
-    } else if (x.id === 'rec') { markStep('rec'); setTimeout(next, 400); }
+    } else if (x.id === 'rec') {
+      // opens the app with the robot's address and secret; if the app isn't installed yet, Chrome stays here
+      try {
+        const r = await api('POST', '', { op: 'pair' });
+        const q = 'u=' + encodeURIComponent(r.url) + '&s=' + encodeURIComponent(r.secret);
+        location.href = /android/i.test(navigator.userAgent)
+          ? `intent://pair?${q}#Intent;scheme=lbvcalls;package=com.labellevie.calls;S.browser_fallback_url=${encodeURIComponent(location.href)};end`
+          : `lbvcalls://pair?${q}`;
+      } catch (e2) {
+        if (e2.message === 'no-robot') ctx.toast('קודם צריך את שלב 1 (הרובוט בגוגל). אחריו החיבור עובד', 'info'); else fail(e2);
+      }
+    }
     else if (x.id === 'notify') {
       if (x.done) return next();
       if (typeof Notification === 'undefined') { ctx.toast('הדפדפן הזה לא תומך בהתראות. פותחים בכרום בטלפון', 'info'); return; }

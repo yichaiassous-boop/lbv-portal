@@ -282,7 +282,14 @@ export default async function hotelsHandler(req, res) {
           count: hs.length, avail: hs.filter(h => h.avail === 'available' || h.avail === 'partial').length, follow: hs.filter(h => h.status === 'followup').length };
       }));
       const managers = await managerList(req);
-      return send(res, 200, { me: { id: uid, name: s.n, role: s.r }, mode: u.mode || { on: false }, connection: { connected: !!u.keyHash, ping: u.ping || null, last: u.lastCall || null, skipped: u.skipped || 0 }, surveys, managers });
+      return send(res, 200, { me: { id: uid, name: s.n, role: s.r }, mode: u.mode || { on: false }, connection: { connected: !!u.keyHash, ping: u.ping || null, last: u.lastCall || null, skipped: u.skipped || 0, app: !!u.app?.url, appLast: u.app?.last || null }, surveys, managers });
+    }
+
+    // "חיבור האפליקציה": the robot's address + the app secret, handed only to the logged-in owner of that robot
+    if (req.method === 'POST' && body.op === 'pair') {
+      const u = await userRec(uid);
+      if (!u.app?.url || !u.app?.secret) return send(res, 409, { error: 'no-robot' });
+      return send(res, 200, { url: u.app.url, secret: u.app.secret });
     }
 
     if (req.method === 'GET' && q('survey')) {
@@ -429,6 +436,14 @@ async function script(req, res, what, userId, b) {
     // Phone calls the owner asked to summarize ("you talked a week ago, want a summary?" → yes)
     const asks = (await allJ(K.calls)).filter(c => c.owner === userId && c.ask && !c.sum).slice(0, 3).map(c => ({ id: c.id, name: c.name, at: c.at }));
     return send(res, 200, { windows: u.windows || [], mode: u.mode || { on: false }, surveys: active, outbox, threads, asks });
+  }
+
+  // The robot's web-app address (for the phone app) + when the app last sent a recording
+  if (what === 'app') {
+    const url = str(b.url, 300), secret = str(b.secret, 128);
+    u.app = { url: /^https:\/\/script\.google\.com\/macros\//.test(url) ? url : '', secret: secret.length >= 32 ? secret : '', last: str(b.last, 30) || null };
+    await saveUser(userId, u);
+    return send(res, 200, { ok: true });
   }
 
   // Every recording on the work phone, names only (no listening): file id, file name, number, time
