@@ -119,3 +119,5 @@
 .lbv-app .toast { bottom: calc(84px + env(safe-area-inset-bottom)); }
 .lbv-app .pagehead { display: none; }
 .lbv-app .hb__brand b::after { content: none; }
+.ah-who { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 6px 0 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 14px; background: #fff; color: var(--ink-2); font-size: .9rem; }
+.ah-who b { color: var(--ink); }

@@ -211,6 +211,15 @@ export async function appHome(pg, c, tiles) {
     bindRows(l);
     pg.append(l);
   }
+  // Who is logged in here + switch user (the phone's recordings go to the robot of the user logged in on it).
+  const who = h(`<section class="ah-who"><span>מחובר בתור <b>${esc(c.me?.role === 'owner' ? 'הבעלים' : c.me?.name || '')}</b></span><button type="button" class="btn btn--line btn--sm" data-switch>החלפת משתמש</button></section>`);
+  $('[data-switch]', who).addEventListener('click', async () => {
+    if (!confirm('לצאת ולהיכנס עם משתמש אחר?')) return;
+    try { await fetch('/api/login', { method: 'DELETE' }); } catch (e) {}
+    try { window.LBVApp?.loggedOut?.(); } catch (e) {}
+    location.reload();
+  });
+  pg.append(who);
 }
 
 /** "עריכת האתר" inside the app: the parts of the site, as a list. */
