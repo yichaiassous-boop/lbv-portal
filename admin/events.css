@@ -72,37 +72,8 @@
   .ev-sheet__card { width: 100%; max-height: 92vh; border-radius: 20px 20px 0 0; padding: 18px 16px calc(18px + env(safe-area-inset-bottom)); }
 }
 
-/* the remote */
-.remote__hero { display: flex; align-items: center; gap: 16px; margin-bottom: 18px; }
-.remote__hero svg { flex: none; width: 58px; height: 58px; padding: 12px; border-radius: 16px; background: var(--night); color: var(--gold); }
-.remote__hero h2 { font-size: 1.4rem; }
-.remote__hero p { margin: 4px 0 0; color: var(--ink-2); }
-.remote__go { min-height: 56px; font-size: 1.1rem; }
-.remote__set { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 12px; }
-.remote__set summary { cursor: pointer; font-weight: 700; color: var(--ink-2); }
-.remote__f { margin-top: 12px; }
-.remote .msg { margin: 0; padding: 12px 14px; border-radius: 10px; background: var(--info-bg); color: var(--ink); }
+/* the remote and the app home: see app.css */
 
-/* ---------- the app: home screen + bottom bar ---------- */
-.ah { margin: 4px 0 16px; }
-.ah__date { margin: 0; color: var(--ink-3); font-size: .9rem; }
-.ah__hi { margin: 2px 0 14px; font-size: 2rem; letter-spacing: -.01em; }
-.ah__next { display: grid; gap: 2px; width: 100%; padding: 16px 18px; border: 0; border-radius: 18px; text-align: start; cursor: pointer; font: inherit; color: #fff;
-  background: radial-gradient(120% 140% at 100% 0%, #24366F 0%, var(--night) 60%); box-shadow: inset 0 0 0 1px rgba(227,182,92,.35), 0 18px 36px -22px rgba(11,20,48,.7); }
-.ah__next small { color: var(--gold); font-weight: 700; letter-spacing: .04em; }
-.ah__next b { font: 700 1.3rem/1.25 "Frank Ruhl Libre", serif; }
-.ah__next span { color: #C7D3E4; font-size: .9rem; }
-.ah-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
-.ah-tile { position: relative; display: grid; align-content: start; gap: 4px; min-height: 128px; padding: 16px; border: 1px solid var(--line); border-radius: 18px; background: #fff;
-  font: inherit; color: var(--ink); text-align: start; cursor: pointer; box-shadow: var(--shadow); transition: transform .12s, box-shadow .15s, border-color .15s; }
-.ah-tile:hover { border-color: var(--gold); }
-.ah-tile:active { transform: scale(.98); }
-.ah-tile__ic { display: inline-grid; place-items: center; width: 44px; height: 44px; margin-bottom: 8px; border-radius: 13px; background: var(--night); color: var(--gold); }
-.ah-tile__ic svg { width: 24px; height: 24px; }
-.ah-tile b { font-size: 1.05rem; }
-.ah-tile small { color: var(--ink-2); font-size: .84rem; }
-.ah-tile__n { position: absolute; top: 14px; inset-inline-end: 14px; min-width: 24px; height: 24px; padding: 0 7px; border-radius: 12px; background: var(--err); color: #fff; font-size: .8rem; font-weight: 700; display: grid; place-items: center; }
-@media (min-width: 860px) { .ah-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 
 .as-list { display: grid; gap: 6px; }
 .as-row { display: grid; grid-template-columns: 1fr auto; align-items: center; column-gap: 10px; width: 100%; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: #fff; font: inherit; color: var(--ink); text-align: start; cursor: pointer; }

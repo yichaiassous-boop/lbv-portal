@@ -6,22 +6,24 @@
 //   see the calendar        every manager
 //   add / change an event   owner, admin, sales
 //   delete an event         owner, admin
-//   open the screens remote owner, admin          (the link holds the remote's key: it is never sent to anyone else)
-//   set the remote link     owner only
+//   the screens remote      owner, admin          (same Redis keys as lbv-screens, see _screens.js)
 //
-//   GET                                → { me, can, events, remote: { set, url? } }
+//   GET                                → { me, can, events }
+//   GET ?screens=1                     → the remote: step, prices, donations, video player
 //   POST { op:"event", … }             → create / update an event
 //   DELETE ?id=<id>                    → delete an event
-//   POST { op:"remote", url }          → save the remote link ("" removes it)
+//   POST { op:"screens", step|link|prices|newEvening } → change the evening screen
+//   POST { op:"video", action, folder?, index? }       → order the video player
+//   POST { op:"open", page:"screen"|"video" }          → one-time link to open the projector page
 import crypto from 'node:crypto';
 import { isAuthed, readBody } from './_lib.js';
 import { hotelsReady, kv, getJ, setJ, allJ } from './_hotels.js';
+import { screensState, screensChange, videoOrder, openTicket } from './_screens.js';
 
-const K = { events: 'ev:all', app: 'app:settings' };
+const K = { events: 'ev:all' };
 const KINDS = ['wedding', 'barmitzvah', 'batmitzvah', 'shabbat', 'gala', 'holiday', 'other'];
 const STATUS = ['option', 'confirmed', 'done', 'cancelled'];
 const ROLES_EDIT = ['owner', 'admin', 'sales'], ROLES_DEL = ['owner', 'admin'], ROLES_REMOTE = ['owner', 'admin'];
-const REMOTE_HOST = 'lbv-screens.vercel.app';
 
 const send = (res, code, obj) => res.status(code).json(obj);
 const now = () => new Date().toISOString();
@@ -46,29 +48,31 @@ function cleanEvent(b, old = {}) {
   };
 }
 
-/** The remote link: only https://lbv-screens.vercel.app/… is accepted. */
-function cleanRemote(u) {
-  const s = str(u, 600);
-  if (!s) return '';
-  try { const x = new URL(s); return x.protocol === 'https:' && x.hostname === REMOTE_HOST ? x.toString() : null; } catch (e) { return null; }
-}
-
 export default async function eventsHandler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   if (!hotelsReady()) return send(res, 503, { error: 'not-configured' });
   const s = req.lbvUser || isAuthed(req);
   if (!s) return send(res, 401, { error: 'login' });
   const role = s.r, who = s.n || '';
-  const may = { edit: ROLES_EDIT.includes(role), del: ROLES_DEL.includes(role), remote: ROLES_REMOTE.includes(role), setRemote: role === 'owner' };
+  const may = { edit: ROLES_EDIT.includes(role), del: ROLES_DEL.includes(role), remote: ROLES_REMOTE.includes(role) };
   const url = new URL(req.url, 'http://x');
   let body = {};
   if (req.method === 'POST' || req.method === 'PUT') { try { body = (await readBody(req)) || {}; } catch (e) { return send(res, 400, { error: 'bad-json' }); } }
 
   try {
+    if (req.method === 'GET' && url.searchParams.get('screens')) {
+      if (!may.remote) return send(res, 403, { error: 'forbidden' });
+      return send(res, 200, await screensState());
+    }
     if (req.method === 'GET') {
       const events = (await allJ(K.events)).sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || '')));
-      const app = (await getJ(K.app, 'remote')) || {};
-      return send(res, 200, { me: { name: who, role }, can: may, events, remote: { set: !!app.url, url: may.remote ? app.url || '' : undefined } });
+      return send(res, 200, { me: { name: who, role }, can: may, events });
+    }
+    if (req.method === 'POST' && ['screens', 'video', 'open'].includes(body.op)) {
+      if (!may.remote) return send(res, 403, { error: 'forbidden' });
+      const r = body.op === 'screens' ? await screensChange(body) : body.op === 'video' ? await videoOrder(body) : await openTicket(body.page);
+      if (r.error) return send(res, 400, r);
+      return send(res, 200, body.op === 'open' ? r : { ...r, state: await screensState() });
     }
     if (req.method === 'POST' && body.op === 'event') {
       if (!may.edit) return send(res, 403, { error: 'forbidden' });
@@ -85,13 +89,6 @@ export default async function eventsHandler(req, res) {
       if (!/^e[0-9a-f]{12}$/.test(id)) return send(res, 400, { error: 'bad-id' });
       await kv.hdel(K.events, id);
       return send(res, 200, { ok: true });
-    }
-    if (req.method === 'POST' && body.op === 'remote') {
-      if (!may.setRemote) return send(res, 403, { error: 'forbidden' });
-      const u = cleanRemote(body.url);
-      if (u === null) return send(res, 400, { error: 'bad-url' });
-      await setJ(K.app, 'remote', { url: u, by: who, at: now() });
-      return send(res, 200, { ok: true, set: !!u });
     }
     return send(res, 400, { error: 'bad-request' });
   } catch (e) {

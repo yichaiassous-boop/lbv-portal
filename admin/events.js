@@ -1,5 +1,5 @@
 // The LBV app pages: the home screen of the app, the events calendar (לוח אירועים) and the screens remote (השלט).
-// Data: /api/events (api/_events.js). The remote's link holds its key: the server sends it only to owner/admin.
+// Data: /api/events (api/_events.js). The remote reads the same Redis keys as lbv-screens: no link, no key (owner/admin only).
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -155,39 +155,113 @@ function openSheet(ev, date) {
   if (!ev && canEdit) $('[name=title]', w).focus();
 }
 
-/* ================= the screens remote ================= */
+/* ================= the screens remote (inside the app, no link and no key) ================= */
+const CUES = [
+  { id: 'WELCOME', t: 'כניסה', s: 'הלוגו וברוכים הבאים' },
+  { id: 'FLAME', t: 'הלהבה', s: 'מתמלאת מהתרומות' },
+  { id: 'FULL', t: 'להבה מלאה', s: 'פרץ האותיות' },
+  { id: 'THANKS', t: 'תודה', s: 'Merci, בסוף הערב' },
+];
+const GALA_ERR = { NO_LINK: 'עוד לא הודבק הקישור של הערב', LINK_REFUSED: 'אתר הגאלה לא מכיר את הקישור. אולי נוצר קישור חדש לערב', OFFLINE: 'אין חיבור לאתר הגאלה כרגע' };
+const VIDEO_ACTS = [
+  { a: 'screen', t: 'מסך הערב', i: 'M3 5h18v12H3zM8 21h8M12 17v4' },
+  { a: 'black', t: 'מסך שחור', i: 'M4 4h16v16H4z' },
+  { a: 'pause', t: 'עצירה', i: 'M8 5v14M16 5v14' },
+  { a: 'resume', t: 'המשך', i: 'M7 4l13 8-13 8z' },
+  { a: 'restart', t: 'מההתחלה', i: 'M4 12a8 8 0 1 0 3-6.2M4 4v4h4' },
+];
+const openHint = () => (window.LBVApp || !matchMedia('(min-width: 860px)').matches ? 'שולחים קישור למחשב של המקרן' : 'בכרטיסייה חדשה, במחשב הזה');
+let rTimer = null, rBusy = false, rState = null, rTab = 'Video';
+const money = (n, cur) => (typeof n === 'number' ? n.toLocaleString('he-IL') + ' ' + (cur && cur !== 'EUR' ? cur : '€') : '–');
+const svg = d => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>`;
+
 export async function remotePage(pg, c) {
   ctx = c;
-  pg.append(h('<p class="hint">טוען…</p>'));
-  try { await load(true); } catch (e) { pg.innerHTML = ''; fail(e); return; }
-  pg.innerHTML = '';
-  const r = data.remote || {}, owner = data.can?.setRemote;
-  const card = h(`<section class="card remote">
-    <div class="remote__hero">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="2" width="10" height="20" rx="3"/><circle cx="12" cy="8" r="2"/><path d="M10 13h4M10 16h4"/></svg>
-      <div><h2>השלט של המסכים</h2><p>שולטים מהטלפון במסך של האירוע: מה מוצג, מתי, ובאיזה מסך.</p></div>
-    </div>
-    ${r.url ? `<a class="btn btn--gold btn--block remote__go" href="${esc(r.url)}">פתיחת השלט</a>` : `<p class="msg">${owner ? 'עוד לא חובר. מדביקים כאן פעם אחת את הקישור של השלט, וזהו.' : 'השלט עוד לא חובר. רק הבעלים יכול לחבר אותו.'}</p>`}
-    ${owner ? `<details class="remote__set"${r.url ? '' : ' open'}><summary>${r.url ? 'החלפת הקישור של השלט' : 'חיבור השלט'}</summary>
-      <form class="remote__f"><label class="f">הקישור של השלט <small>(הכתובת שבה פותחים את השלט בטלפון, מתחילה ב-https://lbv-screens.vercel.app)</small>
-        <input name="url" type="url" dir="ltr" autocomplete="off" spellcheck="false" placeholder="https://lbv-screens.vercel.app/admin#k=…"></label>
-        <div class="row-tools"><button class="btn btn--dark btn--sm" type="submit">שמירה</button>${r.url ? '<button class="btn btn--danger btn--sm" type="button" data-rm>ניתוק</button>' : ''}</div>
-        <p class="hint">הקישור נשמר בשרת בלבד ונשלח רק לבעלים ולמנהלים. הוא לא מופיע בקוד ולא נשלח לאף מקום אחר.</p></form></details>` : ''}
-  </section>`);
-  const f = $('.remote__f', card);
-  const save = async u => {
-    try { await api('POST', '', { op: 'remote', url: u }); await load(true); ctx.toast(u ? 'השלט חובר' : 'השלט נותק'); ctx.rerender(); }
-    catch (e) { if (e.message === 'bad-url') ctx.toast('זה לא הקישור של השלט. הוא מתחיל ב-https://lbv-screens.vercel.app', 'err'); else fail(e); }
+  clearInterval(rTimer);
+  const root = h(`<div class="rc" aria-live="polite"><p class="rc__wait">מתחבר למסכים…</p></div>`);
+  pg.append(root);
+  const get = async () => { const r = await fetch('/api/events?screens=1', { cache: 'no-store' }); if (r.status === 401) { ctx.showLogin(); throw new Error('login'); } if (!r.ok) throw new Error(r.status === 403 ? 'forbidden' : 'server'); return r.json(); };
+  const send = async (op, body, okMsg) => {
+    if (rBusy) return; rBusy = true; root.classList.add('is-busy');
+    try { const j = await api('POST', '', { op, ...body }); if (j.state) { rState = j.state; draw(); } if (okMsg) ctx.toast(okMsg); return j; }
+    catch (e) { const m = { 'bad-link': 'הקישור לא תקין. צריך את הקישור המלא של הערב, שמסתיים ב-#s=…&k=…', 'bad-price': 'מחיר לא תקין', 'bad-file': 'הסרטון לא נמצא' }[e.message]; m ? ctx.toast(m, 'err') : fail(e); }
+    finally { rBusy = false; root.classList.remove('is-busy'); }
   };
-  f?.addEventListener('submit', x => { x.preventDefault(); const u = f.url.value.trim(); if (u) save(u); });
-  $('[data-rm]', card)?.addEventListener('click', () => { if (confirm('לנתק את השלט מהאפליקציה?')) save(''); });
-  pg.append(card);
+  function draw() {
+    if (!document.body.contains(root)) { clearInterval(rTimer); return; }
+    const s = rState, g = s.gala, v = s.video || {}, p = v.player;
+    const pct = g.ok && g.goal ? Math.min(100, Math.round((g.raised || 0) / g.goal * 100)) : 0;
+    const live = p && Date.now() - (p.at || 0) < 15000;
+    const files = (p?.files?.[rTab] || []);
+    const focus = document.activeElement && root.contains(document.activeElement) && document.activeElement.matches('input') ? document.activeElement.name : null;
+    if (focus) return;   // don't redraw under the fingers
+    root.innerHTML = `
+      <section class="rc__stage">
+        <p class="rc__lbl">מה מוצג עכשיו על המקרן</p>
+        <div class="rc__cues">${CUES.map(q => `<button type="button" class="rc__cue${s.step === q.id ? ' is-on' : ''}" data-step="${q.id}" aria-pressed="${s.step === q.id}"><b>${q.t}</b><small>${q.s}</small></button>`).join('')}</div>
+      </section>
+      <section class="rc__gala${g.ok ? '' : ' is-off'}">
+        ${g.ok ? `<div class="rc__sum"><span><small>נאסף עד עכשיו</small><b>${money(g.raised, g.currency)}</b></span><span class="rc__goal"><small>היעד</small><b>${money(g.goal, g.currency)}</b></span></div>
+          <div class="rc__bar" role="progressbar" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"><i style="width:${pct}%"></i></div>
+          <p class="rc__donor">${g.lastDonor ? `תרומה אחרונה: <b>${esc(g.lastDonor)}</b>` : 'עוד אין תרומות הערב'}</p>`
+        : `<p class="rc__off">${esc(GALA_ERR[g.error] || 'אין חיבור לאתר הגאלה')}</p>`}
+      </section>
+      <section class="rc__open">
+        <button type="button" class="rc__big" data-open="screen">${svg('M3 5h18v12H3zM8 21h8M12 17v4')}<span><b>פתיחת מסך הערב</b><small>${openHint()}</small></span></button>
+        <button type="button" class="rc__big" data-open="video">${svg('M4 6h11v12H4zM15 10l5-3v10l-5-3')}<span><b>פתיחת נגן הסרטונים</b><small>${openHint()}</small></span></button>
+      </section>
+      <section class="rc__video">
+        <div class="rc__vhead"><h2>סרטונים</h2><span class="rc__dot${live ? ' is-live' : ''}">${live ? (p.playing ? 'מנגן עכשיו' : 'הנגן מחובר') : 'הנגן לא פתוח'}</span></div>
+        <div class="rc__acts">${VIDEO_ACTS.map(x => `<button type="button" data-act="${x.a}">${svg(x.i)}<small>${x.t}</small></button>`).join('')}</div>
+        <div class="rc__tabs" role="tablist">${['Video', 'Karaoke'].map(f => `<button type="button" role="tab" aria-selected="${rTab === f}" data-tab="${f}">${f === 'Video' ? 'סרטונים' : 'קריוקי'}</button>`).join('')}</div>
+        ${files.length ? `<ol class="rc__files">${files.map((n, i) => `<li><button type="button" data-play="${i}" class="${p.folder === rTab && p.index === i ? 'is-on' : ''}"><span>${esc(n.replace(/\.[a-z0-9]+$/i, ''))}</span>${svg('M7 4l13 8-13 8z')}</button></li>`).join('')}</ol>`
+          : `<p class="rc__empty">${live ? 'אין קבצים בתיקייה הזאת במחשב של המקרן' : 'פותחים את נגן הסרטונים במחשב של המקרן, והרשימה תופיע כאן'}</p>`}
+      </section>
+      <details class="rc__set">
+        <summary>הגדרות הערב</summary>
+        <form class="rc__link"><label class="f">הקישור של הערב <small>מדף הניהול של הגאלה (מסתיים ב-#s=…&k=…)${s.link.set ? ` · מחובר ל-${esc(s.link.host)}` : ''}</small>
+          <input name="link" type="url" dir="ltr" autocomplete="off" spellcheck="false" placeholder="${s.link.set ? 'מחובר. מדביקים כאן רק כדי להחליף' : 'https://…/live-screen#s=…&k=…'}"></label>
+          <button class="btn btn--gold btn--sm" type="submit">שמירת הקישור</button></form>
+        <form class="rc__prices"><p class="rc__lbl">מחירי החבילות ביורו (0 = לא נספר)</p>
+          <div class="f2">${[['plaques', 'Plaques'], ['noms', 'Noms'], ['mots', 'Mots'], ['lettres', 'Lettres']].map(([k, t]) => `<label class="f">${t}<input name="${k}" type="number" min="0" step="0.01" inputmode="decimal" dir="ltr" value="${esc(s.prices[k])}"></label>`).join('')}</div>
+          <button class="btn btn--gold btn--sm" type="submit">שמירת המחירים</button></form>
+        <div class="rc__new"><p>ערב חדש מרוקן את הלהבה ואת הריבועים, וחוזר למסך הכניסה.</p><button type="button" class="btn btn--danger btn--sm" data-new>התחלת ערב חדש</button></div>
+      </details>`;
+    if (root.dataset.open === '1') $('.rc__set', root).open = true;
+    $('.rc__set', root).addEventListener('toggle', e => { root.dataset.open = e.target.open ? '1' : ''; });
+    $$('[data-step]', root).forEach(b => b.addEventListener('click', () => send('screens', { step: b.dataset.step })));
+    $$('[data-act]', root).forEach(b => b.addEventListener('click', () => send('video', { action: b.dataset.act })));
+    $$('[data-tab]', root).forEach(b => b.addEventListener('click', () => { rTab = b.dataset.tab; draw(); }));
+    $$('[data-play]', root).forEach(b => b.addEventListener('click', () => send('video', { action: 'play', folder: rTab, index: +b.dataset.play })));
+    // On the projector's computer: opens the page in a new tab. On a phone: shares or copies a one-time
+    // link (10 minutes) to open on the projector's computer.
+    $$('[data-open]', root).forEach(b => b.addEventListener('click', async () => {
+      const here = !window.LBVApp && matchMedia('(min-width: 860px)').matches;
+      const w = here ? window.open('', '_blank') : null;   // a browser blocks a window opened after the await
+      const j = await send('open', { page: b.dataset.open });
+      if (!j?.url) { w?.close(); return; }
+      if (w) { w.opener = null; w.location = j.url; return; }
+      const what = b.dataset.open === 'video' ? 'נגן הסרטונים' : 'מסך הערב';
+      if (navigator.share) { try { await navigator.share({ title: what, text: what + ' (קישור לפעם אחת, ל-10 דקות)', url: j.url }); return; } catch (e) { if (e.name === 'AbortError') return; } }
+      try { await navigator.clipboard.writeText(j.url); ctx.toast('הקישור הועתק. פותחים אותו במחשב של המקרן בתוך 10 דקות'); }
+      catch (e) { prompt('הקישור למחשב של המקרן (לפעם אחת, ל-10 דקות):', j.url); }
+    }));
+    $('.rc__link', root).addEventListener('submit', e => { e.preventDefault(); const u = e.target.link.value.trim(); if (u) send('screens', { link: u }, 'הקישור של הערב נשמר').then(() => { e.target.link.value = ''; }); });
+    $('.rc__prices', root).addEventListener('submit', e => { e.preventDefault(); const f = e.target; send('screens', { prices: { plaques: f.plaques.value, noms: f.noms.value, mots: f.mots.value, lettres: f.lettres.value } }, 'המחירים נשמרו'); });
+    $('[data-new]', root).addEventListener('click', () => { if (confirm('להתחיל ערב חדש? הלהבה והריבועים יתרוקנו.')) send('screens', { newEvening: true }, 'התחיל ערב חדש'); });
+  }
+  const tick = async () => { if (rBusy || document.hidden) return; try { const n = await get(); if (!document.body.contains(root)) { clearInterval(rTimer); return; } const sig = x => JSON.stringify({ ...x, now: 0, video: { ...x.video, player: x.video?.player && { ...x.video.player, at: Date.now() - x.video.player.at < 15000 } } }); if (sig(n) === sig(rState)) return; rState = n; draw(); } catch (e) { if (e.message === 'forbidden') { root.innerHTML = '<p class="rc__wait">השלט פתוח רק לבעלים ולמנהלים.</p>'; clearInterval(rTimer); } } };
+  try { rState = await get(); draw(); } catch (e) { root.innerHTML = `<p class="rc__wait">${e.message === 'forbidden' ? 'השלט פתוח רק לבעלים ולמנהלים.' : 'אין חיבור למסכים כרגע. נסו שוב בעוד רגע.'}</p>`; return; }
+  rTimer = setInterval(tick, 3000);
 }
 
 /* ================= the home screen of the app ================= */
+const daysTo = d => Math.round((new Date(d + 'T12:00') - new Date(today() + 'T12:00')) / 864e5);
+const whenText = n => (n <= 0 ? 'היום' : n === 1 ? 'מחר' : n === 2 ? 'מחרתיים' : `בעוד ${n} ימים`);
+
 export async function appHome(pg, c, tiles) {
   ctx = c;
-  try { await load(true); } catch (e) { data = { events: [], can: {}, remote: {} }; }
+  try { await load(true); } catch (e) { data = { events: [], can: {} }; }
   const hr = new Date().getHours();
   const hello = hr < 5 ? 'לילה טוב' : hr < 12 ? 'בוקר טוב' : hr < 17 ? 'צהריים טובים' : hr < 21 ? 'ערב טוב' : 'לילה טוב';
   const name = c.me?.role === 'owner' ? '' : c.me?.name || '';
@@ -195,24 +269,40 @@ export async function appHome(pg, c, tiles) {
   const head = h(`<section class="ah">
     <p class="ah__date">${dayName(today())}</p>
     <h1 class="ah__hi">${hello}${name ? ', ' + esc(name) : ''}</h1>
-    ${next ? `<button type="button" class="ah__next" data-ev="${esc(next.id)}"><small>האירוע הבא</small><b>${esc(next.title)}</b><span>${dayName(next.date)}${next.time ? ' · ' + esc(next.time) : ''}${next.place ? ' · ' + esc(next.place) : ''}</span></button>` : ''}
   </section>`);
-  bindRows(head);
   pg.append(head);
-  const grid = h(`<section class="ah-grid">${tiles.map(t => `<button type="button" class="ah-tile" data-go="${t.id}">
-      <span class="ah-tile__ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="${t.icon}"/></svg></span>
-      <b>${esc(t.title)}</b><small>${esc(t.sub)}</small>${t.badge ? `<span class="ah-tile__n">${t.badge}</span>` : ''}</button>`).join('')}</section>`);
+  if (next) {
+    const n = daysTo(next.date);
+    const card = h(`<div class="inv-wrap"><button type="button" class="inv ev--${next.status}" data-ev="${esc(next.id)}">
+      <span class="inv__frame">
+        <small class="inv__kind">${n <= 0 ? 'האירוע של היום' : 'האירוע הבא'}${KIND[next.kind] && KIND[next.kind] !== next.title ? ' · ' + esc(KIND[next.kind]) : ''}</small>
+        <b class="inv__title">${esc(next.title)}</b>
+        <span class="inv__when">${dayName(next.date)}${next.time ? ', ' + esc(next.time) : ''}</span>
+        ${next.place ? `<span class="inv__place">${esc(next.place)}</span>` : ''}
+        <span class="inv__count">${whenText(n)}</span>
+      </span></button></div>`);
+    bindRows(card);
+    pg.append(card);
+  } else if (data.can?.edit) {
+    const empty = h(`<button type="button" class="inv inv--empty"><span class="inv__frame"><b class="inv__title">אין אירועים קרובים בלוח</b><span class="inv__when">מוסיפים את האירוע הראשון, והוא יופיע כאן</span></span></button>`);
+    empty.addEventListener('click', () => c.go('events'));
+    pg.append(empty);
+  }
+  const [lead, ...rest] = tiles;
+  const grid = h(`<nav class="ah-grid" aria-label="האפליקציה">${[lead, ...rest].filter(Boolean).map((t, i) => `<button type="button" class="ah-tile${i === 0 ? ' ah-tile--lead' : ''}" data-go="${t.id}">
+      <span class="ah-tile__ic">${`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="${t.icon}"/></svg>`}</span>
+      <span class="ah-tile__tx"><b>${esc(t.title)}</b><small>${esc(t.sub)}</small></span>${t.badge ? `<span class="ah-tile__n" aria-label="${t.badge} חדשות">${t.badge}</span>` : ''}</button>`).join('')}</nav>`);
   $$('[data-go]', grid).forEach(b => b.addEventListener('click', () => c.go(b.dataset.go)));
   pg.append(grid);
-  const up = upcoming(4);
+  const up = upcoming(5).filter(e => e.id !== next?.id).slice(0, 4);
   if (up.length) {
-    const l = h(`<section class="card"><div class="card__head"><div><h2>השבועות הקרובים</h2></div><div class="row-tools"><button class="btn btn--line btn--sm" type="button" data-cal>ללוח המלא</button></div></div><div class="ev-list">${up.map(evRow).join('')}</div></section>`);
+    const l = h(`<section class="ah-up"><div class="ah-up__head"><h2>בהמשך</h2><button class="ah-up__all" type="button" data-cal>כל הלוח</button></div><div class="ev-list">${up.map(evRow).join('')}</div></section>`);
     $('[data-cal]', l).addEventListener('click', () => c.go('events'));
     bindRows(l);
     pg.append(l);
   }
   // Who is logged in here + switch user (the phone's recordings go to the robot of the user logged in on it).
-  const who = h(`<section class="ah-who"><span>מחובר בתור <b>${esc(c.me?.role === 'owner' ? 'הבעלים' : c.me?.name || '')}</b></span><button type="button" class="btn btn--line btn--sm" data-switch>החלפת משתמש</button></section>`);
+  const who = h(`<section class="ah-who"><span>מחובר בתור <b>${esc(c.me?.role === 'owner' ? 'הבעלים' : c.me?.name || '')}</b></span><button type="button" class="ah-who__sw" data-switch>החלפת משתמש</button></section>`);
   $('[data-switch]', who).addEventListener('click', async () => {
     if (!confirm('לצאת ולהיכנס עם משתמש אחר?')) return;
     try { await fetch('/api/login', { method: 'DELETE' }); } catch (e) {}
