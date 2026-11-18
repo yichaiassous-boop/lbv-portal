@@ -29,6 +29,9 @@ const saveOwner = o => { fs.mkdirSync(path.dirname(ownerFile()), { recursive: tr
 const check = (pw, h) => { const [salt, v] = String(h).split(':'); return !!salt && crypto.scryptSync(String(pw), salt, 32).toString('base64url') === v; };
 const body = req => new Promise((ok, bad) => { const b = []; req.on('data', d => b.push(d)); req.on('end', () => ok(Buffer.concat(b))); req.on('error', bad); });
 
+/** What this manager sees (the real api/_areas.js, data in data/hotels.local.json). */
+async function areas(user) { process.env.LBV_LOCAL_DATA = path.join(root, "data", "hotels.local.json"); return (await import("../api/_areas.js")).areasOf({ id: user.id || (user.r === "owner" ? "owner" : user.n), r: user.r }); }
+
 async function api(req, res, p) {
   if (p === '/api/hotels' || p === '/api/events') {
     // The real handler (api/_hotels.js), with its data in data/hotels.local.json and this server's login.
@@ -41,7 +44,7 @@ async function api(req, res, p) {
     res.status = code => ({ json: obj => json(res, code, obj) });
     return hotels(req, res);
   }
-  if (p === '/api/config') { const s = authed(req); return json(res, 200, { storage: 'local', configured: Boolean(PASSWORD), authed: !!s, user: s ? { name: s.n, role: s.r } : null, leads: true }); }
+  if (p === '/api/config') { const s = authed(req); return json(res, 200, { storage: 'local', configured: Boolean(PASSWORD), authed: !!s, user: s ? { name: s.n, role: s.r, areas: await areas(s) } : null, leads: true }); }
   if (p === '/api/login') {
     if (req.method === 'DELETE') { res.writeHead(204, { 'Set-Cookie': 'lbv_admin=; Path=/; Max-Age=0' }); return res.end(); }
     const { username, password } = JSON.parse((await body(req)).toString() || '{}');
@@ -53,7 +56,7 @@ async function api(req, res, p) {
     if (!user) return json(res, 401, { error: 'wrong-password' });
     const id = crypto.randomUUID(); sessions.set(id, user);
     res.writeHead(200, { 'Content-Type': 'application/json', 'Set-Cookie': `lbv_admin=${id}; Path=/; HttpOnly; SameSite=Strict` });
-    return res.end(JSON.stringify({ ok: true, storage: 'local', user: { name: user.n, role: user.r } }));
+    return res.end(JSON.stringify({ ok: true, storage: 'local', user: { name: user.n, role: user.r, areas: await areas(user) } }));
   }
   if (p === '/api/content') {
     if (req.method === 'GET') { res.writeHead(204); return res.end(); } // local: the site reads content.json

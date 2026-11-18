@@ -1,3 +1,4 @@
+import { hasArea } from './_areas.js';
 import { isAuthed, can, storageReady, readBody } from './_lib.js';
 import { LEADS, leadsReady, saveLead, deleteLead, updateLead, loadLeads } from './_leads.js';
 
@@ -42,7 +43,7 @@ export default async function handler(req, res) {
 
   const s = isAuthed(req);
   if (!s) return res.status(401).json({ error: 'login' });
-  if (!can(s, 'leads')) return res.status(403).json({ error: 'forbidden' });
+  if (!can(s, 'leads') || !(await hasArea(s, 'leads'))) return res.status(403).json({ error: 'forbidden' });
 
   if (req.method === 'GET') return res.status(200).json(await loadLeads());
 

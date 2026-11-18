@@ -3,6 +3,7 @@ import { leadsReady } from './_leads.js';
 import { loadUsers, saveUsers, loadOwner, saveOwner } from './_users.js';
 import crypto from 'node:crypto';
 import { redis, redisReady } from './_redis.js';
+import { areasOf } from './_areas.js';
 
 // Too many wrong passwords from one place → wait 15 minutes. Only a hash of the address is kept, for 15 minutes.
 const TRIES = 8, WINDOW = 15 * 60;
@@ -49,5 +50,5 @@ export default async function handler(req, res) {
   }
   await cleared(req);
   res.setHeader('Set-Cookie', sessionCookie(user));
-  return res.status(200).json({ ok: true, storage: storageReady() ? 'blob' : 'none', user: { name: user.n, role: user.r } });
+  return res.status(200).json({ ok: true, storage: storageReady() ? 'blob' : 'none', user: { name: user.n, role: user.r, areas: await areasOf(user) } });
 }

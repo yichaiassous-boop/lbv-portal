@@ -14,7 +14,9 @@ import { hotelsPage } from "./hotels.js";
 import { eventsPage, remotePage, appHome, appSite } from "./events.js";
 const IN_APP = document.documentElement.classList.contains("lbv-app");   // inside the LBV phone app (or the iPhone home-screen app)
 
-let me = null; // the logged-in manager: { name, role }
+let me = null; // the logged-in manager: { name, role, areas }
+/** Does this manager have this area of the app (set by the owner in "מנהלים והרשאות")? */
+const has = a => !me || me.role === 'owner' || (me.areas || []).includes(a);
 let state = null, saved = '', storage = 'none', lang = 'he', page = 'dashboard', scopeId = 'top', leads = [], leadsReady = false;
 const docs = {};      // the site's own pages (he/fr/en), scanned: the originals of every text
 let maps = {};
@@ -301,15 +303,16 @@ const GROUPS = () => [
 ];
 /** Only the areas this manager may use. */
 const myGroups = () => GROUPS().map(g => ({ ...g, pages: g.pages.filter(p => pageAllowed(p.id)) })).filter(g => g.pages.length);
+// What a manager has no access to is not shown at all (the server refuses it too, see api/_areas.js).
 function pageAllowed(id) {
-  if (['inbox', 'mail', 'quotes'].includes(id)) return canDo('leads');
+  if (['inbox', 'mail', 'quotes', 'dashboard'].includes(id)) return canDo('leads') && has('leads');
   if (id === 'users') return canDo('users');
-  if (id === 'hotels') return true;
-  if (id === 'events' || id === 'apphome' || id === 'appsite') return true;   // the calendar: every manager sees it (what each may change is decided on the server)
-  if (id === 'remote') return ['owner', 'admin'].includes(me?.role || 'owner');   // every manager: each sees only their own surveys and those shared with them
-  if (id === 'dashboard') return canDo('leads');
+  if (id === 'apphome') return true;
+  if (id === 'events') return has('events');
+  if (id === 'hotels') return has('hotels');   // each sees only their own surveys and those shared with them
+  if (id === 'remote') return has('remote');
   if (['guide', 'support', 'stats', 'account'].includes(id)) return true;
-  return canDo('content');
+  return canDo('content') && has('site');
 }
 /** The tiles on the app home screen (only what this manager may open). */
 function appTiles() {
@@ -320,7 +323,7 @@ function appTiles() {
     { id: 'remote', title: 'השלט', sub: 'המסך של האירוע', icon: ICON.screens },
     { id: 'appsite', title: 'עריכת האתר', sub: 'טקסטים, תמונות, סרטונים', icon: ICON.pencil, need: 'w-home' },
     { id: 'inbox', title: 'פניות', sub: 'מי השאיר פרטים באתר', icon: ICON.inbox, badge: open || 0 },
-  ].filter(t => pageAllowed(t.need || t.id)).concat(['owner', 'admin'].includes(me?.role) ? SYSTEMS : []);
+  ].filter(t => pageAllowed(t.need || t.id)).concat(SYSTEMS.filter(t => has(t.id)));
 }
 /** The other LBV systems (their own sites and logins). Inside the Android app they open in the app too. */
 const SYSTEMS = [
@@ -1205,6 +1208,7 @@ const ROLE = {
 };
 const CAN = { content: ['owner', 'admin', 'editor'], leads: ['owner', 'admin', 'sales'], mail: ['owner', 'admin', 'sales'], users: ['owner'] };
 const canDo = perm => CAN[perm].includes(me?.role || 'owner');
+const AREA_NAME = { events: 'לוח אירועים', hotels: 'בדיקת מלונות', remote: 'השלט', simha: 'שמחה', gala: 'ערבי גאלה', site: 'עריכת האתר', leads: 'פניות והצעות מחיר' };
 async function users(pg) {
   const c = card('מנהלים והרשאות', 'כל מנהל נכנס עם שם משתמש וסיסמה משלו, ורואה רק את מה שמותר לו');
   c.append(html(`<div class="roles">${Object.entries(ROLE).map(([k, [n, d]]) => `<div><b>${n}</b>${d}</div>`).join('')}</div>`));
@@ -1241,9 +1245,11 @@ async function users(pg) {
       const row = html(`<div class="user"><span class="user__ava">${esc((u.name || '?').charAt(0))}</span>
         <div><b>${esc(u.name)}</b><small dir="auto">${esc(u.username)} · ${u.last ? 'נכנס לאחרונה ' + date(u.last) : 'עוד לא נכנס'}</small></div>
         <div class="row-tools"><select aria-label="הרשאה">${['admin', 'editor', 'sales'].map(k => `<option value="${k}" ${u.role === k ? 'selected' : ''}>${ROLE[k][0]}</option>`).join('')}</select>
-          <button type="button" class="btn btn--line btn--sm" data-pw>סיסמה חדשה</button><button type="button" class="icon icon--del" data-del title="הסרה">✕</button></div></div>`);
+          <button type="button" class="btn btn--line btn--sm" data-pw>סיסמה חדשה</button><button type="button" class="icon icon--del" data-del title="הסרה">✕</button></div>
+        <fieldset class="user__areas"><legend>מה ${esc(u.name)} רואה באפליקציה</legend>${(u.may || []).map(a => `<label class="chk"><input type="checkbox" value="${a}" ${(u.areas || []).includes(a) ? 'checked' : ''}><span>${AREA_NAME[a] || a}</span></label>`).join('')}</fieldset></div>`);
       const patch = async b => { const r2 = await fetch(`/api/users?id=${encodeURIComponent(u.id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) }); toast(r2.ok ? 'עודכן' : 'לא הצלחנו לעדכן', r2.ok ? 'ok' : 'err'); };
-      $('select', row).addEventListener('change', e => patch({ role: e.target.value }));
+      $('select', row).addEventListener('change', async e => { await patch({ role: e.target.value }); load(); });
+      $$('.user__areas input', row).forEach(x => x.addEventListener('change', () => patch({ areas: $$('.user__areas input', row).filter(y => y.checked).map(y => y.value) })));
       $('[data-pw]', row).addEventListener('click', () => { const pw = prompt(`סיסמה חדשה ל${u.name} (לפחות 8 תווים):`); if (pw && pw.length >= 8) patch({ password: pw }); else if (pw) toast('הסיסמה קצרה מדי', 'err'); });
       $('[data-del]', row).addEventListener('click', async () => { if (!confirm(`להסיר את ${u.name}? הוא לא יוכל להיכנס יותר.`)) return; const r2 = await fetch(`/api/users?id=${encodeURIComponent(u.id)}`, { method: 'DELETE' }); if (r2.ok) { toast('הוסר'); load(); } else toast('לא הצלחנו להסיר', 'err'); });
       list.append(row);

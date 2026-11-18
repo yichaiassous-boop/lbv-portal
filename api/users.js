@@ -2,11 +2,12 @@ import crypto from 'node:crypto';
 import { isAuthed, can, ROLES, hashPassword, readBody } from './_lib.js';
 import { leadsReady } from './_leads.js';
 import { loadUsers, saveUsers, publicUser, loadOwner, saveOwner } from './_users.js';
+import { AREAS, areasOf, setAreas, roleCan } from './_areas.js';
 
 // Managers, for the owner only.
 // GET    → the list (without passwords)
 // POST   { name, username, password, role }  → add
-// PATCH  ?id=  { name?, role?, password? }    → change
+// PATCH  ?id=  { name?, role?, password?, areas? } → change (areas: what the manager sees, see _areas.js)
 // DELETE ?id=                                  → remove
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
@@ -17,7 +18,10 @@ export default async function handler(req, res) {
 
   const list = await loadUsers();
   const owner = await loadOwner();
-  if (req.method === 'GET') return res.status(200).json({ owner: { username: owner.username, last: owner.last || '' }, users: list.map(publicUser) });
+  if (req.method === 'GET') {
+    const users = await Promise.all(list.map(async u => ({ ...publicUser(u), areas: await areasOf({ id: u.id, r: u.role }), may: AREAS.filter(a => roleCan(u.role, a)) })));
+    return res.status(200).json({ owner: { username: owner.username, last: owner.last || '' }, users, areas: AREAS });
+  }
 
   let b = {};
   if (req.method !== 'DELETE') { try { b = await readBody(req); } catch (e) { return res.status(400).json({ error: 'bad-json' }); } }
@@ -49,8 +53,9 @@ export default async function handler(req, res) {
     if (name) u.name = name;
     if (role) u.role = role;
     if (pw) { if (pw.length < 8) return res.status(400).json({ error: 'short' }); u.hash = hashPassword(pw); }
-    await saveUsers(list);
-    return res.status(200).json({ ok: true });
+    if (Array.isArray(b.areas)) { try { await setAreas(u.id, u.role, b.areas); } catch (e) { return res.status(503).json({ error: 'not-configured' }); } }
+    if (name || role || pw) await saveUsers(list);
+    return res.status(200).json({ ok: true, areas: await areasOf({ id: u.id, r: u.role }) });
   }
   if (req.method === 'DELETE') {
     await saveUsers(list.filter(x => x !== u));

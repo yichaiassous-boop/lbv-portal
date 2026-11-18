@@ -1,3 +1,4 @@
+import { hasArea } from './_areas.js';
 import crypto from 'node:crypto';
 import { list, put, get, del } from '@vercel/blob';
 import { isAuthed, can, readBody } from './_lib.js';
@@ -146,7 +147,7 @@ export default async function handler(req, res) {
   // ----- the admin -----
   const s = isAuthed(req);
   if (!s) return res.status(401).json({ error: 'login' });
-  if (!can(s, 'leads')) return res.status(403).json({ error: 'forbidden' });
+  if (!can(s, 'leads') || !(await hasArea(s, 'leads'))) return res.status(403).json({ error: 'forbidden' });
 
   if (url.searchParams.has('catalog')) {
     if (req.method === 'GET') return res.status(200).json(await readDoc(CATALOG, null) || { sections: null });

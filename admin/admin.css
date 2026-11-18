@@ -470,3 +470,10 @@ input:focus, textarea:focus, select:focus { outline: none; border-color: var(--g
 .bars--days { grid-template-columns: repeat(30, 1fr); gap: 3px; margin-top: 14px; }
 .bars--days small { font-size: .62rem; }
 .banner--link { display: block; width: 100%; text-align: start; cursor: pointer; border: 0; font: inherit; }
+
+/* what each manager sees (מנהלים והרשאות) */
+.user__areas { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 8px; margin: 2px 0 0; padding: 12px 0 0; border: 0; border-top: 1px solid var(--line); }
+.user__areas legend { float: right; width: 100%; margin-bottom: 8px; padding: 0; color: var(--ink-3, #667); font-size: .85rem; }
+.user__areas .chk { white-space: nowrap; display: inline-flex; align-items: center; gap: 7px; padding: 7px 12px; border-radius: 99px; border: 1px solid var(--line); background: #fff; cursor: pointer; font-size: .9rem; }
+.user__areas .chk:has(input:checked) { border-color: var(--gold, #C9A24A); background: #FBF6EA; }
+.user__areas input { accent-color: #B8892E; margin: 0; }

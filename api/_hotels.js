@@ -239,6 +239,7 @@ export default async function hotelsHandler(req, res) {
     /* ----- the admin ----- */
     const s = req.lbvUser || isAuthed(req);
     if (!s) return send(res, 401, { error: 'login' });
+    if (!(await (await import('./_areas.js')).hasArea(s, 'hotels'))) return send(res, 403, { error: 'forbidden' });
     const uid = meId(s);
 
     // "Did I already talk to this number?" → every hotel with that phone (or name) in the surveys I may see,

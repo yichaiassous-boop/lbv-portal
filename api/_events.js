@@ -7,6 +7,7 @@
 //   add / change an event   owner, admin, sales
 //   delete an event         owner, admin
 //   the screens remote      owner, admin          (same Redis keys as lbv-screens, see _screens.js)
+//   and only for a manager the owner gave that area (_areas.js: "events", "remote")
 //
 //   GET                                → { me, can, events }
 //   GET ?screens=1                     → the remote: step, prices, donations, video player
@@ -18,11 +19,12 @@ import crypto from 'node:crypto';
 import { isAuthed, readBody } from './_lib.js';
 import { hotelsReady, kv, getJ, setJ, allJ } from './_hotels.js';
 import { screensState, screensChange, openTicket } from './_screens.js';
+import { areasOf } from './_areas.js';
 
 const K = { events: 'ev:all' };
 const KINDS = ['wedding', 'barmitzvah', 'batmitzvah', 'shabbat', 'gala', 'holiday', 'other'];
 const STATUS = ['option', 'confirmed', 'done', 'cancelled'];
-const ROLES_EDIT = ['owner', 'admin', 'sales'], ROLES_DEL = ['owner', 'admin'], ROLES_REMOTE = ['owner', 'admin'];
+const ROLES_EDIT = ['owner', 'admin', 'sales'], ROLES_DEL = ['owner', 'admin'];
 
 const send = (res, code, obj) => res.status(code).json(obj);
 const now = () => new Date().toISOString();
@@ -53,7 +55,8 @@ export default async function eventsHandler(req, res) {
   const s = req.lbvUser || isAuthed(req);
   if (!s) return send(res, 401, { error: 'login' });
   const role = s.r, who = s.n || '';
-  const may = { edit: ROLES_EDIT.includes(role), del: ROLES_DEL.includes(role), remote: ROLES_REMOTE.includes(role) };
+  const ar = await areasOf(s);   // what the owner gave this manager (see _areas.js)
+  const may = { events: ar.includes('events'), edit: ar.includes('events') && ROLES_EDIT.includes(role), del: ar.includes('events') && ROLES_DEL.includes(role), remote: ar.includes('remote') };
   const url = new URL(req.url, 'http://x');
   let body = {};
   if (req.method === 'POST' || req.method === 'PUT') { try { body = (await readBody(req)) || {}; } catch (e) { return send(res, 400, { error: 'bad-json' }); } }
@@ -64,6 +67,7 @@ export default async function eventsHandler(req, res) {
       return send(res, 200, await screensState());
     }
     if (req.method === 'GET') {
+      if (!may.events) return send(res, 403, { error: 'forbidden' });
       const events = (await allJ(K.events)).sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || '')));
       return send(res, 200, { me: { name: who, role }, can: may, events });
     }

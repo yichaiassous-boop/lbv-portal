@@ -1,3 +1,4 @@
+import { hasArea } from './_areas.js';
 import { put, list, del } from '@vercel/blob';
 import { CONTENT_KEY, isAuthed, can, storageReady, validContent, readBody } from './_lib.js';
 
@@ -38,7 +39,7 @@ export default async function handler(req, res) {
   if (req.method === 'PUT') {
     const s = isAuthed(req);
     if (!s) return res.status(401).json({ error: 'login' });
-    if (!can(s, 'content')) return res.status(403).json({ error: 'forbidden' });
+    if (!can(s, 'content') || !(await hasArea(s, 'site'))) return res.status(403).json({ error: 'forbidden' });
     if (!storageReady()) return res.status(503).json({ error: 'not-configured' });
     let body;
     try { body = await readBody(req); } catch (e) { return res.status(400).json({ error: 'bad-json' }); }
