@@ -44,8 +44,9 @@ export async function hotelsPage(pg, c) {
     pg.innerHTML = '';
   }
   pg.append(modeBar());
-  pg.append(lookupCard());
-  if (openSurvey && cur) surveyView(pg); else homeView(pg);
+  if (openSurvey && cur) surveyView(pg); else { pg.append(lookupCard()); homeView(pg); }
+  lastSeen = lastSeen || home.connection?.last || null; startPolling();
+  if (!wizSeen) { const i = stepsState().findIndex(x => !x.done); if (i >= 0) setTimeout(() => openWizard(i), 500); else wizSeen = true; }
 }
 const again = () => ctx.rerender();
 async function refreshHome() { home = await api('GET'); }
@@ -65,19 +66,19 @@ function modeBar() {
       <span>${m.on ? `כל שיחה מעכשיו נכנסת ל<b>${esc(sv?.title || 'סקר')}</b> · מאז ${when(m.since)}` : 'שיחות לא נקראות. מדליקים לפני שמתחילים להתקשר למלונות.'}</span>
     </div>
     <div class="hs-mode__act">
-      ${m.on ? '' : `<select class="hs-sel" aria-label="לאיזה סקר">${home.surveys.map(s => `<option value="${s.id}" ${s.id === (openSurvey || home.surveys[0]?.id) ? 'selected' : ''}>${esc(s.title)}</option>`).join('')}</select>`}
+      ${m.on ? '' : `<select class="hs-sel" aria-label="לאיזו כרטיסייה">${home.surveys.map(s => `<option value="${s.id}" ${s.id === (openSurvey || home.surveys[0]?.id) ? 'selected' : ''}>${esc(s.title)}</option>`).join('')}</select>`}
       <button type="button" class="hs-switch" role="switch" aria-checked="${!!m.on}"><span></span>${m.on ? 'לכבות' : 'להדליק'}</button>
     </div>
-    <p class="hs-mode__con">${con.connected ? `<i class="dot ${con.ping && Date.now() - Date.parse(con.ping) < 20 * 60e3 ? 'ok' : 'warn'}"></i>החיבור לטלפון: בדיקה אחרונה ${ago(con.ping)}${con.last ? ` · שיחה אחרונה נקלטה ${ago(con.last)}` : ''}${con.skipped ? ` · ${con.skipped} שיחות לא קשורות דולגו` : ''}` : '<i class="dot no"></i>הטלפון עוד לא מחובר. <a href="#" data-connect>איך מחברים</a>'}</p>
+    <p class="hs-mode__con">${con.connected ? `<i class="dot ${con.ping && Date.now() - Date.parse(con.ping) < 20 * 60e3 ? 'ok' : 'warn'}"></i>החיבור לטלפון: בדיקה אחרונה ${ago(con.ping)}${con.last ? ` · שיחה אחרונה נקלטה ${ago(con.last)}` : ''}${con.skipped ? ` · ${con.skipped} שיחות לא קשורות דולגו` : ''}` : '<i class="dot no"></i>הטלפון עוד לא מחובר. <a href="#" data-connect>לשלבי החיבור</a>'}</p>
   </section>`);
   $('.hs-switch', el).addEventListener('click', async () => {
-    if (!m.on && !home.surveys.length) return ctx.toast('קודם פותחים סקר חדש', 'info');
+    if (!m.on && !home.surveys.length) return ctx.toast('קודם פותחים כרטיסייה', 'info');
     try {
       const r = await api('POST', '', { op: 'mode', on: !m.on, surveyId: m.on ? undefined : $('.hs-sel', el)?.value });
       home.mode = r.mode; ctx.toast(r.mode.on ? 'מצב סקר הודלק. אפשר להתחיל להתקשר' : 'מצב סקר כובה'); again();
     } catch (e) { fail(e); }
   });
-  $('[data-connect]', el)?.addEventListener('click', e => { e.preventDefault(); openSurvey = null; showConnect = true; again(); });
+  $('[data-connect]', el)?.addEventListener('click', e => { e.preventDefault(); openWizard(Math.max(0, stepsState().findIndex(x => !x.done))); });
   return el;
 }
 
@@ -91,26 +92,57 @@ const relDay = iso => {
   if (n < 14) return 'לפני שבוע'; if (n < 30) return `לפני ${Math.round(n / 7)} שבועות`;
   if (n < 60) return 'לפני חודש'; return `לפני ${Math.round(n / 30)} חודשים`;
 };
+/** Checks every 30 seconds (up to 15 minutes) whether the summary the owner asked for is ready. */
+function waitFor(pc, done) {
+  let n = 0;
+  const t = setInterval(async () => {
+    if (++n > 30) return clearInterval(t);
+    try {
+      const r = await api('GET', '?lookup=' + encodeURIComponent(pc.phone || pc.name));
+      const x = (r.phone || []).find(y => y.id === pc.id);
+      if (x?.sum) { clearInterval(t); Object.assign(pc, x); if (!x.sum.error) { notify('הסיכום מוכן', 'השיחה מ-' + when(pc.at)); done(); } }
+    } catch (e) { clearInterval(t); }
+  }, 30e3);
+}
 function lookupCard() {
-  const c = h(`<section class="card hs-look">
-    <form class="hs-look__f"><label class="hs-look__l" for="hs-look-in">דיברתי כבר עם המקום הזה?</label>
+  const here = openSurvey && cur ? cur.survey : null;   // inside a card: offer to add a hotel from another card
+  const c = h(`<section class="card hs-look" id="hs-look">
+    <form class="hs-look__f"><label class="hs-look__l" for="hs-look-in">${here ? 'בדיקת מלון שכבר דיברתי איתו' : 'דיברתי כבר עם המקום הזה?'}</label>
       <div class="hs-look__row"><input id="hs-look-in" type="search" inputmode="tel" placeholder="מספר טלפון של מלון (או שם)" value="${esc(look.text)}"><button class="btn btn--dark" type="submit">בדיקה</button></div></form>
     <div class="hs-look__out" aria-live="polite"></div></section>`);
   const out = $('.hs-look__out', c);
   const draw = () => {
     out.innerHTML = '';
     if (look.results == null) return;
-    if (!look.results.length) { out.append(h(`<p class="hint">לא מצאתי שיחה או מלון עם "${esc(look.text)}" באף סקר שלך.</p>`)); return; }
+    const phone = (look.phone || []).filter(pc => !look.results.some(r => r.last?.file?.id === pc.id));
+    if (!look.results.length && !phone.length) {
+      out.append(h(look.indexed
+        ? `<p class="hint">לא מצאתי שיחה עם "${esc(look.text)}" בטלפון, וגם לא מלון כזה באף כרטיסייה.</p>`
+        : `<p class="hint hint--box">עוד אין שיחות מהטלפון במערכת, כי הטלפון עוד לא מחובר. אחרי שלבי החיבור, כל השיחות שבטלפון ייבדקו כאן לפי מספר. <a href="#" data-wiz>לשלבי החיבור</a></p>`));
+      $('[data-wiz]', out)?.addEventListener('click', e => { e.preventDefault(); openWizard(Math.max(0, stepsState().findIndex(x => !x.done))); });
+      if (here) { const add = h('<button class="btn btn--gold btn--sm" type="button">+ להוסיף אותו כמלון חדש</button>'); add.addEventListener('click', () => { addOpen = true; addPrefill = /\d{6,}/.test(look.text.replace(/\D/g, '')) ? { phone: look.text } : { name: look.text }; again(); }); out.append(add); }
+      return;
+    }
     look.results.forEach((r, i) => {
       const [an, ac] = AV[r.avail] || AV.unknown;
+      const inHere = here && r.surveyId === here.id;
       const box = h(`<div class="hs-ans">
-        <p class="hs-ans__q"><b>${esc(r.name || 'מלון')}</b>${r.city ? ' · ' + esc(r.city) : ''}: ${r.calls ? `דיברת איתם <b>${relDay(r.lastAt)}</b> (${when(r.lastAt)})` : `נמצא בסקר, עוד בלי שיחה מוקלטת`} · סקר "${esc(r.survey)}"${r.calls ? '. רוצה סיכום של השיחה?' : ''}</p>
+        <p class="hs-ans__q"><b>${esc(r.name || 'מלון')}</b>${r.city ? ' · ' + esc(r.city) : ''}: ${r.calls ? `דיברת איתם <b>${relDay(r.lastAt)}</b> (${when(r.lastAt)})` : `נמצא, עוד בלי שיחה מוקלטת`} · ${inHere ? 'כבר בכרטיסייה הזאת' : `בכרטיסייה "${esc(r.survey)}"`}${r.calls ? '. רוצה סיכום של השיחה?' : ''}</p>
         <div class="row-tools hs-ans__yn"></div><div class="hs-ans__body"></div></div>`);
       const yn = $('.hs-ans__yn', box), body = $('.hs-ans__body', box);
       const openIt = h('<button class="btn btn--line btn--sm" type="button">לפתוח את המלון</button>');
-      openIt.addEventListener('click', () => { openSurvey = r.surveyId; openHotel = r.id; cur = null; again(); scrollTo({ top: 0 }); });
+      openIt.addEventListener('click', () => { openSurvey = r.surveyId; openHotel = r.id; cur = null; look = { text: '', results: null, open: null }; again(); scrollTo({ top: 0 }); });
+      const addHere = h(`<button class="btn btn--gold btn--sm" type="button">+ להוסיף לכרטיסייה הזאת</button>`);
+      addHere.addEventListener('click', async () => {
+        try {
+          const n = await api('POST', '', { op: 'copy', surveyId: here.id, fromSurvey: r.surveyId, id: r.id });
+          look = { text: '', results: null, open: null }; await refreshSurvey(); openHotel = n.id; again(); scrollTo({ top: 0 });
+          ctx.toast('המלון נוסף, עם כל ההיסטוריה שלו');
+        } catch (e) { fail(e); }
+      });
+      const acts = () => { yn.innerHTML = ''; if (here && !inHere) yn.append(addHere); yn.append(openIt); };
       const showSummary = () => {
-        yn.innerHTML = ''; yn.append(openIt);
+        acts();
         const l = r.last || {};
         body.innerHTML = `<span class="pill pill--${ac}">${an}</span>${r.availText ? ' ' + esc(r.availText) : ''}
           ${l.summary || r.summary ? `<p>${esc(l.summary || r.summary)}</p>` : ''}
@@ -119,22 +151,58 @@ function lookupCard() {
           ${r.followUp || r.followWhat ? `<p class="hs-follow">לחזור${r.followUp ? ' ב-' + dmy(r.followUp) : ''}${r.followWhat ? ': ' + esc(r.followWhat) : ''}</p>` : ''}
           ${l.file?.url ? `<a class="btn btn--line btn--sm" href="${esc(l.file.url)}" target="_blank" rel="noopener">להאזנה להקלטה</a>` : ''}`;
       };
-      if (!r.calls) yn.append(openIt);
+      if (!r.calls) acts();
       else if (look.open === i) showSummary();
       else {
         const yes = h('<button class="btn btn--gold btn--sm" type="button">כן, סיכום</button>'), no = h('<button class="btn btn--line btn--sm" type="button">לא</button>');
         yes.addEventListener('click', () => { look.open = i; showSummary(); });
         no.addEventListener('click', () => { look.results.splice(i, 1); if (!look.results.length) { look.results = null; look.text = ''; $('#hs-look-in', c).value = ''; } draw(); });
         yn.append(yes, no);
+        if (here && !inHere) yn.append(addHere);
       }
       out.append(box);
     });
+    phone.forEach(pc => out.append(phoneCall(pc)));
+  };
+  // A call found on the phone (outside any card): "you talked N days ago, want a summary?" → yes → the robot listens to it
+  const phoneCall = pc => {
+    const who = pc.name.replace(/\.[a-z0-9]{2,4}$/i, '').replace(/[_ ]?\d{6}[_ -]\d{6}.*$/, '').replace(/^(call ?recording|recording|call)[ _-]*/i, '').trim() || pc.phone;
+    const box = h(`<div class="hs-ans hs-ans--phone">
+      <p class="hs-ans__q">שיחה בטלפון עם <b><bdi>${esc(who)}</bdi></b>: דיברת <b>${relDay(pc.at)}</b> (${when(pc.at)}).${pc.sum && !pc.sum.error ? '' : ' רוצה סיכום של השיחה?'}</p>
+      <div class="row-tools hs-ans__yn"></div><div class="hs-ans__body"></div></div>`);
+    const yn = $('.hs-ans__yn', box), body = $('.hs-ans__body', box);
+    const show = () => {
+      const sm = pc.sum;
+      yn.innerHTML = pc.url ? `<a class="btn btn--line btn--sm" href="${esc(pc.url)}" target="_blank" rel="noopener">להאזנה להקלטה</a>` : '';
+      body.innerHTML = `${sm.duration ? `<small>אורך השיחה ${esc(sm.duration)}</small>` : ''}<p>${esc(sm.summary)}</p>
+        ${(sm.quotes || []).length ? `<ul class="ev__q">${sm.quotes.map(q => `<li><time>${esc(q.time)}</time>${q.who ? `<b>${esc(q.who)}:</b> ` : ''}"${esc(q.text)}"</li>`).join('')}</ul>` : ''}
+        ${sm.transcript ? `<details class="ev__tr"><summary>כל השיחה</summary><p>${esc(sm.transcript).replace(/\n/g, '<br>')}</p></details>` : ''}`;
+      if (here) { const wa = h('<button class="btn btn--line btn--sm" type="button">לשלוח כהוכחה בוואטסאפ</button>'); wa.addEventListener('click', () => window.open('https://wa.me/?text=' + encodeURIComponent(`שיחה מ-${when(pc.at)} עם ${who}:\n${sm.summary}\n${(sm.quotes || []).map(q => `[${q.time}] "${q.text}"`).join('\n')}`), '_blank')); yn.append(wa); }
+    };
+    const waiting = () => { yn.innerHTML = ''; body.innerHTML = '<p class="hs-wait">המערכת מקשיבה לשיחה עכשיו. הסיכום יופיע כאן תוך כ-5 דקות, ותקבל התראה.</p>'; };
+    const ask = async () => {
+      try {
+        const r = await api('POST', '', { op: 'ask', id: pc.id });
+        Object.assign(pc, r);
+        if (pc.sum && !pc.sum.error) return show();
+        waiting(); waitFor(pc, () => { if (box.isConnected) show(); });
+      } catch (e) { fail(e); }
+    };
+    if (pc.sum && !pc.sum.error) show();
+    else if (pc.ask) { waiting(); waitFor(pc, () => { if (box.isConnected) show(); }); }
+    else {
+      const yes = h('<button class="btn btn--gold btn--sm" type="button">כן, סיכום</button>'), no = h('<button class="btn btn--line btn--sm" type="button">לא</button>');
+      yes.addEventListener('click', ask); no.addEventListener('click', () => box.remove());
+      yn.append(yes, no);
+      if (pc.sum?.error) body.innerHTML = '<p class="hint">בפעם הקודמת לא הצלחתי לקרוא את ההקלטה. אפשר לנסות שוב.</p>';
+    }
+    return box;
   };
   $('form', c).addEventListener('submit', async e => {
     e.preventDefault();
     look.text = $('#hs-look-in', c).value.trim(); look.open = null;
     if (!look.text) { look.results = null; return draw(); }
-    try { look.results = (await api('GET', '?lookup=' + encodeURIComponent(look.text))).results; } catch (e2) { fail(e2); look.results = null; }
+    try { const r = await api('GET', '?lookup=' + encodeURIComponent(look.text)); look.results = r.results; look.phone = r.phone || []; look.indexed = r.indexed; } catch (e2) { fail(e2); look.results = null; }
     draw();
   });
   draw();
@@ -144,14 +212,14 @@ function lookupCard() {
 /* ---------- home: the surveys ---------- */
 let showConnect = false, newOpen = false;
 function homeView(pg) {
-  const list = h(`<section class="card"><div class="card__head"><div><h2>הסקרים</h2><p>כל סקר הוא תאריכים אחד ורשימת מלונות. רואים רק אתם ומי שבחרתם לשתף.</p></div>
-    <div class="row-tools"><button class="btn btn--gold" type="button" data-new>+ סקר חדש</button></div></div><div class="hs-surveys"></div></section>`);
+  const list = h(`<section class="card"><div class="card__head"><div><h2>הכרטיסיות שלי</h2><p>כרטיסייה לכל אירוע: שם, סוג ותאריך. בפנים מוסיפים מלונות. רואים רק אתם ומי שבחרתם לשתף.</p></div>
+    <div class="row-tools"><button class="btn btn--gold" type="button" data-new>+ כרטיסייה חדשה</button></div></div><div class="hs-surveys"></div></section>`);
   const box = $('.hs-surveys', list);
-  if (!home.surveys.length) box.append(h('<p class="hint">עוד אין סקרים. פותחים סקר, בוחרים תאריכים, ומדליקים "מצב סקר" לפני שמתקשרים.</p>'));
+  if (!home.surveys.length) box.append(h('<p class="hint">עוד אין כרטיסיות. פותחים כרטיסייה לאירוע (למשל "שבת חתן משפחת כהן"), ובפנים מוסיפים מלונות.</p>'));
   for (const s of home.surveys) {
     const b = h(`<button type="button" class="hs-sv">
       <b>${esc(s.title)}</b>
-      <span>${s.from ? dmy(s.from) + (s.to && s.to !== s.from ? ' – ' + dmy(s.to) : '') : 'בלי תאריכים'}${s.area ? ' · ' + esc(s.area) : ''}</span>
+      <span>${s.kind ? esc(s.kind) + ' · ' : ''}${s.from ? dmy(s.from) + (s.to && s.to !== s.from ? ' – ' + dmy(s.to) : '') : 'בלי תאריכים'}${s.area ? ' · ' + esc(s.area) : ''}</span>
       <span class="hs-sv__n"><em>${s.count}</em> מלונות · <em>${s.avail}</em> עם מקום${s.follow ? ` · <em class="w">${s.follow}</em> לחזור` : ''}</span>
       <small>${s.mine ? 'שלי' : 'שותף איתי · ' + esc(s.by?.name || '')}${home.mode?.on && home.mode.surveyId === s.id ? ' · <b class="live">פעיל עכשיו</b>' : ''}</small>
     </button>`);
@@ -159,81 +227,174 @@ function homeView(pg) {
     box.append(b);
   }
   $('[data-new]', list).addEventListener('click', () => { newOpen = !newOpen; again(); });
-  if (newOpen) pg.append(surveyForm());
   pg.append(list);
+  if (newOpen) list.after(surveyForm());
   pg.append(connectCard());
 }
 
+const KINDS = ['שבת חתן', 'בר מצווה', 'בת מצווה', 'חתונה', 'חג', 'אחר'];
 function surveyForm(sv) {
-  const s = sv || { title: '', from: '', to: '', need: '', area: '', note: '', levels: ['רגיל', 'משודרג', 'סוויטה', 'חבילת שבת', 'אולם וסעודות'], mailLang: 'he', sheet: true };
+  const s = sv || { title: '', kind: 'שבת חתן', from: '', to: '', need: '', area: '', note: '', levels: ['רגיל', 'משודרג', 'סוויטה', 'חבילת שבת', 'אולם וסעודות'], mailLang: 'he', sheet: true };
   const f = h(`<form class="card hs-form">
-    <h2>${sv ? 'פרטי הסקר' : 'סקר חדש'}</h2>
+    <h2>${sv ? 'פרטי הכרטיסייה' : 'כרטיסייה חדשה'}</h2>
+    <label class="field"><span>שם</span><input name="title" required placeholder="למשל: שבת חתן משפחת כהן" value="${esc(s.title)}"></label>
     <div class="grid2">
-      <label class="field"><span>שם הסקר</span><input name="title" required placeholder="למשל: שבת חתן משפחת כהן" value="${esc(s.title)}"></label>
-      <label class="field"><span>אזור</span><input name="area" placeholder="למשל: טבריה והכנרת" value="${esc(s.area)}"></label>
-      <label class="field"><span>מתאריך</span><input name="from" type="date" value="${esc(s.from)}"></label>
-      <label class="field"><span>עד תאריך</span><input name="to" type="date" value="${esc(s.to)}"></label>
+      <label class="field"><span>מה זה</span><select name="kind">${[...new Set([...KINDS, s.kind].filter(Boolean))].map(k => `<option ${s.kind === k ? 'selected' : ''}>${esc(k)}</option>`).join('')}</select></label>
+      <label class="field"><span>תאריך</span><input name="from" type="date" required value="${esc(s.from)}"></label>
     </div>
-    <label class="field"><span>מה צריך (נכנס גם למייל למלון)</span><input name="need" placeholder="למשל: שבת חתן, 25 חדרים, אולם ל-120 איש, 3 סעודות, כשרות מהדרין" value="${esc(s.need)}"></label>
-    <label class="field"><span>רמות מחיר (מופרדות בפסיק)</span><input name="levels" value="${esc((s.levels || []).join(', '))}"></label>
-    <div class="grid2">
-      <label class="field"><span>שפת המייל למלונות</span><select name="mailLang">${[['he', 'עברית'], ['fr', 'צרפתית'], ['en', 'אנגלית']].map(([v, n]) => `<option value="${v}" ${s.mailLang === v ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
-      <label class="field hs-check"><input type="checkbox" name="sheet" ${s.sheet !== false ? 'checked' : ''}><span>לעדכן גיליון בגוגל שיטס אוטומטית</span></label>
-    </div>
-    <label class="field"><span>הערות לעצמי</span><textarea name="note" rows="2">${esc(s.note)}</textarea></label>
-    <div class="row-tools"><button class="btn btn--gold" type="submit">${sv ? 'שמירה' : 'פתיחת הסקר'}</button><button class="btn btn--line" type="button" data-x>ביטול</button>
-    ${sv?.manage ? '<button class="btn btn--danger btn--sm hs-push" type="button" data-del>מחיקת הסקר</button>' : ''}</div>
+    <details class="hs-more" ${sv ? 'open' : ''}><summary>עוד פרטים (לא חובה)</summary>
+      <div class="grid2">
+        <label class="field"><span>עד תאריך</span><input name="to" type="date" value="${esc(s.to)}"></label>
+        <label class="field"><span>אזור</span><input name="area" placeholder="למשל: טבריה והכנרת" value="${esc(s.area)}"></label>
+      </div>
+      <label class="field"><span>מה צריך (נכנס גם למייל למלון)</span><input name="need" placeholder="למשל: 25 חדרים, אולם ל-120 איש, 3 סעודות, כשרות מהדרין" value="${esc(s.need)}"></label>
+      <label class="field"><span>רמות מחיר (מופרדות בפסיק)</span><input name="levels" value="${esc((s.levels || []).join(', '))}"></label>
+      <div class="grid2">
+        <label class="field"><span>שפת המייל למלונות</span><select name="mailLang">${[['he', 'עברית'], ['fr', 'צרפתית'], ['en', 'אנגלית']].map(([v, n]) => `<option value="${v}" ${s.mailLang === v ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
+        <label class="field hs-check"><input type="checkbox" name="sheet" ${s.sheet !== false ? 'checked' : ''}><span>לעדכן גיליון בגוגל שיטס אוטומטית</span></label>
+      </div>
+      <label class="field"><span>הערות לעצמי</span><textarea name="note" rows="2">${esc(s.note)}</textarea></label>
+    </details>
+    <div class="row-tools"><button class="btn btn--gold" type="submit">${sv ? 'שמירה' : 'פתיחת הכרטיסייה'}</button><button class="btn btn--line" type="button" data-x>ביטול</button>
+    ${sv?.manage ? '<button class="btn btn--danger btn--sm hs-push" type="button" data-del>מחיקת הכרטיסייה</button>' : ''}</div>
   </form>`);
+  // Shabbat: Friday chosen -> "until" becomes the Saturday by itself
+  const fromIn = $('[name=from]', f), toIn = $('[name=to]', f), kindIn = $('[name=kind]', f);
+  const autoTo = () => { if (!fromIn.value || toIn.dataset.touched) return; const d = new Date(fromIn.value + 'T12:00'); if (/שבת/.test(kindIn.value) && d.getDay() === 5) { d.setDate(d.getDate() + 1); toIn.value = d.toISOString().slice(0, 10); } };
+  fromIn.addEventListener('change', autoTo); kindIn.addEventListener('change', autoTo); toIn.addEventListener('input', () => { toIn.dataset.touched = 1; });
   f.addEventListener('submit', async e => {
     e.preventDefault();
     const d = Object.fromEntries(new FormData(f));
     try {
-      const r = await api('POST', '', { op: 'survey', id: sv?.id, title: d.title, area: d.area, from: d.from, to: d.to, need: d.need, note: d.note, mailLang: d.mailLang, sheet: !!d.sheet, levels: d.levels.split(/[,،]/).map(x => x.trim()).filter(Boolean) });
+      const r = await api('POST', '', { op: 'survey', id: sv?.id, title: d.title, kind: d.kind, area: d.area, from: d.from, to: d.to, need: d.need, note: d.note, mailLang: d.mailLang, sheet: !!d.sheet, levels: d.levels.split(/[,،]/).map(x => x.trim()).filter(Boolean) });
       newOpen = false; editSurvey = false; await refreshHome();
-      if (!sv) { openSurvey = r.id; ctx.toast('הסקר נפתח'); } else { await refreshSurvey(); ctx.toast('נשמר'); }
+      if (!sv) { openSurvey = r.id; ctx.toast('הכרטיסייה נפתחה. עכשיו מוסיפים מלונות'); } else { await refreshSurvey(); ctx.toast('נשמר'); }
       again();
     } catch (e2) { fail(e2); }
   });
   $('[data-x]', f).addEventListener('click', () => { newOpen = false; editSurvey = false; again(); });
   $('[data-del]', f)?.addEventListener('click', async () => {
-    if (!confirm(`למחוק את הסקר "${sv.title}" עם כל המלונות, השיחות והמיילים שבו? אי אפשר לבטל.`)) return;
-    try { await api('DELETE', '?survey=' + sv.id); openSurvey = null; cur = null; editSurvey = false; await refreshHome(); again(); ctx.toast('הסקר נמחק'); } catch (e) { fail(e); }
+    if (!confirm(`למחוק את הכרטיסייה "${sv.title}" עם כל המלונות, השיחות והמיילים שבו? אי אפשר לבטל.`)) return;
+    try { await api('DELETE', '?survey=' + sv.id); openSurvey = null; cur = null; editSurvey = false; await refreshHome(); again(); ctx.toast('הכרטיסייה נמחקה'); } catch (e) { fail(e); }
   });
   return f;
 }
 
-/* ---------- connecting the phone (one time) ---------- */
-let newKey = '';
+/* ---------- connecting (one time): 4 steps that pop up by themselves ---------- */
+let newKey = '', wizStep = null, wizSeen = false, installEvt = null;
+addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; });
+addEventListener('appinstalled', () => { markStep('home'); });
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('/admin/sw.js', { scope: '/admin/' }).catch(() => {});
+const PLAY = 'https://play.google.com/store/apps/details?id=com.ttxapps.drivesync';
+const marks = () => { try { return JSON.parse(localStorage.getItem('hs-setup') || '{}'); } catch (e) { return {}; } };
+function markStep(id) { try { localStorage.setItem('hs-setup', JSON.stringify({ ...marks(), [id]: 1 })); } catch (e) {} }
+const standalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+function stepsState() {
+  const con = home.connection || {}, m = marks();
+  return [
+    { id: 'google', done: !!con.connected, title: 'חיבור לחשבון הגוגל של LBV',
+      why: 'רובוט קטן בחשבון הגוגל של LBV שעושה את כל העבודה לבד:',
+      items: ['קורא את תיקיית "הקלטות שיחות" בדרייב', 'שולח מיילים למלונות מהמייל של LBV וקורא את התשובות', 'מעדכן גיליון בגוגל שיטס'],
+      fine: 'לוחצים "יצירת מפתח", ואת ההתקנה בחשבון של LBV עושים ביחד פעם אחת (כ-5 דקות). בהפעלה הראשונה גוגל מקפיץ חלון "לאשר גישה?" ולוחצים "אישור". השלב מסתמן לבד כשהרובוט מתחבר.' },
+    { id: 'rec', done: !!m.rec || !!con.last, title: 'שההקלטות יגיעו למערכת לבד',
+      why: 'הטלפון כבר מקליט כל שיחה. מתקינים פעם אחת אפליקציה חינמית שמעבירה את ההקלטות לדרייב של LBV:',
+      items: ['לוחצים על הכפתור: נפתחת חנות Google Play עם Autosync for Google Drive', 'מתקינים, ונכנסים עם חשבון הגוגל של LBV', 'בוחרים בטלפון את תיקיית הקלטות השיחות ומחברים אותה לתיקייה "הקלטות שיחות" בדרייב'],
+      fine: 'זה השלב היחיד שלא יכול לקפוץ מהאתר, כי אנדרואיד לא נותן לאתרים לגשת להקלטות.' },
+    { id: 'notify', done: typeof Notification !== 'undefined' && Notification.permission === 'granted', title: 'התראות לטלפון',
+      why: 'הטלפון יודיע לך כש:', items: ['שיחה עם מלון נקלטה ונכנסה לכרטיסייה', 'סיכום שביקשת על שיחה מוכן'],
+      fine: 'ההתראות מגיעות כשהסקר פתוח בטלפון, גם ברקע. אנדרואיד מקפיץ עכשיו "לאפשר התראות?" ולוחצים "אישור".' },
+    { id: 'home', done: !!m.home || standalone(), title: 'אייקון על מסך הבית',
+      why: 'כדי שהסקר ייפתח בלחיצה אחת, כמו אפליקציה:', items: ['אייקון "סקר מלונות" עם הלוגו של LBV', 'נפתח ישר לכרטיסיות ולמתג "מצב סקר"'],
+      fine: 'כרום מקפיץ "להוסיף למסך הבית?" ולוחצים "הוספה". אם לא קפץ: בכרום לוחצים ⋮ למעלה ואז "הוספה למסך הבית".' },
+  ];
+}
 function connectCard() {
-  const con = home.connection || {};
-  const c = h(`<details class="card hs-connect" ${showConnect || !con.connected ? 'open' : ''}>
-    <summary><h2>חיבור הטלפון והמייל (פעם אחת)</h2><span>${con.connected ? 'מחובר' : 'עוד לא מחובר'}</span></summary>
-    <ol class="hs-steps">
-      <li><b>הטלפון מקליט שיחות</b> (כבר מוגדר אצלכם).</li>
-      <li><b>הקלטות עולות לדרייב לבד:</b> מתקינים בטלפון העבודה את האפליקציה Autosync for Google Drive, נכנסים עם חשבון הגוגל של LBV, ומחברים את תיקיית הקלטות השיחות לתיקייה בדרייב בשם <b>הקלטות שיחות</b>.</li>
-      <li><b>הרובוט בגוגל:</b> סקריפט קטן בחשבון של LBV שקורא את ההקלטות, שולח מיילים ומעדכן את הגיליון. אנחנו מתקינים אותו ביחד. הוא צריך את המפתח הזה:</li>
-    </ol>
-    <div class="row-tools"><button class="btn btn--dark btn--sm" type="button" data-key>${con.connected ? 'מפתח חדש (הישן יפסיק לעבוד)' : 'יצירת מפתח'}</button></div>
-    ${newKey ? `<p class="hs-key"><code>${esc(newKey)}</code><button class="btn btn--line btn--sm" type="button" data-copy>העתקה</button><small>המפתח מוצג רק עכשיו. מדביקים אותו בסקריפט בשדה LBV_KEY.</small></p>` : ''}
-    <p class="hint hint--box">שיחות נקראות רק בזמן ש"מצב סקר" דולק. גם אז, שיחה שאינה עם מלון מדולגת ולא נשמר ממנה כלום.</p>
-  </details>`);
-  $('[data-key]', c).addEventListener('click', async () => {
-    if (con.connected && !confirm('ליצור מפתח חדש? הסקריפט יפסיק לעבוד עד שמדביקים בו את החדש.')) return;
-    try { newKey = (await api('POST', '', { op: 'connect' })).key; await refreshHome(); showConnect = true; again(); } catch (e) { fail(e); }
-  });
-  $('[data-copy]', c)?.addEventListener('click', () => copy(newKey, 'המפתח הועתק'));
+  const st = stepsState(), n = st.filter(x => x.done).length;
+  const c = h(`<section class="card hs-setup">
+    <div class="card__head"><div><h2>חיבור למערכת: ${n} מתוך 4</h2><p>${n === 4 ? 'הכול מחובר.' : 'ארבעה אישורים, פעם אחת. אחריהם הכול עובד לבד.'}</p></div>
+    ${n < 4 ? '<div class="row-tools"><button class="btn btn--gold" type="button" data-wiz>להמשיך בחיבור</button></div>' : ''}</div>
+    <ol class="hs-setup__list">${st.map((x, i) => `<li class="${x.done ? 'ok' : ''}"><button type="button" data-i="${i}"><i>${x.done ? '✓' : i + 1}</i><b>${esc(x.title)}</b><span>${x.done ? 'מחובר' : 'לא עדיין'}</span></button></li>`).join('')}</ol>
+  </section>`);
+  $('[data-wiz]', c)?.addEventListener('click', () => openWizard(st.findIndex(x => !x.done)));
+  $$('[data-i]', c).forEach(b => b.addEventListener('click', () => openWizard(+b.dataset.i)));
   return c;
+}
+/** The pop-up sheet, one step at a time (opens by itself the first time the page is entered while steps are missing). */
+function openWizard(i) {
+  $('.hs-wiz')?.remove();
+  const st = stepsState();
+  if (i < 0 || i >= st.length) { again(); return; }
+  wizStep = i; wizSeen = true;
+  const x = st[i], con = home.connection || {};
+  const act = {
+    google: `<button class="btn btn--gold" type="button" data-go>${con.connected ? 'מחובר. הלאה' : 'יצירת מפתח'}</button>`,
+    rec: `<a class="btn btn--gold" href="${PLAY}" target="_blank" rel="noopener" data-go>פתיחת Google Play</a><button class="btn btn--line" type="button" data-done>כבר התקנתי</button>`,
+    notify: `<button class="btn btn--gold" type="button" data-go>${x.done ? 'מאושר. הלאה' : 'לאפשר התראות'}</button>`,
+    home: `<button class="btn btn--gold" type="button" data-go>${x.done ? 'יש אייקון. סיום' : 'הוספה למסך הבית'}</button>`,
+  }[x.id];
+  const w = h(`<div class="hs-wiz" role="dialog" aria-modal="true" aria-label="${esc(x.title)}"><div class="hs-wiz__sheet">
+    <div class="hs-wiz__dots">${st.map((y, j) => `<i class="${y.done ? 'ok' : ''} ${j === i ? 'cur' : ''}"></i>`).join('')}</div>
+    <small class="hs-wiz__k">שלב ${i + 1} מתוך 4${x.done ? ' · מחובר' : ''}</small>
+    <h3>${esc(x.title)}</h3>
+    <p>${esc(x.why)}</p>
+    <ul>${x.items.map(t => `<li>${esc(t)}</li>`).join('')}</ul>
+    ${x.id === 'google' && newKey ? `<p class="hs-key"><code>${esc(newKey)}</code><button class="btn btn--line btn--sm" type="button" data-copy>העתקה</button><small>המפתח מוצג רק עכשיו. שומרים אותו להתקנה.</small></p>` : ''}
+    <p class="hs-wiz__fine">${esc(x.fine)}</p>
+    <div class="hs-wiz__act">${act}</div>
+    <div class="hs-wiz__nav"><button type="button" data-later>אחר כך</button>${i < 3 ? '<button type="button" data-next>לשלב הבא ←</button>' : ''}</div>
+  </div></div>`);
+  const next = () => { const s2 = stepsState(); const j = s2.findIndex((y, k) => k > i && !y.done); if (j < 0) { w.remove(); ctx.toast(s2.every(y => y.done) ? 'הכול מחובר' : 'אפשר להמשיך מתי שרוצים מהכרטיס "חיבור למערכת"'); again(); } else openWizard(j); };
+  $('[data-later]', w).addEventListener('click', () => { w.remove(); again(); });
+  $('[data-next]', w)?.addEventListener('click', next);
+  w.addEventListener('click', e => { if (e.target === w) { w.remove(); again(); } });
+  $('[data-copy]', w)?.addEventListener('click', () => copy(newKey, 'המפתח הועתק'));
+  $('[data-done]', w)?.addEventListener('click', () => { markStep('rec'); next(); });
+  $('[data-go]', w).addEventListener('click', async e => {
+    if (x.id === 'google') {
+      if (con.connected) return next();
+      try { newKey = (await api('POST', '', { op: 'connect' })).key; await refreshHome(); openWizard(i); } catch (e2) { fail(e2); }
+    } else if (x.id === 'rec') { markStep('rec'); setTimeout(next, 400); }
+    else if (x.id === 'notify') {
+      if (x.done) return next();
+      if (typeof Notification === 'undefined') { ctx.toast('הדפדפן הזה לא תומך בהתראות. פותחים בכרום בטלפון', 'info'); return; }
+      const r = await Notification.requestPermission();
+      if (r === 'granted') { notify('ההתראות פועלות', 'כך תיראה התראה על שיחה חדשה עם מלון'); next(); }
+      else ctx.toast('ההתראות נחסמו. אפשר לאשר אחר כך בהגדרות האתר בכרום', 'info');
+    } else if (x.id === 'home') {
+      if (x.done) return next();
+      if (installEvt) { installEvt.prompt(); const r = await installEvt.userChoice; installEvt = null; if (r.outcome === 'accepted') { markStep('home'); next(); } }
+      else ctx.toast('בכרום לוחצים ⋮ למעלה ואז "הוספה למסך הבית"', 'info');
+    }
+  });
+  document.body.append(w);
+}
+function notify(title, body) {
+  try { navigator.serviceWorker?.getRegistration('/admin/').then(r => r ? r.showNotification(title, { body, icon: '/media/icon-gold.png', lang: 'he', dir: 'rtl' }) : new Notification(title, { body, icon: '/media/icon-gold.png' })); } catch (e) {}
+}
+// While the page is open (also in the background): tell about new calls and ready summaries.
+let lastSeen = null, pollT = null;
+function startPolling() {
+  if (pollT) return;
+  pollT = setInterval(async () => {
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+    try {
+      const r = await fetch('/api/hotels'); if (!r.ok) return; const j = await r.json();
+      const last = j.connection?.last || null;
+      if (lastSeen && last && last !== lastSeen) notify('שיחה חדשה עם מלון נקלטה', 'פותחים את סקר המלונות לראות מה נכנס');
+      lastSeen = last;
+    } catch (e) {}
+  }, 120e3);
 }
 async function copy(text, ok) { try { await navigator.clipboard.writeText(text); ctx.toast(ok); } catch (e) { prompt('העתיקו:', text); } }
 
 /* ---------- one survey ---------- */
-let editSurvey = false, shareOpen = false, addOpen = false;
+let editSurvey = false, shareOpen = false, addOpen = false, addPrefill = null, lookOpen = false;
 function surveyView(pg) {
   const { survey: sv, hotels } = cur;
   const head = h(`<section class="card hs-head">
-    <button type="button" class="hs-back" data-back>→ כל הסקרים</button>
+    <button type="button" class="hs-back" data-back>→ כל הכרטיסיות</button>
     <div class="hs-head__t"><h2>${esc(sv.title)}</h2>
-      <p>${sv.from ? 'תאריכים: ' + dmy(sv.from) + (sv.to && sv.to !== sv.from ? ' – ' + dmy(sv.to) : '') : 'בלי תאריכים'}${sv.area ? ' · ' + esc(sv.area) : ''}${sv.need ? ' · ' + esc(sv.need) : ''}</p></div>
+      <p>${sv.kind ? esc(sv.kind) + ' · ' : ''}${sv.from ? 'תאריך: ' + dmy(sv.from) + (sv.to && sv.to !== sv.from ? ' – ' + dmy(sv.to) : '') : 'בלי תאריכים'}${sv.area ? ' · ' + esc(sv.area) : ''}${sv.need ? ' · ' + esc(sv.need) : ''}</p></div>
     <div class="hs-tools">
       <button class="btn btn--gold btn--sm" type="button" data-wa>סיכום לוואטסאפ</button>
       ${sv.sheetUrl ? `<a class="btn btn--line btn--sm" href="${esc(sv.sheetUrl)}" target="_blank" rel="noopener">הגיליון בגוגל</a>` : ''}
@@ -241,7 +402,7 @@ function surveyView(pg) {
       ${sv.manage ? '<button class="btn btn--line btn--sm" type="button" data-share>שיתוף</button><button class="btn btn--line btn--sm" type="button" data-edit>עריכה</button>' : ''}
     </div>
   </section>`);
-  $('[data-back]', head).addEventListener('click', () => { openSurvey = null; cur = null; openHotel = null; again(); });
+  $('[data-back]', head).addEventListener('click', () => { openSurvey = null; cur = null; openHotel = null; addOpen = false; lookOpen = false; look = { text: '', results: null, open: null }; again(); });
   $('[data-wa]', head).addEventListener('click', () => { const t = waSummary(sv, hotels); window.open('https://wa.me/?text=' + encodeURIComponent(t), '_blank'); });
   $('[data-csv]', head).addEventListener('click', () => downloadCsv(sv, hotels));
   $('[data-share]', head)?.addEventListener('click', () => { shareOpen = !shareOpen; again(); });
@@ -252,20 +413,28 @@ function surveyView(pg) {
 
   if (openHotel) { const ho = hotels.find(x => x.id === openHotel); if (ho) return pg.append(hotelView(sv, ho)); openHotel = null; }
 
+  // The two main actions inside a card
+  const acts = h(`<section class="hs-acts">
+    <button type="button" class="hs-act ${addOpen ? 'on' : ''}" data-a="add"><b>+ הוספת מלון</b><span>שם וטלפון, השאר מתמלא מהשיחה</span></button>
+    <button type="button" class="hs-act ${lookOpen ? 'on' : ''}" data-a="look"><b>בדיקת מלון שכבר דיברתי איתו</b><span>לפי מספר טלפון או שם, מכל הכרטיסיות</span></button>
+  </section>`);
+  $('[data-a=add]', acts).addEventListener('click', () => { addOpen = !addOpen; addPrefill = null; lookOpen = false; again(); });
+  $('[data-a=look]', acts).addEventListener('click', () => { lookOpen = !lookOpen; addOpen = false; again(); setTimeout(() => $('#hs-look-in')?.focus(), 0); });
+  pg.append(acts);
+  if (addOpen) pg.append(hotelForm(sv, null));
+  if (lookOpen) pg.append(lookupCard());
+
   // Search across everything that was said and written
   const bar = h(`<section class="hs-bar">
     <input type="search" class="hs-q" placeholder="חיפוש בכל השיחות, המיילים וההערות (למשל: תפוס, מלון X, 1800)" value="${esc(query)}">
     <div class="hs-chips">${[['all', 'הכול'], ['avail', 'יש מקום'], ['followup', 'לחזור אליהם'], ['waiting', 'מחכים להצעה'], ['full', 'תפוס']].map(([k, n]) => `<button type="button" class="chip ${filter === k ? 'on' : ''}" data-f="${k}">${n}</button>`).join('')}
-      <select class="hs-sort" aria-label="מיון">${[['price', 'לפי מחיר'], ['recent', 'לפי עדכון אחרון'], ['name', 'לפי שם']].map(([k, n]) => `<option value="${k}" ${sortBy === k ? 'selected' : ''}>${n}</option>`).join('')}</select>
-      <button class="btn btn--dark btn--sm" type="button" data-add>+ מלון ידני</button></div>
+      <select class="hs-sort" aria-label="מיון">${[['price', 'לפי מחיר'], ['recent', 'לפי עדכון אחרון'], ['name', 'לפי שם']].map(([k, n]) => `<option value="${k}" ${sortBy === k ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
   </section>`);
   const q = $('.hs-q', bar);
   q.addEventListener('input', () => { query = q.value; drawList(); });
   $$('[data-f]', bar).forEach(b => b.addEventListener('click', () => { filter = b.dataset.f; $$('[data-f]', bar).forEach(x => x.classList.toggle('on', x === b)); drawList(); }));
   $('.hs-sort', bar).addEventListener('change', e => { sortBy = e.target.value; drawList(); });
-  $('[data-add]', bar).addEventListener('click', () => { addOpen = !addOpen; again(); });
   pg.append(bar);
-  if (addOpen) pg.append(hotelForm(sv, null));
   const listEl = h('<section class="hs-list"></section>');
   pg.append(listEl);
   function drawList() {
@@ -275,7 +444,7 @@ function surveyView(pg) {
     const hits = new Map();
     if (words.length) rows = rows.filter(x => { const m = searchHotel(x, words); if (m) hits.set(x.id, m); return !!m; });
     rows.sort(sortBy === 'name' ? (a, b) => a.name.localeCompare(b.name, 'he') : sortBy === 'recent' ? (a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || '') : (a, b) => (a.min ?? 1e12) - (b.min ?? 1e12));
-    if (!hotels.length) listEl.append(h(`<p class="hint hint--box">עוד אין מלונות בסקר. מדליקים "מצב סקר" למעלה ומתקשרים: כל שיחה עם מלון תופיע כאן לבד אחרי כמה דקות. אפשר גם להוסיף מלון ידנית.</p>`));
+    if (!hotels.length) listEl.append(h(`<p class="hint hint--box">עוד אין מלונות בכרטיסייה. לוחצים "הוספת מלון", או מדליקים "מצב סקר" למעלה ומתקשרים: כל שיחה עם מלון נכנסת לכאן לבד אחרי כמה דקות.</p>`));
     else if (!rows.length) listEl.append(h('<p class="hint">לא נמצא כלום.</p>'));
     for (const x of rows) {
       const [an, ac] = AV[x.avail] || AV.unknown;
@@ -333,15 +502,18 @@ function shareCard(sv) {
 
 /* ---------- one hotel: details, prices, history, e-mail ---------- */
 function hotelForm(sv, x) {
-  const v = x || { name: '', city: '', contact: '', phone: '', email: '', avail: 'unknown', availText: '', rooms: '', prices: [], status: 'new', followUp: '', followWhat: '', notes: '' };
+  const v = x || { name: '', city: '', contact: '', phone: '', email: '', ...(addPrefill || {}), avail: 'unknown', availText: '', rooms: '', prices: [], status: 'new', followUp: '', followWhat: '', notes: '' };
   const f = h(`<form class="card hs-form">
-    ${x ? '' : '<h2>מלון חדש</h2>'}
+    ${x ? '' : '<h2>הוספת מלון</h2>'}
     <div class="grid2">
       <label class="field"><span>שם המלון</span><input name="name" required value="${esc(v.name)}"></label>
       <label class="field"><span>עיר / מקום</span><input name="city" value="${esc(v.city)}"></label>
       <label class="field"><span>איש קשר</span><input name="contact" value="${esc(v.contact)}"></label>
       <label class="field"><span>טלפון</span><input name="phone" type="tel" dir="ltr" value="${esc(v.phone)}"></label>
       <label class="field"><span>מייל</span><input name="email" type="email" dir="ltr" value="${esc(v.email)}"></label>
+    </div>
+    ${x ? '' : '<details class="hs-more"><summary>עוד: זמינות, מחירים והערות (אפשר אחר כך)</summary>'}
+    <div class="grid2">
       <label class="field"><span>כמה חדרים יש</span><input name="rooms" value="${esc(v.rooms)}"></label>
       <label class="field"><span>זמינות</span><select name="avail">${Object.entries(AV).map(([k, [n]]) => `<option value="${k}" ${v.avail === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
       <label class="field"><span>סטטוס</span><select name="status">${Object.entries(ST).map(([k, n]) => `<option value="${k}" ${v.status === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
@@ -354,7 +526,8 @@ function hotelForm(sv, x) {
       <button class="btn btn--line btn--sm" type="button" data-addp>+ שורת מחיר</button>
     </div>
     <label class="field"><span>הערות</span><textarea name="notes" rows="3">${esc(v.notes)}</textarea></label>
-    <div class="row-tools"><button class="btn btn--gold" type="submit">שמירה</button>${x ? '' : '<button class="btn btn--line" type="button" data-x>ביטול</button>'}</div>
+    ${x ? '' : '</details>'}
+    <div class="row-tools"><button class="btn btn--gold" type="submit">${x ? 'שמירה' : 'הוספה לכרטיסייה'}</button>${x ? '' : '<button class="btn btn--line" type="button" data-x>ביטול</button>'}</div>
   </form>`);
   const box = $('.hs-prices', f);
   const levels = sv.levels?.length ? sv.levels : ['רגיל', 'משודרג', 'סוויטה'];
@@ -380,7 +553,7 @@ function hotelForm(sv, x) {
     d.prices = $$('.hs-prow', f).map(r => Object.fromEntries($$('[data-k]', r).map(i => [i.dataset.k, i.value])));
     try {
       const saved = await api('POST', '', { op: 'hotel', surveyId: sv.id, id: x?.id, ...d });
-      addOpen = false; await refreshSurvey(); openHotel = saved.id; ctx.toast('נשמר'); again();
+      addOpen = false; addPrefill = null; await refreshSurvey(); openHotel = saved.id; ctx.toast('נשמר'); again();
     } catch (e2) { fail(e2); }
   });
   return f;

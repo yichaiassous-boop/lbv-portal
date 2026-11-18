@@ -8,7 +8,9 @@
  *      a short summary, the key sentences with their time in the call, and the full transcript;
  *   4. sends that to the site (/api/hotels), which adds it to the right hotel;
  *   5. sends the e-mails written in the admin, from this Gmail, and brings back the hotels' replies;
- *   6. keeps one Google Sheet per survey up to date.
+ *   6. keeps one Google Sheet per survey up to date;
+ *   7. tells the site which recordings exist on the phone (file name, number and time only, nothing is listened to),
+ *      so "did I already talk to this number?" finds every call; a call is summarized only when the owner asks.
  *
  * Setup (once): Project Settings → Script properties:
  *   SITE        https://<the site>            (no slash at the end)
@@ -51,6 +53,8 @@ function tick() {
   try {
     const st = site('get', 'status');
     try { recordings(st); } catch (e) { console.error('recordings', e); }
+    try { indexCalls(); } catch (e) { console.error('index', e); }
+    try { answerAsks(st); } catch (e) { console.error('asks', e); }
     try { outbox(st); } catch (e) { console.error('outbox', e); }
     try { replies(st); } catch (e) { console.error('replies', e); }
     try { sheets(st); } catch (e) { console.error('sheets', e); }
@@ -108,6 +112,41 @@ function recordings(st) {
   }
 }
 
+/* ---------- 7: the list of all calls on the phone (names only) + summaries on request ---------- */
+function allRecordings(since) {
+  const it = DriveApp.getFoldersByName(P('FOLDER'));
+  if (!P('FOLDER') || !it.hasNext()) return [];
+  const files = [];
+  (function walk(folder) {
+    const fi = folder.getFiles();
+    while (fi.hasNext()) { const f = fi.next(); if (f.getDateCreated() > since && /audio|video|octet/.test(f.getMimeType())) files.push(f); }
+    const sub = folder.getFolders();
+    while (sub.hasNext()) walk(sub.next());
+  })(it.next());
+  return files.sort((a, b) => a.getDateCreated() - b.getDateCreated());
+}
+function indexCalls() {
+  // first run: the last 6 months; then only new files
+  const since = new Date(P('INDEX_SINCE') || Date.now() - 183 * 864e5);
+  const files = allRecordings(since).slice(0, 600);
+  for (let i = 0; i < files.length; i += 200) {
+    const part = files.slice(i, i + 200);
+    site('post', 'index', { items: part.map(f => ({ id: f.getId(), name: f.getName(), phone: phoneFromName(f.getName()), at: recordedAt(f).toISOString(), url: f.getUrl() })) });
+    props().setProperty('INDEX_SINCE', part[part.length - 1].getDateCreated().toISOString());
+  }
+  if (!files.length && !P('INDEX_SINCE')) { site('post', 'index', { items: [] }); props().setProperty('INDEX_SINCE', since.toISOString()); }
+}
+function answerAsks(st) {
+  for (const a of st.asks || []) {
+    let result;
+    try {
+      const f = DriveApp.getFileById(a.id);
+      result = listen(f, null, recordedAt(f));
+    } catch (e) { result = { error: String(e).slice(0, 280) }; }
+    site('post', 'answer', { id: a.id, result: result });
+  }
+}
+
 /** A phone number inside the file name (e.g. "Call 0501234567_261118_101500.m4a"), not the date digits. */
 function phoneFromName(n) {
   const m = n.replace(/[_ ]\d{6}[_ -]\d{6}/, ' ').match(/(\+?972[\d\- ]{8,12}|0\d[\d\- ]{7,10})/);
@@ -122,6 +161,17 @@ function listen(file, sv, at) {
   let part;
   if (blob.getBytes().length < 14 * 1024 * 1024) part = { inline_data: { mime_type: mime, data: Utilities.base64Encode(blob.getBytes()) } };
   else part = { file_data: { mime_type: mime, file_uri: uploadToGemini(blob, mime, file.getName()) } };
+
+  if (!sv) return gemini(part, [
+    'This is a recording of a phone call made from the work phone of La Belle Vie (in Hebrew: לה בל וי), an Israeli events and holiday company.',
+    'The owner asked for a summary of this call, to remember what was said (for example what a hotel said about availability or prices).',
+    'The recording file name (may contain the phone number or contact name): ' + file.getName(),
+    'The call was recorded on ' + Utilities.formatDate(at || new Date(), 'Asia/Jerusalem', 'EEEE yyyy-MM-dd HH:mm') + ' (Israel time).',
+    'Answer in JSON only, in Hebrew. summary: what the call was about and everything decided or said that matters (availability, prices, conditions, promises, what to do next). who: who the other side is (name, place) if said.',
+    'keyQuotes: the sentences that matter as proof later, the exact words spoken, with the time in the recording (mm:ss) and who said it.',
+    'transcript: the whole conversation, each turn on its own line, "mm:ss <speaker>:". duration: mm:ss.',
+  ].join('\n'), { type: 'OBJECT', properties: { summary: { type: 'STRING' }, who: { type: 'STRING' }, duration: { type: 'STRING' },
+    keyQuotes: { type: 'ARRAY', items: { type: 'OBJECT', properties: { time: { type: 'STRING' }, speaker: { type: 'STRING' }, text: { type: 'STRING' } } } }, transcript: { type: 'STRING' } }, required: ['summary'] });
 
   const known = (sv.hotels || []).filter(h => h.name).map(h => h.name + (h.phone ? ' (' + h.phone + ')' : '')).join('; ');
   const prompt = [
@@ -159,6 +209,9 @@ function listen(file, sv, at) {
     },
     required: ['relevant'],
   };
+  return gemini(part, prompt, schema);
+}
+function gemini(part, prompt, schema) {
   const r = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + MODEL + ':generateContent', {
     method: 'post', contentType: 'application/json', muteHttpExceptions: true,
     headers: { 'x-goog-api-key': P('GEMINI_KEY') },

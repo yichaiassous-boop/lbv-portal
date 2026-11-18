@@ -1,0 +1,14 @@
+{
+  "name": "סקר מלונות – La Belle Vie",
+  "short_name": "סקר מלונות",
+  "lang": "he",
+  "dir": "rtl",
+  "start_url": "/admin/#hotels",
+  "scope": "/admin/",
+  "display": "standalone",
+  "background_color": "#0b1430",
+  "theme_color": "#0b1430",
+  "icons": [
+    { "src": "/media/icon-gold.png", "sizes": "192x192", "type": "image/png", "purpose": "any" }
+  ]
+}

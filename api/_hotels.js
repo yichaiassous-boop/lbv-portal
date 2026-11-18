@@ -74,6 +74,7 @@ const K = {
   keys: 'hs:keys',                   // sha256(key) → userId
   out: 'hs:out',                     // mail id → queued e-mail
   files: 'hs:files',                 // recording file id → hotel it went to (or "skip")
+  calls: 'hs:calls',                 // every recording on the work phone: file id → { name, phone, at, url, ask, sum }
 };
 
 /* ---------- small helpers ---------- */
@@ -102,6 +103,7 @@ function cleanSurvey(b, old = {}) {
   return {
     ...old,
     title: str(b.title ?? old.title, 120) || 'סקר מלונות',
+    kind: str(b.kind ?? old.kind, 40),            // שבת חתן / בר מצווה / חתונה / חג / אחר
     from: str(b.from ?? old.from, 10), to: str(b.to ?? old.to, 10),
     need: str(b.need ?? old.need, 300),          // e.g. "40 חדרים, 2 מבוגרים + 2 ילדים"
     note: str(b.note ?? old.note, 2000),
@@ -253,7 +255,22 @@ export default async function hotelsHandler(req, res) {
         }
       }
       out.sort((a2, b2) => (b2.lastAt || '').localeCompare(a2.lastAt || ''));
-      return send(res, 200, { results: out.slice(0, 10) });
+      // ...and every recorded call on the phone with that number (or contact name in the file name), survey or not
+      const phone = (await allJ(K.calls)).filter(c => (isOwner(s) || c.owner === uid) && (
+        (d.length >= 7 && (() => { const x = digits(c.phone) || digits((c.name.match(/(\+?972|0)\d[\d\- ]{7,12}/) || [''])[0]); return x && (x === d || x.endsWith(d) || d.endsWith(x)); })()) ||
+        (d.length < 7 && n.length >= 2 && norm(c.name).includes(n))))
+        .sort((a2, b2) => (b2.at || '').localeCompare(a2.at || '')).slice(0, 10)
+        .map(c => ({ id: c.id, at: c.at, name: c.name, phone: c.phone, url: c.url, ask: !!c.ask, sum: c.sum || null }));
+      const u = await userRec(uid);
+      return send(res, 200, { results: out.slice(0, 10), phone, indexed: !!u.indexedAt || phone.length > 0 });
+    }
+
+    // "Yes, summarize that call" → the robot listens to it on its next run (about 5 minutes)
+    if (req.method === 'POST' && body.op === 'ask') {
+      const c = await getJ(K.calls, str(body.id, 120));
+      if (!c || !(isOwner(s) || c.owner === uid)) return send(res, 404, { error: 'not-found' });
+      if (!c.sum || c.sum.error) { c.ask = true; c.sum = null; c.askedAt = now(); await setJ(K.calls, c.id, c); }
+      return send(res, 200, { id: c.id, ask: !!c.ask, sum: c.sum || null });
     }
 
     if (req.method === 'GET' && !q('survey')) {
@@ -337,6 +354,18 @@ export default async function hotelsHandler(req, res) {
       }
     }
 
+    // A hotel already checked in another card → copy it into this card, with its whole history (proof stays with it)
+    if (op === 'copy') {
+      const sv = await getJ(K.surveys, body.surveyId), from = await getJ(K.surveys, body.fromSurvey);
+      if (!canSee(s, sv) || !canSee(s, from)) return send(res, 404, { error: 'not-found' });
+      const src = await getJ(K.hotels(from.id), body.id);
+      if (!src) return send(res, 404, { error: 'not-found' });
+      const h = { ...src, id: rid('h'), avail: 'unknown', availText: '', prices: [], status: 'new', followUp: '', followWhat: '', createdAt: now(), updatedAt: now(),
+        log: [...(src.log || []), { t: 'note', at: now(), by: s.n, text: `הועתק מהכרטיסייה "${from.title}". הזמינות והמחירים שם היו לתאריכים אחרים.` }].slice(-80) };
+      await setJ(K.hotels(sv.id), h.id, h);
+      return send(res, 200, { ...h, min: minPrice(h) });
+    }
+
     if (op === 'mode') {
       const u = await userRec(uid);
       const on = body.on === true;
@@ -397,7 +426,37 @@ async function script(req, res, what, userId, b) {
     const threads = [];
     for (const sv of surveys) for (const h of await allJ(K.hotels(sv.id))) for (const m of (h.log || []))
       if (m.t === 'mail-out' && m.threadId && Date.now() - Date.parse(m.at) < 60 * 864e5) threads.push({ surveyId: sv.id, hotelId: h.id, threadId: m.threadId, seen: (h.log || []).filter(x => x.t === 'mail-in').map(x => x.msgId) });
-    return send(res, 200, { windows: u.windows || [], mode: u.mode || { on: false }, surveys: active, outbox, threads });
+    // Phone calls the owner asked to summarize ("you talked a week ago, want a summary?" → yes)
+    const asks = (await allJ(K.calls)).filter(c => c.owner === userId && c.ask && !c.sum).slice(0, 3).map(c => ({ id: c.id, name: c.name, at: c.at }));
+    return send(res, 200, { windows: u.windows || [], mode: u.mode || { on: false }, surveys: active, outbox, threads, asks });
+  }
+
+  // Every recording on the work phone, names only (no listening): file id, file name, number, time
+  if (what === 'index') {
+    const items = (Array.isArray(b.items) ? b.items : []).slice(0, 500);
+    const old = await kv.hgetall(K.calls) || {};
+    let n = 0;
+    for (const it of items) {
+      const id = str(it.id, 120);
+      if (!id || old[id]) continue;
+      await setJ(K.calls, id, { id, owner: userId, name: str(it.name, 200), phone: str(it.phone, 30), at: str(it.at, 30), url: str(it.url, 300) });
+      n++;
+    }
+    u.indexedAt = now(); await saveUser(userId, u);
+    return send(res, 200, { ok: true, added: n });
+  }
+  if (what === 'answer') {
+    const c = await getJ(K.calls, str(b.id, 120));
+    if (!c || c.owner !== userId) return send(res, 404, { error: 'not-found' });
+    const r = b.result || {};
+    c.ask = false;
+    c.sum = r.error ? { error: str(r.error, 300), at: now() } : {
+      at: now(), summary: str(r.summary, 2000), duration: str(r.duration, 10), who: str(r.who, 200),
+      quotes: (Array.isArray(r.keyQuotes) ? r.keyQuotes : []).slice(0, 12).map(x => ({ time: str(x.time, 10), who: str(x.speaker, 40), text: str(x.text, 400) })),
+      transcript: str(r.transcript, 30000),
+    };
+    await setJ(K.calls, c.id, c);
+    return send(res, 200, { ok: true });
   }
 
   if (what === 'call') {
