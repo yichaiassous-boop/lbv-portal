@@ -93,7 +93,7 @@ function phonePanel(m, con) {
   if (!p.version) return null;
   const rows = [
     [con.connected, 'הרובוט של גוגל מחובר', 'הרובוט של גוגל עוד לא מחובר'],
-    [p.paired, 'הטלפון מחובר לרובוט', con.app ? 'הטלפון עוד לא מחובר לרובוט. סוגרים ופותחים את האפליקציה' : 'הרובוט עוד לא פתוח לטלפון. זה צעד חד-פעמי בחשבון הגוגל, לא בטלפון'],
+    [p.paired, 'הטלפון מחובר לרובוט', con.app ? 'הטלפון עוד לא מחובר לרובוט. לוחצים "לחבר את הטלפון"' : 'הרובוט עוד לא פתוח לטלפון. זה צעד חד-פעמי בחשבון הגוגל, לא בטלפון'],
     [!!p.folder, `תיקיית ההקלטות: ${esc(p.folder)}`, 'לא נבחרה תיקיית ההקלטות'],
     [p.callLog, 'יש גישה ליומן השיחות', 'אין גישה ליומן השיחות'],
     [p.battery, 'האפליקציה רצה ברקע', 'הטלפון עלול לעצור את האפליקציה ברקע'],
@@ -104,10 +104,11 @@ function phonePanel(m, con) {
   const el = h(`<div class="hs-phone">
     <b class="hs-phone__t">מצב הטלפון</b>
     <ul>${rows.map(([ok, yes, no]) => `<li class="${ok ? 'is-ok' : 'is-no'}"><i class="dot ${ok ? 'ok' : 'no'}"></i>${ok ? yes : no}</li>`).join('')}</ul>
-    <small>${p.lastSync ? `בדיקה אחרונה בטלפון: ${ago(new Date(p.lastSync).toISOString())}` : ''}${p.err ? ` · תקלה אחרונה: ${esc(String(p.err).slice(0, 120))}` : ''} · גרסה ${esc(p.version)}</small>
-    <div class="hs-phone__act">${needFix ? '<button type="button" class="btn btn--gold btn--sm" data-fix>לסדר את ההרשאות</button>' : ''}${p.paired ? '<button type="button" class="btn btn--line btn--sm" data-sync>לבדוק הקלטות עכשיו</button>' : ''}</div>
+    <small>${p.lastSync ? `בדיקה אחרונה בטלפון: ${ago(new Date(p.lastSync).toISOString())}` : ''}${p.err ? ` · תקלה אחרונה: ${esc(String(p.err).slice(0, 120))}` : ''} ${p.pairSt && !p.paired ? ` · חיבור: ${esc(String(p.pairSt).slice(0, 20))}` : ''} · גרסה ${esc(p.version)}</small>
+    <div class="hs-phone__act">${needFix ? '<button type="button" class="btn btn--gold btn--sm" data-fix>לסדר את ההרשאות</button>' : ''}${p.paired ? '<button type="button" class="btn btn--line btn--sm" data-sync>לבדוק הקלטות עכשיו</button>' : con.app ? '<button type="button" class="btn btn--gold btn--sm" data-pair>לחבר את הטלפון</button>' : ''}</div>
   </div>`);
   $('[data-fix]', el)?.addEventListener('click', () => window.LBVApp.approvals());
+  $('[data-pair]', el)?.addEventListener('click', () => { (window.LBVApp.pairNow || window.LBVApp.syncNow)?.call(window.LBVApp); ctx.toast('מחברים את הטלפון לרובוט', 'info'); setTimeout(() => again(), 4000); });
   $('[data-sync]', el)?.addEventListener('click', () => { window.LBVApp.syncNow?.(); ctx.toast('הטלפון בודק עכשיו את ההקלטות', 'info'); setTimeout(() => again(), 20000); });
   return el;
 }
