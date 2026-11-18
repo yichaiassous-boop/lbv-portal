@@ -209,3 +209,18 @@
 
 /* the other LBV systems (Simha, Gala): their own sites */
 .ah-tile--sys .ah-tile__ic { background: var(--leaf); color: var(--night); }
+
+/* בדיקת מלונות inside the phone app: what the phone has and hasn't done */
+.hs-phone { display: grid; gap: 8px; margin-top: 12px; padding: 14px; border-radius: 16px; background: #fff; border: 1px solid var(--line, #E3E6EE); color: var(--night, #0B1533); }
+.hs-phone__t { font: 700 1rem/1.2 "Frank Ruhl Libre", serif; }
+.hs-phone ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.hs-phone li { display: flex; align-items: center; gap: 8px; font-size: .9rem; line-height: 1.35; }
+.hs-phone li.is-no { color: #9A3412; font-weight: 600; }
+.hs-phone small { color: var(--ink-3, #667); font-size: .78rem; }
+.hs-phone__act { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* Jewish holidays in the calendar (worked out in events.js) */
+.cal__d.is-hol { background: #FBF5E6; }
+.cal__hol { display: block; overflow: hidden; max-width: 100%; color: #8A6516; font-size: .62rem; font-weight: 700; line-height: 1.15; white-space: nowrap; text-overflow: ellipsis; }
+.cal-day__hol { margin: 2px 0 0; color: #8A6516; font-weight: 700; }
+@media (min-width: 860px) { .cal__hol { font-size: .72rem; white-space: normal; } }

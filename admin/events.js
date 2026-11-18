@@ -16,6 +16,42 @@ const WD = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'];
 const WD_LONG = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
 const dayName = s => { const d = new Date(s + 'T12:00'); return `יום ${WD_LONG[d.getDay()]}, ${d.getDate()} ב${MONTHS[d.getMonth()]}`; };
 
+/* ---------- the Jewish holidays, worked out from the Hebrew calendar of the browser (no list to keep up to date) ---------- */
+const HF = new Intl.DateTimeFormat('en-u-ca-hebrew', { day: 'numeric', month: 'long' });
+const hd = d => { const p = HF.formatToParts(d); return { day: +p.find(x => x.type === 'day').value, m: p.find(x => x.type === 'month').value }; };
+const NER = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שביעי', 'שמיני'];
+/** Yom HaAtzmaut: 5 Iyar, moved to Thursday when it falls on Friday or Saturday, and to Tuesday when it falls on Monday. */
+const atzmaut = d => { const { day, m } = hd(d), wd = d.getDay(); return m === 'Iyar' && ((day === 5 && wd === 3) || (day === 4 && wd === 4) || (day === 3 && wd === 4) || (day === 6 && wd === 2)); };
+const holCache = new Map();
+/** The holiday on this day ('YYYY-MM-DD'), or ''. */
+export function holiday(s) {
+  if (holCache.has(s)) return holCache.get(s);
+  let r = '';
+  try {
+    const d = new Date(s + 'T12:00'), wd = d.getDay(), { day, m } = hd(d);
+    const adar = m === 'Adar' || m === 'Adar II';
+    if (m === 'Tishri') r = { 1: 'ראש השנה', 2: 'ראש השנה', 10: 'יום כיפור', 15: 'סוכות', 21: 'הושענא רבה', 22: 'שמיני עצרת, שמחת תורה' }[day] || (day >= 16 && day <= 20 ? 'חול המועד סוכות' : '');
+    else if (m === 'Nisan') r = { 15: 'פסח', 21: 'שביעי של פסח' }[day] || (day >= 16 && day <= 20 ? 'חול המועד פסח' : '')
+      || ((day === 27 && wd !== 5 && wd !== 0) || (day === 26 && wd === 4) || (day === 28 && wd === 1) ? 'יום השואה' : '');
+    else if (adar && day === 14) r = 'פורים';
+    else if (adar && day === 15) r = 'שושן פורים';
+    else if (m === 'Shevat' && day === 15) r = 'ט״ו בשבט';
+    else if (m === 'Iyar' && day === 18) r = 'ל״ג בעומר';
+    else if (m === 'Iyar' && day === 28) r = 'יום ירושלים';
+    else if (m === 'Sivan' && day === 6) r = 'שבועות';
+    else if (m === 'Av' && ((day === 9 && wd !== 6) || (day === 10 && wd === 0))) r = 'תשעה באב';
+    if (!r && atzmaut(d)) r = 'יום העצמאות';
+    if (!r && atzmaut(new Date(d.getTime() + 864e5))) r = 'יום הזיכרון';
+    if (!r) for (let k = 0; k < 8; k++) { const x = hd(new Date(d.getTime() - k * 864e5)); if (x.m === 'Kislev' && x.day === 25) { r = `חנוכה, נר ${NER[k]}`; break; } }
+  } catch (e) { r = ''; }
+  holCache.set(s, r);
+  return r;
+}
+
+/** A short name that fits a square of the month on a phone. */
+const SHORT = { "ראש השנה": "ר״ה", "יום כיפור": "כיפור", "הושענא רבה": "הוש״ר", "שמיני עצרת, שמחת תורה": "שמח״ת", "שביעי של פסח": "שביעי פסח", "שושן פורים": "שושן", "ל״ג בעומר": "ל״ג", "יום ירושלים": "ירושלים", "תשעה באב": "ט׳ באב", "יום העצמאות": "עצמאות", "יום הזיכרון": "זיכרון", "יום השואה": "שואה" };
+const holShort = h => (h.startsWith("חנוכה") ? "חנוכה" : h.startsWith("חול המועד") ? "חוה״מ" : SHORT[h] || h);
+
 let ctx = null;            // { toast, showLogin, go, me }
 let data = null;           // GET /api/events
 let month = null;          // 'YYYY-MM' shown in the calendar
@@ -59,9 +95,9 @@ function draw(pg) {
   const cells = [];
   for (let i = 0; i < first.getDay(); i++) cells.push('<span class="cal__d cal__d--pad"></span>');
   for (let d = 1; d <= days; d++) {
-    const s = `${month}-${pad(d)}`, list = evOn(s), wd = new Date(y, m - 1, d).getDay();
-    cells.push(`<button type="button" class="cal__d${s === today() ? ' is-today' : ''}${s === picked ? ' is-picked' : ''}${wd >= 5 ? ' is-weekend' : ''}" data-day="${s}" aria-label="${dayName(s)}${list.length ? ', ' + list.length + ' אירועים' : ''}">
-      <span class="cal__n">${d}</span>
+    const s = `${month}-${pad(d)}`, list = evOn(s), wd = new Date(y, m - 1, d).getDay(), hol = holiday(s);
+    cells.push(`<button type="button" class="cal__d${s === today() ? ' is-today' : ''}${s === picked ? ' is-picked' : ''}${wd >= 5 ? ' is-weekend' : ''}${hol ? ' is-hol' : ''}" data-day="${s}" aria-label="${dayName(s)}${hol ? ', ' + hol : ''}${list.length ? ', ' + list.length + ' אירועים' : ''}">
+      <span class="cal__n">${d}</span>${hol ? `<span class="cal__hol">${holShort(hol)}</span>` : ''}
       <span class="cal__evs">${list.slice(0, 3).map(e => `<i class="ev--${e.status}"><em>${esc(e.title)}</em></i>`).join('')}${list.length > 3 ? `<small>+${list.length - 3}</small>` : ''}</span></button>`);
   }
   const canEdit = data.can?.edit;
@@ -87,7 +123,7 @@ function draw(pg) {
 
   const list = evOn(picked);
   const dayCard = h(`<section class="card cal-day">
-    <div class="card__head"><div><h2>${dayName(picked)}</h2><p>${list.length ? list.length === 1 ? 'אירוע אחד' : list.length + ' אירועים' : 'אין אירועים ביום הזה'}</p></div>
+    <div class="card__head"><div><h2>${dayName(picked)}</h2>${holiday(picked) ? `<p class="cal-day__hol">${holiday(picked)}</p>` : ''}<p>${list.length ? list.length === 1 ? 'אירוע אחד' : list.length + ' אירועים' : 'אין אירועים ביום הזה'}</p></div>
     ${canEdit ? '<div class="row-tools"><button class="btn btn--line btn--sm" type="button" data-add>+ אירוע ביום הזה</button></div>' : ''}</div>
     <div class="ev-list">${list.map(evRow).join('')}</div></section>`);
   $('[data-add]', dayCard)?.addEventListener('click', () => openSheet(null, picked));
@@ -277,7 +313,7 @@ export async function appHome(pg, c, tiles) {
   const name = c.me?.role === 'owner' ? '' : c.me?.name || '';
   const next = upcoming(1)[0];
   const head = h(`<section class="ah">
-    <p class="ah__date">${dayName(today())}</p>
+    <p class="ah__date">${dayName(today())}${holiday(today()) ? ' · ' + holiday(today()) : ''}</p>
     <h1 class="ah__hi">${hello}${name ? ', ' + esc(name) : ''}</h1>
   </section>`);
   pg.append(head);
