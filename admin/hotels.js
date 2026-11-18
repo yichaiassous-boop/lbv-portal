@@ -5,6 +5,7 @@
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const safeUrl = u => (/^https:\/\//i.test(String(u || '')) ? u : '');   // links from the robot / replies: https only
 const h = s => { const t = document.createElement('template'); t.innerHTML = s.trim(); return t.content.firstElementChild; };
 const dmy = iso => (iso || '').slice(0, 10).split('-').reverse().join('.');
 const when = iso => { if (!iso) return ''; const d = new Date(iso); return d.toLocaleDateString('he-IL', { day: 'numeric', month: 'numeric', year: '2-digit' }) + ' ' + d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }); };
@@ -149,7 +150,7 @@ function lookupCard() {
           ${(l.quotes || []).length ? `<ul class="ev__q">${l.quotes.map(q => `<li><time>${esc(q.time)}</time>${q.who ? `<b>${esc(q.who)}:</b> ` : ''}"${esc(q.text)}"</li>`).join('')}</ul>` : ''}
           ${r.prices.length ? `<div class="hs-ho__pr">${r.prices.map(p => `<span>${esc([p.level, p.board].filter(Boolean).join(' · ') || 'מחיר')}: <b>${money(p.price, p.currency)}</b>${p.per ? ' ' + esc(p.per) : ''}</span>`).join('')}</div>` : ''}
           ${r.followUp || r.followWhat ? `<p class="hs-follow">לחזור${r.followUp ? ' ב-' + dmy(r.followUp) : ''}${r.followWhat ? ': ' + esc(r.followWhat) : ''}</p>` : ''}
-          ${l.file?.url ? `<a class="btn btn--line btn--sm" href="${esc(l.file.url)}" target="_blank" rel="noopener">להאזנה להקלטה</a>` : ''}`;
+          ${safeUrl(l.file?.url) ? `<a class="btn btn--line btn--sm" href="${esc(l.file.url)}" target="_blank" rel="noopener">להאזנה להקלטה</a>` : ''}`;
       };
       if (!r.calls) acts();
       else if (look.open === i) showSummary();
@@ -173,7 +174,7 @@ function lookupCard() {
     const yn = $('.hs-ans__yn', box), body = $('.hs-ans__body', box);
     const show = () => {
       const sm = pc.sum;
-      yn.innerHTML = pc.url ? `<a class="btn btn--line btn--sm" href="${esc(pc.url)}" target="_blank" rel="noopener">להאזנה להקלטה</a>` : '';
+      yn.innerHTML = safeUrl(pc.url) ? `<a class="btn btn--line btn--sm" href="${esc(pc.url)}" target="_blank" rel="noopener">להאזנה להקלטה</a>` : '';
       body.innerHTML = `${sm.duration ? `<small>אורך השיחה ${esc(sm.duration)}</small>` : ''}<p>${esc(sm.summary)}</p>
         ${(sm.quotes || []).length ? `<ul class="ev__q">${sm.quotes.map(q => `<li><time>${esc(q.time)}</time>${q.who ? `<b>${esc(q.who)}:</b> ` : ''}"${esc(q.text)}"</li>`).join('')}</ul>` : ''}
         ${sm.transcript ? `<details class="ev__tr"><summary>כל השיחה</summary><p>${esc(sm.transcript).replace(/\n/g, '<br>')}</p></details>` : ''}`;
@@ -297,7 +298,7 @@ function stepsAll() {
       why: 'רובוט קטן בחשבון הגוגל של LBV שעושה את כל העבודה לבד:',
       items: ['קורא את תיקיית "הקלטות שיחות" בדרייב', 'שולח מיילים למלונות מהמייל של LBV וקורא את התשובות', 'מעדכן גיליון בגוגל שיטס'],
       fine: 'לוחצים "יצירת מפתח", ואת ההתקנה בחשבון של LBV עושים ביחד פעם אחת (כ-5 דקות). בהפעלה הראשונה גוגל מקפיץ חלון "לאשר גישה?" ולוחצים "אישור". השלב מסתמן לבד כשהרובוט מתחבר.' },
-    { id: 'rec', done: !!con.appLast || !!con.last, title: 'האפליקציה LBV שיחות בטלפון',
+    { id: 'rec', done: !!con.appLast || !!con.last, title: 'האפליקציה LBV בטלפון',
       why: 'אפליקציה קטנה של LBV ששולחת את הקלטות השיחות למערכת לבד. רק לוחצים "אישור":',
       items: ['"הורדת האפליקציה", ואז "התקנה". בפעם הראשונה אנדרואיד שואל "לאפשר התקנה מהמקור הזה?" ולוחצים "אישור"', '"חיבור האפליקציה": האפליקציה נפתחת ומתחברת לבד', 'באפליקציה קופצים 4 אישורים: תיקיית ההקלטות, יומן השיחות, עבודה ברקע, התראות. לוחצים "אישור" בכל אחד'],
       fine: 'עושים את זה בטלפון העבודה. השלב מסתמן לבד כשההקלטה הראשונה מגיעה.' },
@@ -355,16 +356,10 @@ function openWizard(i) {
       if (con.connected) return next();
       try { newKey = (await api('POST', '', { op: 'connect' })).key; await refreshHome(); openWizard(i); } catch (e2) { fail(e2); }
     } else if (x.id === 'rec') {
-      // opens the app with the robot's address and secret; if the app isn't installed yet, Chrome stays here
-      try {
-        const r = await api('POST', '', { op: 'pair' });
-        const q = 'u=' + encodeURIComponent(r.url) + '&s=' + encodeURIComponent(r.secret);
-        location.href = /android/i.test(navigator.userAgent)
-          ? `intent://pair?${q}#Intent;scheme=lbvcalls;package=com.labellevie.calls;S.browser_fallback_url=${encodeURIComponent(location.href)};end`
-          : `lbvcalls://pair?${q}`;
-      } catch (e2) {
-        if (e2.message === 'no-robot') ctx.toast('קודם צריך את שלב 1 (הרובוט בגוגל). אחריו החיבור עובד', 'info'); else fail(e2);
-      }
+      // The app connects itself after its login (the robot's secret never travels in a link).
+      if (!con.connected) { ctx.toast('קודם צריך את שלב 1 (הרובוט בגוגל). אחריו החיבור עובד', 'info'); return; }
+      if (/android/i.test(navigator.userAgent)) location.href = '/app/lbv-calls.apk';
+      ctx.toast('מתקינים את האפליקציה LBV, נכנסים עם הסיסמה, והיא מתחברת לבד', 'info');
     }
     else if (x.id === 'notify') {
       if (x.done) return next();
@@ -418,7 +413,7 @@ function surveyView(pg) {
       <p>${sv.kind ? esc(sv.kind) + ' · ' : ''}${sv.from ? 'תאריך: ' + dmy(sv.from) + (sv.to && sv.to !== sv.from ? ' – ' + dmy(sv.to) : '') : 'בלי תאריכים'}${sv.area ? ' · ' + esc(sv.area) : ''}${sv.need ? ' · ' + esc(sv.need) : ''}</p></div>
     <div class="hs-tools">
       <button class="btn btn--gold btn--sm" type="button" data-wa>סיכום לוואטסאפ</button>
-      ${sv.sheetUrl ? `<a class="btn btn--line btn--sm" href="${esc(sv.sheetUrl)}" target="_blank" rel="noopener">הגיליון בגוגל</a>` : ''}
+      ${safeUrl(sv.sheetUrl) ? `<a class="btn btn--line btn--sm" href="${esc(sv.sheetUrl)}" target="_blank" rel="noopener">הגיליון בגוגל</a>` : ''}
       <button class="btn btn--line btn--sm" type="button" data-csv>הורדה לגוגל שיטס / אקסל</button>
       ${sv.manage ? '<button class="btn btn--line btn--sm" type="button" data-share>שיתוף</button><button class="btn btn--line btn--sm" type="button" data-edit>עריכה</button>' : ''}
     </div>
@@ -658,7 +653,7 @@ function timeline(sv, x) {
       const li = h(`<li class="ev ev--call"><div class="ev__h"><b>שיחה</b><time>${when(l.at)}</time>${l.dur ? `<span>${esc(l.dur)}</span>` : ''}${l.avail && l.avail !== 'unknown' ? `<span class="pill pill--${ac}">${an}</span>` : ''}</div>
         ${l.summary ? `<p>${esc(l.summary)}</p>` : ''}
         ${l.quotes?.length ? `<ul class="ev__q">${l.quotes.map(q => `<li><time>${esc(q.time)}</time>${q.who ? `<b>${esc(q.who)}:</b> ` : ''}"${esc(q.text)}"</li>`).join('')}</ul>` : ''}
-        <div class="row-tools">${l.file?.url ? `<a class="btn btn--line btn--sm" href="${esc(l.file.url)}" target="_blank" rel="noopener">להאזנה להקלטה</a>` : ''}
+        <div class="row-tools">${safeUrl(l.file?.url) ? `<a class="btn btn--line btn--sm" href="${esc(l.file.url)}" target="_blank" rel="noopener">להאזנה להקלטה</a>` : ''}
           <button class="btn btn--line btn--sm" type="button" data-proof>לשלוח כהוכחה</button>
           ${l.transcript ? '<button class="btn btn--line btn--sm" type="button" data-tr>תמלול מלא</button>' : ''}</div>
         <pre class="ev__tr" hidden>${esc(l.transcript || '')}</pre></li>`);
@@ -673,7 +668,7 @@ function timeline(sv, x) {
       const li = h(`<li class="ev ev--${out ? 'out' : 'in'}"><div class="ev__h"><b>${out ? 'מייל שנשלח' : 'תשובה מהמלון'}</b><time>${when(l.at)}</time>
         ${out ? `<span>${l.state === 'queued' ? 'בתור לשליחה' : l.state === 'error' ? 'השליחה נכשלה' : 'נשלח'} · אל ${esc(l.to)}</span>` : `<span>מאת ${esc(l.from)}</span>`}</div>
         <p class="ev__subj">${esc(l.subject)}</p><details><summary>התוכן</summary><pre>${esc(l.body)}</pre></details>
-        ${(l.files || []).length ? `<div class="row-tools">${l.files.map(f => `<a class="btn btn--line btn--sm" href="${esc(f.url)}" target="_blank" rel="noopener">${esc(f.name)}</a>`).join('')}</div>` : ''}
+        ${(l.files || []).length ? `<div class="row-tools">${l.files.filter(f => safeUrl(f.url)).map(f => `<a class="btn btn--line btn--sm" href="${esc(f.url)}" target="_blank" rel="noopener">${esc(f.name)}</a>`).join('')}</div>` : ''}
         ${l.error ? `<p class="err">${esc(l.error)}</p>` : ''}</li>`);
       ol.append(li);
     } else {

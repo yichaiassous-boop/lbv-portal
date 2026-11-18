@@ -1,5 +1,7 @@
 import { storageReady } from './_lib.js';
 import { unsubToken, markUnsubscribed, leadsReady } from './_leads.js';
+import crypto from 'node:crypto';
+const sameTok = (a, b) => { const x = Buffer.from(String(a ?? '')), y = Buffer.from(String(b ?? '')); return x.length === y.length && crypto.timingSafeEqual(x, y); };
 
 // The "remove me" link at the bottom of every mailing. Signed per address, so nobody can
 // unsubscribe someone else.
@@ -20,7 +22,7 @@ export default async function handler(req, res) {
   const email = (q.get('e') || '').trim().toLowerCase();
   const lang = ['he', 'fr', 'en'].includes(q.get('l')) ? q.get('l') : 'he';
   let ok = false;
-  if (email && storageReady() && leadsReady() && q.get('t') === unsubToken(email)) {
+  if (email && storageReady() && leadsReady() && sameTok(q.get('t'), unsubToken(email))) {
     await markUnsubscribed(email);
     ok = true;
   }

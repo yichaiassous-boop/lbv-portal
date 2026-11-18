@@ -7,15 +7,20 @@
 <meta name="color-scheme" content="only light">
 <title>ניהול האתר – La Belle Vie</title>
 <script>if (!location.pathname.endsWith('/')) location.replace(location.pathname + '/' + location.search + location.hash);</script>
-<script>if (/LBVCalls/.test(navigator.userAgent)) document.documentElement.classList.add("lbv-app");</script>
+<script>if (/LBVCalls/.test(navigator.userAgent) || matchMedia("(display-mode: standalone)").matches || navigator.standalone) document.documentElement.classList.add("lbv-app");</script>
 <link rel="icon" type="image/png" href="../media/icon-gold.png">
 <link rel="manifest" href="hotels.webmanifest">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="LBV">
+<link rel="apple-touch-icon" href="/media/icon-gold.png">
 <meta name="theme-color" content="#0b1430">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700;800&family=Frank+Ruhl+Libre:wght@500;700;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="admin.css">
 <link rel="stylesheet" href="hotels.css">
+<link rel="stylesheet" href="events.css">
 </head>
 <body>
 

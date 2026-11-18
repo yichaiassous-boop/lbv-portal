@@ -86,6 +86,11 @@ const pick = (v, ok, d) => (ok.includes(v) ? v : d);
 const digits = p => String(p || '').replace(/\D/g, '').replace(/^972/, '0').slice(-9);
 const norm = s => String(s || '').toLowerCase().replace(/["'״׳`.,\-–()]/g, ' ').replace(/\b(מלון|hotel|ה)\b/g, ' ').replace(/\s+/g, ' ').trim();
 const sha = s => crypto.createHash('sha256').update(String(s)).digest('hex');
+/** A link we store and later show as a button: only https:// (never javascript: or data:). */
+const link = (v, max) => { const s = str(v, max); return /^https:\/\/[^\s"'<>]+$/i.test(s) ? s : ''; };
+const same = (a, b) => { const x = Buffer.from(String(a ?? '')), y = Buffer.from(String(b ?? '')); return x.length === y.length && crypto.timingSafeEqual(x, y); };
+/** The robot of userId may touch this survey only if it belongs to that user (the owner's robot: every survey). */
+const mine = (sv, userId) => !!sv && (userId === 'owner' || sv.by?.id === userId);
 const secret = () => process.env.ADMIN_SECRET || process.env.ADMIN_PASSWORD || 'local';
 export const viewToken = id => crypto.createHmac('sha256', secret()).update('hotels:' + id).digest('base64url').slice(0, 22);
 
@@ -218,7 +223,7 @@ export default async function hotelsHandler(req, res) {
     /* ----- read-only link for the team ----- */
     if (q('view')) {
       const sv = await getJ(K.surveys, q('view'));
-      if (!sv || !sv.link || q('t') !== viewToken(sv.id)) return send(res, 404, { error: 'not-found' });
+      if (!sv || !sv.link || !same(q('t'), viewToken(sv.id))) return send(res, 404, { error: 'not-found' });
       const hotels = (await allJ(K.hotels(sv.id))).map(h => ({ ...brief(h), notes: undefined, email: undefined }));
       return send(res, 200, { survey: { title: sv.title, from: sv.from, to: sv.to, need: sv.need, area: sv.area, levels: sv.levels }, hotels });
     }
@@ -403,7 +408,8 @@ export default async function hotelsHandler(req, res) {
 
     return send(res, 400, { error: 'op' });
   } catch (e) {
-    return send(res, 500, { error: 'server', detail: String(e.message || e).slice(0, 200) });
+    console.error('hotels', e && e.message);
+    return send(res, 500, { error: 'server' });
   }
 }
 
@@ -454,7 +460,7 @@ async function script(req, res, what, userId, b) {
     for (const it of items) {
       const id = str(it.id, 120);
       if (!id || old[id]) continue;
-      await setJ(K.calls, id, { id, owner: userId, name: str(it.name, 200), phone: str(it.phone, 30), at: str(it.at, 30), url: str(it.url, 300) });
+      await setJ(K.calls, id, { id, owner: userId, name: str(it.name, 200), phone: str(it.phone, 30), at: str(it.at, 30), url: link(it.url, 300) });
       n++;
     }
     u.indexedAt = now(); await saveUser(userId, u);
@@ -475,7 +481,7 @@ async function script(req, res, what, userId, b) {
   }
 
   if (what === 'call') {
-    const file = { id: str(b.file?.id, 120), name: str(b.file?.name, 200), url: str(b.file?.url, 400) };
+    const file = { id: str(b.file?.id, 120), name: str(b.file?.name, 200), url: link(b.file?.url, 400) };
     if (!file.id) return send(res, 400, { error: 'file' });
     if (await kv.hget(K.files, file.id)) return send(res, 200, { ok: true, duplicate: true });
     const r = b.result || {};
@@ -485,7 +491,7 @@ async function script(req, res, what, userId, b) {
       return send(res, 200, { ok: true, skipped: true });
     }
     const sv = await getJ(K.surveys, b.surveyId);
-    if (!sv) return send(res, 400, { error: 'survey' });
+    if (!mine(sv, userId)) return send(res, 400, { error: 'survey' });
     const key = K.hotels(sv.id);
     const hotels = await allJ(key);
     const call = {
@@ -506,7 +512,7 @@ async function script(req, res, what, userId, b) {
 
   if (what === 'mailsent') {
     const m = await getJ(K.out, str(b.id, 40));
-    if (!m) return send(res, 404, { error: 'not-found' });
+    if (!m || m.owner !== userId) return send(res, 404, { error: 'not-found' });
     const key = K.hotels(m.surveyId), h = await getJ(key, m.hotelId);
     if (h) {
       h.log = [...(h.log || []), { t: 'mail-out', at: str(b.at, 40) || now(), to: m.to, subject: m.subject, body: m.body, by: m.by, threadId: str(b.threadId, 80), msgId: str(b.msgId, 80), state: b.error ? 'error' : 'sent', error: str(b.error, 300) }].slice(-80);
@@ -521,11 +527,12 @@ async function script(req, res, what, userId, b) {
   if (what === 'replies') {
     let added = 0;
     for (const x of (Array.isArray(b.items) ? b.items : []).slice(0, 50)) {
+      if (!mine(await getJ(K.surveys, str(x.surveyId, 40)), userId)) continue;
       const key = K.hotels(str(x.surveyId, 40)), h = await getJ(key, str(x.hotelId, 40));
       if (!h) continue;
       const msgId = str(x.msgId, 80);
       if ((h.log || []).some(l => l.msgId === msgId)) continue;
-      h.log = [...(h.log || []), { t: 'mail-in', at: str(x.at, 40) || now(), from: str(x.from, 200), subject: str(x.subject, 200), body: str(x.body, 12000), msgId, threadId: str(x.threadId, 80), files: (Array.isArray(x.files) ? x.files : []).slice(0, 10).map(f => ({ name: str(f.name, 160), url: str(f.url, 400) })) }].slice(-80);
+      h.log = [...(h.log || []), { t: 'mail-in', at: str(x.at, 40) || now(), from: str(x.from, 200), subject: str(x.subject, 200), body: str(x.body, 12000), msgId, threadId: str(x.threadId, 80), files: (Array.isArray(x.files) ? x.files : []).slice(0, 10).map(f => ({ name: str(f.name, 160), url: link(f.url, 400) })) }].slice(-80);
       await setJ(key, h.id, h); added++;
     }
     await saveUser(userId, u);
@@ -534,17 +541,20 @@ async function script(req, res, what, userId, b) {
 
   if (what === 'export') {
     const sv = await getJ(K.surveys, url(req).get('survey'));
-    if (!sv) return send(res, 404, { error: 'not-found' });
+    if (!mine(sv, userId)) return send(res, 404, { error: 'not-found' });
     return send(res, 200, { title: sv.title, rows: tableRows(sv, await allJ(K.hotels(sv.id))) });
   }
 
   if (what === 'sheet') {
     const sv = await getJ(K.surveys, str(b.surveyId, 40));
-    if (!sv) return send(res, 404, { error: 'not-found' });
-    sv.sheetUrl = str(b.url, 300); await setJ(K.surveys, sv.id, sv);
+    if (!mine(sv, userId)) return send(res, 404, { error: 'not-found' });
+    sv.sheetUrl = link(b.url, 300); await setJ(K.surveys, sv.id, sv);
     return send(res, 200, { ok: true });
   }
 
   return send(res, 400, { error: 'what' });
 }
 const url = req => new URL(req.url, 'http://x').searchParams;
+
+// Shared with api/_events.js (the events calendar and the app settings), same storage.
+export { kv, getJ, setJ, allJ };

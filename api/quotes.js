@@ -3,6 +3,8 @@ import { list, put, get, del } from '@vercel/blob';
 import { isAuthed, can, readBody } from './_lib.js';
 import { leadsToken, leadsReady } from './_leads.js';
 import hotelsHandler from './_hotels.js';
+import eventsHandler from './_events.js';
+const sameTok = (a, b) => { const x = Buffer.from(String(a ?? '')), y = Buffer.from(String(b ?? '')); return x.length === y.length && crypto.timingSafeEqual(x, y); };
 
 // Quotes (הצעות מחיר) built in the admin, kept in the PRIVATE store next to the requests:
 //   quotes/q-<id>/v….json   one quote      quotes/_catalog/v….json   the chapters (services) and default texts
@@ -113,6 +115,7 @@ const forClient = q => {
 export default async function handler(req, res) {
   // /api/hotels is served here (see vercel.json) so the site stays within the plan's function count.
   if (new URL(req.url, 'http://x').searchParams.has('_h')) return hotelsHandler(req, res);
+  if (new URL(req.url, 'http://x').searchParams.has('_e')) return eventsHandler(req, res);   // /api/events: the events calendar + app settings
   res.setHeader('Cache-Control', 'no-store');
   if (!leadsReady()) return res.status(503).json({ error: 'not-configured' });
   const url = new URL(req.url, 'http://x');
@@ -120,7 +123,7 @@ export default async function handler(req, res) {
 
   // ----- the client's signed link -----
   if (view) {
-    if (!/^q-[a-z0-9]+$/.test(view) || url.searchParams.get('t') !== quoteToken(view)) return res.status(404).json({ error: 'not-found' });
+    if (!/^q-[a-z0-9]+$/.test(view) || !sameTok(url.searchParams.get('t'), quoteToken(view))) return res.status(404).json({ error: 'not-found' });
     const q = await readDoc(`quotes/${view}`);
     if (!q) return res.status(404).json({ error: 'not-found' });
     if (req.method === 'GET') return res.status(200).json(forClient(q));

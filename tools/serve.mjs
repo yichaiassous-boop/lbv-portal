@@ -30,10 +30,10 @@ const check = (pw, h) => { const [salt, v] = String(h).split(':'); return !!salt
 const body = req => new Promise((ok, bad) => { const b = []; req.on('data', d => b.push(d)); req.on('end', () => ok(Buffer.concat(b))); req.on('error', bad); });
 
 async function api(req, res, p) {
-  if (p === '/api/hotels') {
+  if (p === '/api/hotels' || p === '/api/events') {
     // The real handler (api/_hotels.js), with its data in data/hotels.local.json and this server's login.
     process.env.LBV_LOCAL_DATA = path.join(root, 'data', 'hotels.local.json');
-    const { default: hotels } = await import('../api/_hotels.js');
+    const { default: hotels } = await import(p === '/api/events' ? '../api/_events.js' : '../api/_hotels.js');
     const s = authed(req);
     req.lbvUser = s ? { id: s.id || (s.r === 'owner' ? 'owner' : s.n), n: s.n, r: s.r } : null;
     req.lbvUsers = [{ id: 'owner', name: 'הבעלים' }, ...loadUsers().map(u => ({ id: u.id, name: u.name }))];

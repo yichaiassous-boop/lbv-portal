@@ -1,9 +1,9 @@
 {
-  "name": "סקר מלונות – La Belle Vie",
-  "short_name": "סקר מלונות",
+  "name": "LBV – La Belle Vie",
+  "short_name": "LBV",
   "lang": "he",
   "dir": "rtl",
-  "start_url": "/admin/#hotels",
+  "start_url": "/admin/#apphome",
   "scope": "/admin/",
   "display": "standalone",
   "background_color": "#0b1430",

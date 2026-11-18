@@ -11,6 +11,8 @@ const DIR = { he: 'rtl', fr: 'ltr', en: 'ltr' };
 const E = window.LBVEdit;
 import { QUOTE_DEFAULTS } from "../quote/defaults.js";
 import { hotelsPage } from "./hotels.js";
+import { eventsPage, remotePage, appHome, appSite } from "./events.js";
+const IN_APP = document.documentElement.classList.contains("lbv-app");   // inside the LBV phone app (or the iPhone home-screen app)
 
 let me = null; // the logged-in manager: { name, role }
 let state = null, saved = '', storage = 'none', lang = 'he', page = 'dashboard', scopeId = 'top', leads = [], leadsReady = false;
@@ -256,6 +258,10 @@ const ICON = {
   people: 'M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM2 21v-1a6 6 0 0 1 12 0v1M16 3.5a4 4 0 0 1 0 7.5M22 21v-1a6 6 0 0 0-4-5.6',
   settings: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 7 19.4l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 3 13.7H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.6 7l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 10.3 3V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0 1.2 2.9H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z',
   hotels: 'M3 21V7l9-4 9 4v14M3 21h18M8 10h.01M12 10h.01M16 10h.01M8 14h.01M12 14h.01M16 14h.01M10 21v-3h4v3',
+  events: 'M4 5h16v16H4zM4 9h16M8 3v4M16 3v4M8 13h3M8 17h3M14 13h2',
+  app: 'M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z',
+  screens: 'M7 2h10a3 3 0 0 1 3 3v14a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V5a3 3 0 0 1 3-3zM12 6.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zM9.5 13h5M9.5 16.5h5',
+  pencil: 'M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4',
   help: 'M12 18h.01M9.2 9a3 3 0 1 1 4.1 2.8c-.8.4-1.3 1-1.3 1.9V14M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z',
 };
 /** The parts of the site, in the order they appear; each becomes one tab with everything about it. */
@@ -277,6 +283,9 @@ const GROUPS = () => [
     { id: 'inbox', title: 'פניות ונרשמים', sub: 'כל מי שהשאיר פרטים באתר: בקשות להצעת מחיר והרשמות לעדכונים', badge: true },
     { id: 'quotes', title: 'הצעות מחיר', sub: 'בונים הצעת מחיר ממותגת, שולחים ללקוח בוואטסאפ ורואים מתי הוא מאשר' },
     { id: 'mail', title: 'מייל לנרשמים', sub: 'עדכון לכל מי שנרשם, מהמייל של החברה' }] },
+  ...(IN_APP ? [{ id: 'app', name: 'בית', pages: [{ id: 'apphome', title: 'בית', sub: '' }, { id: 'appsite', title: 'עריכת האתר', sub: '' }] }] : []),
+  { id: 'events', name: 'לוח אירועים', pages: [{ id: 'events', title: 'לוח אירועים', sub: 'כל האירועים של LBV במקום אחד: מתי, איפה, עם מי, ובאיזה מצב' }] },
+  { id: 'screens', name: 'השלט', pages: [{ id: 'remote', title: 'השלט של המסכים', sub: 'שליטה מהטלפון במסך של האירוע' }] },
   { id: 'hotels', name: 'סקר מלונות', pages: [{ id: 'hotels', title: 'סקר מלונות', sub: 'מתקשרים למלונות, והמערכת ממלאת לבד מהשיחות: פרטים, זמינות, מחירים, מיילים וסיכום' }] },
   { id: 'site', name: 'עמודי האתר', pages: windows() },
   { id: 'people', name: 'צוות', pages: [{ id: 'team', title: 'צוות ודבר המנכ״ל', sub: 'תמונות, שמות ותפקידים, והמכתב של אילן', lang: true }] },
@@ -295,10 +304,36 @@ const myGroups = () => GROUPS().map(g => ({ ...g, pages: g.pages.filter(p => pag
 function pageAllowed(id) {
   if (['inbox', 'mail', 'quotes'].includes(id)) return canDo('leads');
   if (id === 'users') return canDo('users');
-  if (id === 'hotels') return true;   // every manager: each sees only their own surveys and those shared with them
+  if (id === 'hotels') return true;
+  if (id === 'events' || id === 'apphome' || id === 'appsite') return true;   // the calendar: every manager sees it (what each may change is decided on the server)
+  if (id === 'remote') return ['owner', 'admin'].includes(me?.role || 'owner');   // every manager: each sees only their own surveys and those shared with them
   if (id === 'dashboard') return canDo('leads');
   if (['guide', 'support', 'stats', 'account'].includes(id)) return true;
   return canDo('content');
+}
+/** The tiles on the app home screen (only what this manager may open). */
+function appTiles() {
+  const open = leads.filter(l => !l.handled).length;
+  return [
+    { id: 'events', title: 'לוח אירועים', sub: 'מה, מתי ואיפה', icon: ICON.events },
+    { id: 'hotels', title: 'סקר מלונות', sub: 'שיחות, מחירים, זמינות', icon: ICON.hotels },
+    { id: 'remote', title: 'השלט', sub: 'המסך של האירוע', icon: ICON.screens },
+    { id: 'appsite', title: 'עריכת האתר', sub: 'טקסטים, תמונות, סרטונים', icon: ICON.pencil, need: 'w-home' },
+    { id: 'inbox', title: 'פניות', sub: 'מי השאיר פרטים באתר', icon: ICON.inbox, badge: open || 0 },
+  ].filter(t => pageAllowed(t.need || t.id));
+}
+/** The bar at the bottom of the app: home, calendar, hotels, remote, site. */
+function appBar() {
+  if ($('.ab')) return;
+  const items = [['apphome', 'בית', ICON.home], ['events', 'לוח', ICON.events], ['hotels', 'מלונות', ICON.hotels], ['remote', 'השלט', ICON.screens], ['appsite', 'האתר', ICON.pencil]]
+    .filter(([id]) => pageAllowed(id === 'appsite' ? 'w-home' : id));
+  const nav = document.createElement('nav');
+  nav.className = 'ab';
+  nav.setAttribute('aria-label', 'ניווט');
+  nav.innerHTML = items.map(([id, t, ic]) => `<a href="#${id}" data-p="${id}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="${ic}"/></svg><span>${t}</span></a>`).join('');
+  nav.addEventListener('click', e => { const a = e.target.closest('a'); if (!a) return; e.preventDefault(); go(a.dataset.p); });
+  document.body.append(nav);
+  $$('.ab a').forEach(a => a.toggleAttribute('aria-current', a.dataset.p === page));
 }
 const allPages = () => myGroups().flatMap(g => g.pages.map(p => ({ ...p, group: g.id })));
 function drawNav() {
@@ -320,6 +355,10 @@ function go(p, opts = {}) {
   $('#langPick').hidden = !info.lang;
   history.replaceState(null, '', '#' + page);
   drawNav();
+  if (IN_APP) {
+    $('.hb__brand b').textContent = page === 'apphome' ? 'La Belle Vie' : info.title;
+    $$('.ab a').forEach(a => a.toggleAttribute('aria-current', a.dataset.p === page || (a.dataset.p === 'appsite' && ['site', 'people'].includes(info.group))));
+  }
   document.documentElement.style.setProperty("--hbh", $(".hb").offsetHeight + "px");
   render();
   pvShow(wide() ? pv.want : false);
@@ -330,6 +369,11 @@ function render() {
   const pg = $('#page');
   pg.innerHTML = '';
   if (page.startsWith('w-') || page.startsWith('trip-')) return windowPage(pg, page);
+  const actx = { toast, showLogin, go, me, rerender: () => render() };
+  if (page === 'events') return eventsPage(pg, actx);
+  if (page === 'remote') return remotePage(pg, actx);
+  if (page === 'apphome') return appHome(pg, actx, appTiles());
+  if (page === 'appsite') return appSite(pg, actx, allPages().filter(p => p.group === 'site' || p.group === 'people' || ['contact', 'banners'].includes(p.id)));
   if (page === 'hotels') return hotelsPage(pg, { toast, showLogin, rerender: () => page === 'hotels' && render() });
   ({ dashboard, inbox, mail, quotes, team, contact, banners, stats, guide, support, users, account })[page](pg);
 }
@@ -1695,9 +1739,9 @@ async function openApp() {
   $('#storageWarn').hidden = storage !== 'none';
   $$('#langPick button').forEach(x => x.setAttribute('aria-selected', String(x.dataset.lang === lang)));
   const start = location.hash.slice(1);
-  const inApp = document.documentElement.classList.contains('lbv-app');   // inside the phone app "LBV שיחות": only the hotel survey
-  go(inApp ? 'hotels' : allPages().some(p => p.id === start) ? start : 'dashboard');
-  if (!inApp) setTimeout(() => tour(false), 600);
+  go(allPages().some(p => p.id === start) ? start : IN_APP ? 'apphome' : 'dashboard');
+  if (!IN_APP) setTimeout(() => tour(false), 600);
+  else appBar();
   $('#me').onclick = () => go('account');
   $('#me').title = 'החשבון שלי';
   $('#me').innerHTML = !me ? '' : me.role === 'owner' ? '<span>הבעלים</span><small>כל ההרשאות</small>' : `${esc(me.name)}<small>${ROLE[me.role]?.[0] || ''}</small>`;
@@ -1727,7 +1771,7 @@ $('#loginForm').addEventListener('submit', async e => {
   const err = $('#loginErr');
   err.hidden = true;
   const r = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: e.target.username.value.trim(), password: e.target.password.value }) });
-  if (!r.ok) { err.textContent = r.status === 503 ? 'עוד לא הוגדרה סיסמה לניהול.' : 'הסיסמה לא נכונה. נסו שוב.'; err.hidden = false; return; }
+  if (!r.ok) { err.textContent = r.status === 503 ? 'עוד לא הוגדרה סיסמה לניהול.' : r.status === 429 ? 'יותר מדי ניסיונות. נסו שוב בעוד 15 דקות.' : 'הסיסמה לא נכונה. נסו שוב.'; err.hidden = false; return; }
   const j = await r.json().catch(() => ({}));
   me = j.user || null;
   e.target.reset();
@@ -1745,5 +1789,5 @@ addEventListener('beforeunload', e => { if (state && changed()) { e.preventDefau
     storage = cfg.storage;
     me = cfg.user || null;
     if (cfg.authed) await openApp(); else showLogin();
-  } catch (e) { showLogin(); }
+  } catch (e) { console.error(e); showLogin(); }
 })();
