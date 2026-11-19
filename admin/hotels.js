@@ -57,6 +57,7 @@ function pushWindows() {
     if (!window.LBVApp?.setWindows || !home) return;
     const w = (home.windows || []).map(x => ({ from: Date.parse(x.from) || 0, to: x.to ? Date.parse(x.to) || 0 : 0 })).filter(x => x.from);
     window.LBVApp.setWindows(JSON.stringify(w));
+    if (window.LBVApp.setWa) window.LBVApp.setWa(JSON.stringify(home.wa || []));
     if (window.LBVApp.setWatch) window.LBVApp.setWatch(JSON.stringify((home.watch || []).map(x => ({ phone: x.phone, from: Date.parse(x.from) || 0, to: Date.parse(x.to) || 0 }))));
   } catch (e) {}
 }
@@ -69,14 +70,21 @@ function phoneRecsBox(q, list, intro) {
   const recs = list.filter(x => x.rec), todo = recs.filter(x => !x.sent);
   const box = h(`<div class="hs-ans hs-ans--phone hs-prec">
     <p class="hs-ans__q">${intro}</p>
-    <ul class="hs-prec__l">${list.slice(0, 8).map(x => `<li><b><bdi>${esc(x.name || x.number)}</bdi></b> · ${relDay(x.at)} (${when(x.at)}) · ${Math.max(1, Math.round(x.dur / 60))} דק' · ${x.rec ? (x.sent ? 'ההקלטה כבר במערכת' : 'יש הקלטה בטלפון') : 'בלי הקלטה'}</li>`).join('')}</ul>
+    <ul class="hs-prec__l">${list.slice(0, 12).map((x, i) => { const can = x.rec && !x.sent; return `<li>${can ? `<label class="hs-prec__c"><input type="checkbox" data-k="${i}" ${todo.length <= 2 || todo[0] === x ? 'checked' : ''}>` : '<span class="hs-prec__c">'}<span><b><bdi>${esc(x.name || x.number)}</bdi></b> · ${relDay(x.at)} (${when(x.at)}) · ${Math.max(1, Math.round(x.dur / 60))} דק' · ${x.rec ? (x.sent ? 'ההקלטה כבר במערכת' : 'יש הקלטה בטלפון') : 'בלי הקלטה'}</span>${can ? '</label>' : '</span>'}</li>`; }).join('')}</ul>
     <div class="row-tools hs-ans__yn"></div></div>`);
   const yn = $('.hs-ans__yn', box);
   if (todo.length) {
-    const go = h(`<button class="btn btn--gold btn--sm" type="button">להביא ${todo.length === 1 ? 'את ההקלטה' : `את ${todo.length} ההקלטות`}</button>`);
-    go.addEventListener('click', () => {
-      window.LBVApp.fetchCalls(JSON.stringify(todo.map(x => x.key)));
-      yn.innerHTML = '<p class="hs-wait">ההקלטות עולות עכשיו מהטלפון. בעוד כ-5 דקות הן יופיעו כאן, ואז אפשר לבקש סיכום.</p>';
+    const shown = list.slice(0, 12);
+    const picked = () => [...box.querySelectorAll('input[data-k]:checked')].map(i => shown[+i.dataset.k]);
+    const go = h('<button class="btn btn--gold btn--sm" type="button"></button>');
+    const label = () => { const n = picked().length; go.textContent = n ? (n === 1 ? 'להביא את השיחה שבחרתי' : `להביא את ${n} השיחות שבחרתי`) : 'בוחרים שיחה'; go.disabled = !n; };
+    box.addEventListener('change', label); label();
+    go.addEventListener('click', async () => {
+      const sel = picked(); if (!sel.length) return;
+      window.LBVApp.fetchCalls(JSON.stringify(sel.map(x => x.key)));
+      const question = (look.q || '').trim();
+      if (question) { try { await api('POST', '', { op: 'askLater', phone: sel[0].number || q, at: sel.map(x => x.at), q: question }); } catch (e) {} }
+      yn.innerHTML = question ? `<p class="hs-wait">השיחות עולות עכשיו מהטלפון. בעוד כ-5 עד 10 דקות אחפש בהן "${esc(question)}" ואראה כאן מה נאמר.</p>` : '<p class="hs-wait">השיחות עולות עכשיו מהטלפון. בעוד כ-5 דקות הן יופיעו כאן, ואז אפשר לבקש סיכום.</p>';
     });
     yn.append(go);
   }
@@ -129,6 +137,7 @@ function phonePanel(m, con) {
     [p.callLog, 'יש גישה ליומן השיחות', 'אין גישה ליומן השיחות'],
     [p.battery, 'האפליקציה רצה ברקע', 'הטלפון עלול לעצור את האפליקציה ברקע'],
     [!!m.on, 'מצב בדיקה דולק', 'מצב בדיקה כבוי: שיחות לא נקראות'],
+    ...(p.wa !== undefined ? [[p.wa, 'הודעות וואטסאפ ממלונות נקלטות לבד', 'הודעות וואטסאפ ממלונות עוד לא נקלטות. לוחצים "לאשר וואטסאפ" ומדליקים את LBV']] : []),
     // what the phone found in the folder (from 1.11): how many, the newest, how many wait for Wi-Fi
     ...(p.found >= 0 && p.lastSync ? [[p.found > 0, `בתיקייה יש ${p.found} הקלטות מחצי השנה האחרונה${p.newest ? ` · האחרונה ${ago(new Date(p.newest).toISOString())}` : ''}`, 'בתיקייה שנבחרה אין הקלטות מחצי השנה האחרונה. כנראה זו לא התיקייה של הקלטות השיחות']] : []),
     ...(p.waiting > 0 ? [[false, '', `${p.waiting} הקלטות ישנות מחכות ל-Wi-Fi. "לשלוח הכול עכשיו" שולח גם בלי Wi-Fi`]] : []),
@@ -144,9 +153,10 @@ function phonePanel(m, con) {
     ${rows.some(r => !r[0]) ? `<ul>${rows.filter(r => !r[0] && r[2]).map(([ok, yes, no]) => `<li class="is-no"><i class="dot no"></i>${no}</li>`).join('')}</ul>` : '<p class="hs-phone__ok">הכול מחובר ועובד.</p>'}
     <details class="hs-phone__more"><summary>פרטים</summary><ul>${rows.filter(r => r[0]).map(([ok, yes]) => `<li>${yes}</li>`).join('')}</ul></details>
     <small>${p.lastSync ? `בדיקה אחרונה בטלפון: ${ago(new Date(p.lastSync).toISOString())}` : ''}${p.err ? ` · תקלה אחרונה: ${esc(String(p.err).slice(0, 120))}` : ''} ${p.pairSt && !p.paired ? ` · חיבור: ${esc(String(p.pairSt).slice(0, 20))}` : ''} · גרסה ${esc(p.version)}</small>
-    <div class="hs-phone__act">${needFix ? '<button type="button" class="btn btn--gold btn--sm" data-fix>לסדר את ההרשאות</button>' : ''}${p.paired ? (p.waiting > 0 ? '<button type="button" class="btn btn--gold btn--sm" data-sync>לשלוח הכול עכשיו</button>' : '<button type="button" class="btn btn--line btn--sm" data-sync>לבדוק הקלטות עכשיו</button>') : con.app ? '<button type="button" class="btn btn--gold btn--sm" data-pair>לחבר את הטלפון</button>' : ''}</div>
+    <div class="hs-phone__act">${p.wa === false ? '<button type="button" class="btn btn--line btn--sm" data-wa>לאשר וואטסאפ</button>' : ''}${needFix ? '<button type="button" class="btn btn--gold btn--sm" data-fix>לסדר את ההרשאות</button>' : ''}${p.paired ? (p.waiting > 0 ? '<button type="button" class="btn btn--gold btn--sm" data-sync>לשלוח הכול עכשיו</button>' : '<button type="button" class="btn btn--line btn--sm" data-sync>לבדוק הקלטות עכשיו</button>') : con.app ? '<button type="button" class="btn btn--gold btn--sm" data-pair>לחבר את הטלפון</button>' : ''}</div>
   </div>`);
   $('[data-fix]', el)?.addEventListener('click', () => window.LBVApp.approvals());
+  $('[data-wa]', el)?.addEventListener('click', () => { window.LBVApp.waAccess?.(); ctx.toast('מדליקים את LBV ברשימה, וחוזרים לכאן', 'info'); });
   $('[data-switch]', el)?.addEventListener('click', async () => { try { await fetch('/api/login', { method: 'DELETE' }); } catch (e) {} location.href = '/admin/?out=' + Date.now() + '#apphome'; });
   $('[data-pair]', el)?.addEventListener('click', () => { (window.LBVApp.pairNow || window.LBVApp.syncNow)?.call(window.LBVApp); ctx.toast('מחברים את הטלפון לרובוט', 'info'); setTimeout(() => again(), 4000); });
   $('[data-sync]', el)?.addEventListener('click', () => { window.LBVApp.syncNow?.(); ctx.toast('הטלפון בודק עכשיו את ההקלטות', 'info'); setTimeout(() => again(), 20000); });
@@ -175,11 +185,32 @@ function waitFor(pc, done) {
     } catch (e) { clearInterval(t); }
   }, 30e3);
 }
+/** "לייבא את זה?": a call found on the phone goes into a hotel (one that has this number, or a new one in a card). */
+function importBox(pc, who) {
+  const opts = [];
+  for (const r of look.results || []) opts.push({ v: r.surveyId + '|' + r.id, t: `${r.name} (${r.survey})` });
+  for (const s of home.surveys || []) opts.push({ v: s.id + '|', t: `מלון חדש בכרטיסייה "${s.title}"` });
+  if (!opts.length) return h('<span></span>');
+  const el = h(`<div class="hs-imp"><b>לייבא את השיחה הזאת למלון?</b>
+    <div class="hs-imp__row"><select>${opts.map(o => `<option value="${esc(o.v)}">${esc(o.t)}</option>`).join('')}</select><button class="btn btn--gold btn--sm" type="button">לייבא</button></div></div>`);
+  $('button', el).addEventListener('click', async () => {
+    const [surveyId, hotelId] = $('select', el).value.split('|');
+    try {
+      const r = await api('POST', '', { op: 'attach', id: pc.id, surveyId, hotelId: hotelId || undefined, name: who });
+      el.innerHTML = `<p class="hs-wait">${r.already ? 'השיחה כבר נמצאת במלון הזה.' : 'יובא. השיחה נמצאת עכשיו בהיסטוריה של המלון.'}</p>`;
+      const open = h('<button class="btn btn--line btn--sm" type="button">לפתוח את המלון</button>');
+      open.addEventListener('click', () => { openSurvey = surveyId; openHotel = r.id; cur = null; look = { text: '', results: null, open: null }; again(); scrollTo({ top: 0 }); });
+      el.append(open);
+    } catch (e) { fail(e); }
+  });
+  return el;
+}
 function lookupCard() {
   const here = openSurvey && cur ? cur.survey : null;   // inside a card: offer to add a hotel from another card
   const c = h(`<section class="card hs-look" id="hs-look">
     <form class="hs-look__f"><label class="hs-look__l" for="hs-look-in">${here ? 'בדיקת מלון שכבר דיברתי איתו' : 'דיברתי כבר עם המקום הזה?'}</label>
-      <div class="hs-look__row"><input id="hs-look-in" type="search" inputmode="tel" placeholder="מספר טלפון של מלון (או שם)" value="${esc(look.text)}"><button class="btn btn--dark" type="submit">בדיקה</button></div></form>
+      <div class="hs-look__row"><input id="hs-look-in" type="search" inputmode="tel" placeholder="מספר טלפון של מלון (או שם)" value="${esc(look.text)}"><button class="btn btn--dark" type="submit">בדיקה</button></div>
+      <input id="hs-look-q" class="hs-look__q" type="search" placeholder="מה לחפש בשיחה? (לא חובה, למשל: מחיר לשבת, שעת כניסה)" value="${esc(look.q || '')}"></form>
     <div class="hs-look__out" aria-live="polite"></div></section>`);
   const out = $('.hs-look__out', c);
   const draw = () => {
@@ -248,15 +279,18 @@ function lookupCard() {
     const show = () => {
       const sm = pc.sum;
       yn.innerHTML = safeUrl(pc.url) ? `<a class="btn btn--line btn--sm" href="${esc(pc.url)}" target="_blank" rel="noopener">להאזנה להקלטה</a>` : '';
-      body.innerHTML = `${sm.duration ? `<small>אורך השיחה ${esc(sm.duration)}</small>` : ''}<p>${esc(sm.summary)}</p>
+      body.innerHTML = `${sm.q ? `<div class="hs-found ${sm.found ? '' : 'is-no'}"><b>מה שחיפשת: ${esc(sm.q)}</b><p>${esc(sm.answer || (sm.found ? '' : 'בשיחה הזאת לא דיברתם על זה.'))}</p>${(sm.answerQuotes || []).length ? `<ul class="ev__q">${sm.answerQuotes.map(q => `<li><time>${esc(q.time)}</time>${q.who ? `<b>${esc(q.who)}:</b> ` : ''}"${esc(q.text)}"</li>`).join('')}</ul>` : ''}</div>` : ''}
+        ${sm.duration ? `<small>אורך השיחה ${esc(sm.duration)}</small>` : ''}<p>${esc(sm.summary)}</p>
         ${(sm.quotes || []).length ? `<ul class="ev__q">${sm.quotes.map(q => `<li><time>${esc(q.time)}</time>${q.who ? `<b>${esc(q.who)}:</b> ` : ''}"${esc(q.text)}"</li>`).join('')}</ul>` : ''}
         ${sm.transcript ? `<details class="ev__tr"><summary>כל השיחה</summary><p>${esc(sm.transcript).replace(/\n/g, '<br>')}</p></details>` : ''}`;
+      if ((look.q || '').trim() && sm.q !== look.q.trim()) { const again2 = h(`<button class="btn btn--gold btn--sm" type="button">לחפש בה: ${esc(look.q.trim())}</button>`); again2.addEventListener('click', ask); yn.append(again2); }
+      body.append(importBox(pc, who));
       if (here) { const wa = h('<button class="btn btn--line btn--sm" type="button">לשלוח כהוכחה בוואטסאפ</button>'); wa.addEventListener('click', () => window.open('https://wa.me/?text=' + encodeURIComponent(`שיחה מ-${when(pc.at)} עם ${who}:\n${sm.summary}\n${(sm.quotes || []).map(q => `[${q.time}] "${q.text}"`).join('\n')}`), '_blank')); yn.append(wa); }
     };
-    const waiting = () => { yn.innerHTML = ''; body.innerHTML = '<p class="hs-wait">המערכת מקשיבה לשיחה עכשיו. הסיכום יופיע כאן תוך כ-5 דקות, ותקבל התראה.</p>'; };
+    const waiting = () => { yn.innerHTML = ''; body.innerHTML = pc.q ? `<p class="hs-wait">המערכת מקשיבה לשיחה ומחפשת "${esc(pc.q)}". התשובה תופיע כאן תוך כ-5 דקות, ותקבל התראה.</p>` : '<p class="hs-wait">המערכת מקשיבה לשיחה עכשיו. הסיכום יופיע כאן תוך כ-5 דקות, ותקבל התראה.</p>'; };
     const ask = async () => {
       try {
-        const r = await api('POST', '', { op: 'ask', id: pc.id });
+        const r = await api('POST', '', { op: 'ask', id: pc.id, q: (look.q || '').trim() });
         Object.assign(pc, r);
         if (pc.sum && !pc.sum.error) return show();
         waiting(); waitFor(pc, () => { if (box.isConnected) show(); });
@@ -265,7 +299,7 @@ function lookupCard() {
     if (pc.sum && !pc.sum.error) show();
     else if (pc.ask) { waiting(); waitFor(pc, () => { if (box.isConnected) show(); }); }
     else {
-      const yes = h('<button class="btn btn--gold btn--sm" type="button">כן, סיכום</button>'), no = h('<button class="btn btn--line btn--sm" type="button">לא</button>');
+      const yes = h(`<button class="btn btn--gold btn--sm" type="button">${(look.q || '').trim() ? 'לחפש בשיחה: ' + esc(look.q.trim()) : 'כן, סיכום'}</button>`), no = h('<button class="btn btn--line btn--sm" type="button">לא</button>');
       yes.addEventListener('click', ask); no.addEventListener('click', () => box.remove());
       yn.append(yes, no);
       if (pc.sum?.error) body.innerHTML = '<p class="hint">בפעם הקודמת לא הצלחתי לקרוא את ההקלטה. אפשר לנסות שוב.</p>';
@@ -274,7 +308,7 @@ function lookupCard() {
   };
   $('form', c).addEventListener('submit', async e => {
     e.preventDefault();
-    look.text = $('#hs-look-in', c).value.trim(); look.open = null;
+    look.text = $('#hs-look-in', c).value.trim(); look.q = $('#hs-look-q', c).value.trim(); look.open = null;
     if (!look.text) { look.results = null; return draw(); }
     try { const r = await api('GET', '?lookup=' + encodeURIComponent(look.text)); look.results = r.results; look.phone = r.phone || []; look.indexed = r.indexed; } catch (e2) { fail(e2); look.results = null; }
     look.local = phoneFind(look.text);
@@ -776,9 +810,11 @@ function timeline(sv, x) {
         ${(l.files || []).length ? `<div class="row-tools">${l.files.filter(f => safeUrl(f.url)).map(f => `<a class="btn btn--line btn--sm" href="${esc(f.url)}" target="_blank" rel="noopener">${esc(f.name)}</a>`).join('')}</div>` : ''}
         ${l.error ? `<p class="err">${esc(l.error)}</p>` : ''}</li>`);
       ol.append(li);
+    } else if (l.t === 'wa') {
+      ol.append(h(`<li class="ev ev--wa"><div class="ev__h"><b>הודעת וואטסאפ</b><time>${when(l.at)}</time>${l.from ? `<span>מאת <bdi>${esc(l.from)}</bdi></span>` : ''}</div><p class="ev__wa">${esc(l.text)}</p></li>`));
     } else if (l.t === 'text') {
       const [an, ac] = AV[l.avail] || AV.unknown;
-      ol.append(h(`<li class="ev ev--text"><div class="ev__h"><b>${l.src === 'mail' ? 'נקרא מהמיילים' : 'נקרא מטקסט שהודבק'}</b><time>${when(l.at)}</time>${l.avail && l.avail !== 'unknown' ? `<span class="pill pill--${ac}">${an}</span>` : ''}</div>
+      ol.append(h(`<li class="ev ev--text"><div class="ev__h"><b>${l.src === 'mail' ? 'נקרא מהמיילים' : l.src === 'wa' ? 'נקרא מהוואטסאפ' : 'נקרא מטקסט שהודבק'}</b><time>${when(l.at)}</time>${l.avail && l.avail !== 'unknown' ? `<span class="pill pill--${ac}">${an}</span>` : ''}</div>
         ${l.summary ? `<p>${esc(l.summary)}</p>` : ''}
         ${l.quotes?.length ? `<ul class="ev__q">${l.quotes.map(q => `<li>${q.who ? `<b>${esc(q.who)}:</b> ` : ''}"${esc(q.text)}"</li>`).join('')}</ul>` : ''}</li>`));
     } else {

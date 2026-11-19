@@ -161,7 +161,7 @@ function answerAsks(st) {
     let result;
     try {
       const f = DriveApp.getFileById(a.id);
-      result = listen(f, null, recordedAt(f));
+      result = listen(f, null, recordedAt(f), a.q);
     } catch (e) { result = { error: String(e).slice(0, 280) }; }
     site('post', 'answer', { id: a.id, result: result });
   }
@@ -174,7 +174,7 @@ function phoneFromName(n) {
 }
 
 /* ---------- Gemini ---------- */
-function listen(file, sv, at) {
+function listen(file, sv, at, question) {
   const blob = file.getBlob();
   let mime = blob.getContentType() || 'audio/mp4';
   if (/octet/.test(mime)) mime = /\.amr$/i.test(file.getName()) ? 'audio/amr' : /\.mp3$/i.test(file.getName()) ? 'audio/mpeg' : /\.wav$/i.test(file.getName()) ? 'audio/wav' : 'audio/mp4';
@@ -190,7 +190,9 @@ function listen(file, sv, at) {
     'Answer in JSON only, in Hebrew. summary: what the call was about and everything decided or said that matters (availability, prices, conditions, promises, what to do next). who: who the other side is (name, place) if said.',
     'keyQuotes: the sentences that matter as proof later, the exact words spoken, with the time in the recording (mm:ss) and who said it.',
     'transcript: the whole conversation, each turn on its own line, "mm:ss <speaker>:". duration: mm:ss.',
-  ].join('\n'), { type: 'OBJECT', properties: { summary: { type: 'STRING' }, who: { type: 'STRING' }, duration: { type: 'STRING' },
+    question ? 'The owner is looking for this in the call: "' + question + '". found = true only if it was really talked about. answer: in Hebrew, exactly what was said about it (numbers, dates, names as said), or that it was not talked about. answerQuotes: the exact sentences about it, with the time (mm:ss) and who said it.' : '',
+  ].join('\n'), { type: 'OBJECT', properties: { summary: { type: 'STRING' }, who: { type: 'STRING' }, duration: { type: 'STRING' }, found: { type: 'BOOLEAN' }, answer: { type: 'STRING' },
+    answerQuotes: { type: 'ARRAY', items: { type: 'OBJECT', properties: { time: { type: 'STRING' }, speaker: { type: 'STRING' }, text: { type: 'STRING' } } } },
     keyQuotes: { type: 'ARRAY', items: { type: 'OBJECT', properties: { time: { type: 'STRING' }, speaker: { type: 'STRING' }, text: { type: 'STRING' } } } }, transcript: { type: 'STRING' } }, required: ['summary'] });
 
   const known = (sv.hotels || []).filter(h => h.name).map(h => h.name + (h.phone ? ' (' + h.phone + ')' : '')).join('; ');
@@ -258,7 +260,7 @@ function parses(st) {
   for (const p of (st.parses || []).slice(0, 3)) {
     let result, error = '';
     try { result = readText(p.text, surveyOf(st, p.surveyId), p.name, 'paste'); } catch (e) { error = String(e).slice(0, 280); }
-    site('post', 'parsed', { surveyId: p.surveyId, hotelId: p.hotelId, id: p.id, src: 'paste', result: result || null, error: error });
+    site('post', 'parsed', { surveyId: p.surveyId, hotelId: p.hotelId, id: p.id, src: p.src || 'paste', result: result || null, error: error });
   }
 }
 /** A hotel got an e-mail address: bring every mail with it (last 6 months) into its history and read the details from them. */
@@ -444,10 +446,16 @@ function doPost(e) {
     try { st = JSON.parse(cache.get('phoneJobs') || 'null'); } catch (err) {}
     if (!st) {
       const s = site('get', 'status');
-      st = { windows: (s.windows || []).map(w => ({ from: Date.parse(w.from) || 0, to: w.to ? Date.parse(w.to) || 0 : 0 })), watch: (s.watch || []).map(w => ({ phone: w.phone, from: Date.parse(w.from) || 0, to: Date.parse(w.to) || 0 })) };
+      st = { windows: (s.windows || []).map(w => ({ from: Date.parse(w.from) || 0, to: w.to ? Date.parse(w.to) || 0 : 0 })), watch: (s.watch || []).map(w => ({ phone: w.phone, from: Date.parse(w.from) || 0, to: Date.parse(w.to) || 0 })), wa: s.wa || [] };
       try { cache.put('phoneJobs', JSON.stringify(st), 60); } catch (err) {}
     }
-    return reply({ ok: true, windows: st.windows, watch: st.watch });
+    return reply({ ok: true, windows: st.windows, watch: st.watch, wa: st.wa || [] });
+  }
+  // WhatsApp messages from hotels (read on the phone from the notifications) → the site files them and reads the details
+  if (b.op === 'wa') {
+    const items = (Array.isArray(b.items) ? b.items : []).slice(0, 100);
+    if (items.length) site('post', 'wa', { items: items });
+    return reply({ ok: true });
   }
   if (b.op !== 'upload' || !b.data || !b.name) return reply({ ok: false, error: 'op' });
   const folder = recFolder();

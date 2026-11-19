@@ -221,3 +221,19 @@ mark { background: #FCE7A8; color: inherit; padding: 0 2px; border-radius: 3px; 
 .hs-phone__more { margin: 4px 0 8px; font-size: .86rem; color: #5B6478; }
 .hs-phone__more summary { cursor: pointer; }
 .hs-phone__more ul { margin: 6px 0 0; padding-inline-start: 18px; display: grid; gap: 3px; list-style: disc; }
+
+/* call search: pick the calls, what was found, import (19.11) */
+.hs-look__q { width: 100%; margin-top: 8px; padding: 10px 12px; border: 1px solid #D8DCE5; border-radius: 10px; font: inherit; background: #fff; }
+.hs-prec__l { list-style: none; padding-inline-start: 0; }
+.hs-prec__c { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
+.hs-prec__c input { margin-top: 3px; width: 18px; height: 18px; accent-color: #B08D57; flex: 0 0 auto; }
+.hs-found { background: #FBF7EF; border-inline-start: 3px solid #B08D57; border-radius: 8px; padding: 10px 12px; margin: 6px 0 10px; }
+.hs-found.is-no { background: #F4F5F8; border-inline-start-color: #9AA1B2; }
+.hs-found p { margin: 4px 0 0; }
+.hs-imp { margin-top: 12px; padding-top: 10px; border-top: 1px solid #E6E8EE; }
+.hs-imp__row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+.hs-imp__row select { flex: 1 1 200px; min-width: 0; padding: 8px 10px; border: 1px solid #D8DCE5; border-radius: 10px; font: inherit; background: #fff; }
+
+/* WhatsApp messages from a hotel (19.11) */
+.ev--wa { border-inline-start-color: #3E8E6B; }
+.ev__wa { white-space: pre-wrap; }

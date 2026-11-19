@@ -70,6 +70,7 @@ const allJ = async key => Object.values(await kv.hgetall(key)).map(v => { try { 
 const K = {
   surveys: 'hs:surveys',            // id → survey
   hotels: id => 'hs:h:' + id,        // hotelId → hotel (with its history)
+  pend: 'hs:pend',                   // 'list' → calls picked on the phone, waiting to be searched for a question
   users: 'hs:user',                  // userId → { mode, windows, keyHash, ping }
   keys: 'hs:keys',                   // sha256(key) → userId
   out: 'hs:out',                     // mail id → queued e-mail
@@ -145,17 +146,19 @@ const canManage = (s, sv) => sv && (isOwner(s) || sv.by?.id === meId(s));
 /** Calls with a hotel's number join it by themselves: from 2 weeks before it was added until 2 weeks after (owner 19.11). */
 const WATCH_DAYS = 14;
 function robotJobs(sv, hotels) {
-  const watch = [], parses = [], mailScan = [], webLook = [];
+  const watch = [], parses = [], mailScan = [], webLook = [], wa = [];
   for (const h of hotels) {
     const t = Date.parse(h.createdAt || h.updatedAt || 0) || 0;
     for (const ph of [h.phone, h.phone2]) { const d = digits(ph); if (d.length >= 8 && Date.now() < t + WATCH_DAYS * 864e5) watch.push({ surveyId: sv.id, hotelId: h.id, phone: d, from: new Date(t - WATCH_DAYS * 864e5).toISOString(), to: new Date(t + WATCH_DAYS * 864e5).toISOString() }); }
-    for (const p of (h.parse || []).slice(0, 3)) parses.push({ surveyId: sv.id, hotelId: h.id, id: p.id, text: p.text, name: h.name });
+    for (const p of (h.parse || []).slice(0, 3)) parses.push({ surveyId: sv.id, hotelId: h.id, id: p.id, text: p.text, name: h.name, src: p.src || 'paste' });
+    // WhatsApp: hotels added in the last 60 days, by number + hotel name + contact person
+    if (Date.now() < t + 60 * 864e5) for (const ph of [h.phone, h.phone2]) { const d = digits(ph).slice(-9); if (d.length >= 8) wa.push({ phone: d, names: [h.name, h.contact].map(x => String(x || '').trim()).filter(x => x.length >= 3) }); }
     const em = String(h.email || '').trim().toLowerCase();
     if (/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(em) && h.mailScan !== em) mailScan.push({ surveyId: sv.id, hotelId: h.id, email: em, name: h.name });
     // a new hotel: the robot looks it up on the web once (website, photos, missing details) - owner 19.11
     if (h.name && !h.webDone && (h.webTries || 0) < 2) webLook.push({ surveyId: sv.id, hotelId: h.id, name: h.name, city: h.city || '', website: h.website || '' });
   }
-  return { watch, parses, mailScan, webLook };
+  return { watch, parses, mailScan, webLook, wa };
 }
 
 async function userRec(id) { return (await getJ(K.users, id)) || { mode: { on: false }, windows: [] }; }
@@ -284,7 +287,7 @@ export default async function hotelsHandler(req, res) {
         (d.length >= 7 && (() => { const x = digits(c.phone) || digits((c.name.match(/(\+?972|0)\d[\d\- ]{7,12}/) || [''])[0]); return x && (x === d || x.endsWith(d) || d.endsWith(x)); })()) ||
         (d.length < 7 && n.length >= 2 && norm(c.name).includes(n))))
         .sort((a2, b2) => (b2.at || '').localeCompare(a2.at || '')).slice(0, 10)
-        .map(c => ({ id: c.id, at: c.at, name: c.name, phone: c.phone, url: c.url, ask: !!c.ask, sum: c.sum || null }));
+        .map(c => ({ id: c.id, at: c.at, name: c.name, phone: c.phone, url: c.url, ask: !!c.ask, q: c.q || '', sum: c.sum || null }));
       const u = await userRec(uid);
       return send(res, 200, { results: out.slice(0, 10), phone, indexed: !!u.indexedAt || phone.length > 0 });
     }
@@ -293,8 +296,40 @@ export default async function hotelsHandler(req, res) {
     if (req.method === 'POST' && body.op === 'ask') {
       const c = await getJ(K.calls, str(body.id, 120));
       if (!c || !(isOwner(s) || c.owner === uid)) return send(res, 404, { error: 'not-found' });
-      if (!c.sum || c.sum.error) { c.ask = true; c.sum = null; c.askedAt = now(); await setJ(K.calls, c.id, c); }
-      return send(res, 200, { id: c.id, ask: !!c.ask, sum: c.sum || null });
+      const question = str(body.q, 300).trim();
+      if (!c.sum || c.sum.error || (question && c.sum.q !== question)) { c.ask = true; c.q = question; c.sum = null; c.askedAt = now(); await setJ(K.calls, c.id, c); }
+      return send(res, 200, { id: c.id, ask: !!c.ask, q: c.q || '', sum: c.sum || null });
+    }
+
+    // calls picked on the phone + what to look for: when they reach the robot, it searches them by itself (owner 19.11)
+    if (req.method === 'POST' && body.op === 'askLater') {
+      const question = str(body.q, 300).trim(), d = digits(body.phone).slice(-9);
+      const ats = (Array.isArray(body.at) ? body.at : []).slice(0, 10).map(x => str(x, 40)).filter(x => Date.parse(x));
+      if (!question || d.length < 7 || !ats.length) return send(res, 400, { error: 'input' });
+      const list = ((await getJ(K.pend, 'list')) || []).filter(p => Date.parse(p.until) > Date.now());
+      for (const at of ats) list.push({ phone: d, at, q: question, by: uid, until: new Date(Date.now() + 6 * 3600e3).toISOString() });
+      await setJ(K.pend, 'list', list.slice(-60));
+      return send(res, 200, { ok: true });
+    }
+
+    // "לייבא למלון": a call found on the phone goes into a hotel's history (an existing hotel or a new one in a card)
+    if (req.method === 'POST' && body.op === 'attach') {
+      const c = await getJ(K.calls, str(body.id, 120));
+      if (!c || !(isOwner(s) || c.owner === uid) || !c.sum || c.sum.error) return send(res, 404, { error: 'not-found' });
+      const sv = await getJ(K.surveys, str(body.surveyId, 40));
+      if (!canSee(s, sv)) return send(res, 404, { error: 'not-found' });
+      const key = K.hotels(sv.id);
+      let h = body.hotelId ? await getJ(key, str(body.hotelId, 40)) : null;
+      if (body.hotelId && !h) return send(res, 404, { error: 'not-found' });
+      if (!h) h = { ...cleanHotel({ name: str(body.name, 120) || c.sum.who || c.name.replace(/\.[a-z0-9]{2,4}$/i, ''), phone: c.phone }), id: rid('h'), createdAt: now() };
+      if ((h.log || []).some(l => l.t === 'call' && l.file?.id === c.id)) return send(res, 200, { ...h, min: minPrice(h), already: true });
+      const sm = c.sum;
+      h.log = [...(h.log || []), { t: 'call', at: c.at || now(), file: { id: c.id, name: c.name, url: c.url }, dur: sm.duration || '',
+        summary: [sm.q && sm.answer ? 'מה שחיפשת (' + sm.q + '): ' + sm.answer : '', sm.summary].filter(Boolean).join('\n\n').slice(0, 1500),
+        quotes: [...(sm.answerQuotes || []), ...(sm.quotes || [])].slice(0, 12), avail: 'unknown', availText: '', transcript: sm.transcript || '', by: s.n }].slice(-80);
+      h.updatedAt = now();
+      await setJ(key, h.id, h);
+      return send(res, 200, { ...h, min: minPrice(h) });
     }
 
     if (req.method === 'GET' && !q('survey')) {
@@ -306,7 +341,7 @@ export default async function hotelsHandler(req, res) {
           count: hs.length, avail: hs.filter(h => h.avail === 'available' || h.avail === 'partial').length, follow: hs.filter(h => h.status === 'followup').length };
       }));
       const managers = await managerList(req);
-      return send(res, 200, { me: { id: uid, name: s.n, role: s.r }, mode: u.mode || { on: false }, windows: (u.windows || []).slice(-60), watch: await (async () => { const w = []; for (const sv of all) w.push(...robotJobs(sv, await allJ(K.hotels(sv.id))).watch.map(x => ({ phone: x.phone, from: x.from, to: x.to }))); return w.slice(0, 300); })(), connection: await (async () => { const r = (await robotOf(uid)).u; return { connected: !!r.keyHash, ping: r.ping || null, last: r.lastCall || null, skipped: r.skipped || 0, app: !!r.app?.url, appLast: r.app?.last || null }; })(), surveys, managers });
+      return send(res, 200, { me: { id: uid, name: s.n, role: s.r }, mode: u.mode || { on: false }, windows: (u.windows || []).slice(-60), wa: await (async () => { const w = []; for (const sv of all) w.push(...robotJobs(sv, await allJ(K.hotels(sv.id))).wa); return w.slice(0, 300); })(), watch: await (async () => { const w = []; for (const sv of all) w.push(...robotJobs(sv, await allJ(K.hotels(sv.id))).watch.map(x => ({ phone: x.phone, from: x.from, to: x.to }))); return w.slice(0, 300); })(), connection: await (async () => { const r = (await robotOf(uid)).u; return { connected: !!r.keyHash, ping: r.ping || null, last: r.lastCall || null, skipped: r.skipped || 0, app: !!r.app?.url, appLast: r.app?.last || null }; })(), surveys, managers });
     }
 
     // "חיבור האפליקציה": the robot's address + the app secret, handed only to the logged-in owner of that robot
@@ -468,7 +503,7 @@ async function script(req, res, what, userId, b) {
     for (const sv of surveys) for (const h of await allJ(K.hotels(sv.id))) for (const m of (h.log || []))
       if ((m.t === 'mail-out' || m.t === 'mail-in') && m.threadId && Date.now() - Date.parse(m.at) < 60 * 864e5 && !threads.some(x => x.threadId === m.threadId)) threads.push({ surveyId: sv.id, hotelId: h.id, threadId: m.threadId, seen: (h.log || []).filter(x => x.t === 'mail-in').map(x => x.msgId) });
     // Phone calls the owner asked to summarize ("you talked a week ago, want a summary?" → yes)
-    const asks = (await allJ(K.calls)).filter(c => c.owner === userId && c.ask && !c.sum).slice(0, 3).map(c => ({ id: c.id, name: c.name, at: c.at }));
+    const asks = (await allJ(K.calls)).filter(c => c.owner === userId && c.ask && !c.sum).slice(0, 3).map(c => ({ id: c.id, name: c.name, at: c.at, q: c.q || '' }));
     let windows = u.windows || [], mode = u.mode || { on: false };
     if (userId === 'owner') {
       const all = Object.entries((await kv.hgetall(K.users)) || {}).map(([id, v]) => [id, typeof v === 'string' ? JSON.parse(v) : v]);
@@ -476,9 +511,9 @@ async function script(req, res, what, userId, b) {
       windows = windows.concat(...riders.map(([, x]) => x.windows || [])).sort((a2, b2) => String(a2.from).localeCompare(String(b2.from))).slice(-600);
       if (!mode.on) mode = (riders.map(([, x]) => x.mode).find(x => x?.on)) || mode;
     }
-    const jobs = { watch: [], parses: [], mailScan: [], webLook: [] };
-    for (const sv of surveys) { const j = robotJobs(sv, await allJ(K.hotels(sv.id))); jobs.watch.push(...j.watch); jobs.parses.push(...j.parses); jobs.mailScan.push(...j.mailScan); jobs.webLook.push(...j.webLook); }
-    return send(res, 200, { windows, mode, surveys: active, outbox, threads, asks, watch: jobs.watch.slice(0, 300), parses: jobs.parses.slice(0, 5), mailScan: jobs.mailScan.slice(0, 5), webLook: jobs.webLook.slice(0, 3) });
+    const jobs = { watch: [], parses: [], mailScan: [], webLook: [], wa: [] };
+    for (const sv of surveys) { const j = robotJobs(sv, await allJ(K.hotels(sv.id))); jobs.watch.push(...j.watch); jobs.parses.push(...j.parses); jobs.mailScan.push(...j.mailScan); jobs.webLook.push(...j.webLook); jobs.wa.push(...j.wa); }
+    return send(res, 200, { windows, mode, surveys: active, outbox, threads, asks, watch: jobs.watch.slice(0, 300), parses: jobs.parses.slice(0, 5), mailScan: jobs.mailScan.slice(0, 5), webLook: jobs.webLook.slice(0, 3), wa: jobs.wa.slice(0, 300) });
   }
 
   // The robot's web-app address (for the phone app) + when the app last sent a recording
@@ -493,13 +528,18 @@ async function script(req, res, what, userId, b) {
   if (what === 'index') {
     const items = (Array.isArray(b.items) ? b.items : []).slice(0, 500);
     const old = await kv.hgetall(K.calls) || {};
-    let n = 0;
+    let n = 0, pend = null, pendChanged = false;
     for (const it of items) {
       const id = str(it.id, 120);
       if (!id || old[id]) continue;
-      await setJ(K.calls, id, { id, owner: userId, name: str(it.name, 200), phone: str(it.phone, 30), at: str(it.at, 30), url: link(it.url, 300) });
+      const rec = { id, owner: userId, name: str(it.name, 200), phone: str(it.phone, 30), at: str(it.at, 30), url: link(it.url, 300) };
+      const pd = digits(rec.phone).slice(-9), pat = Date.parse(rec.at) || 0;
+      const p = pd.length >= 7 && (pend || (pend = ((await getJ(K.pend, 'list')) || []))).find(x => x.phone === pd && Math.abs(Date.parse(x.at) - pat) < 20 * 60e3);
+      if (p) { rec.ask = true; rec.q = p.q; rec.askedAt = now(); pend = pend.filter(x => x !== p); pendChanged = true; }
+      await setJ(K.calls, id, rec);
       n++;
     }
+    if (pendChanged) await setJ(K.pend, 'list', pend);
     u.indexedAt = now(); await saveUser(userId, u);
     return send(res, 200, { ok: true, added: n });
   }
@@ -512,6 +552,8 @@ async function script(req, res, what, userId, b) {
       at: now(), summary: str(r.summary, 2000), duration: str(r.duration, 10), who: str(r.who, 200),
       quotes: (Array.isArray(r.keyQuotes) ? r.keyQuotes : []).slice(0, 12).map(x => ({ time: str(x.time, 10), who: str(x.speaker, 40), text: str(x.text, 400) })),
       transcript: str(r.transcript, 30000),
+      q: str(c.q, 300), found: r.found === true, answer: str(r.answer, 1500),
+      answerQuotes: (Array.isArray(r.answerQuotes) ? r.answerQuotes : []).slice(0, 8).map(x => ({ time: str(x.time, 10), who: str(x.speaker, 40), text: str(x.text, 400) })),
     };
     await setJ(K.calls, c.id, c);
     return send(res, 200, { ok: true });
@@ -585,13 +627,35 @@ async function script(req, res, what, userId, b) {
     if (jobId) h.parse = (h.parse || []).filter(p => p.id !== jobId);
     const r = b.result || {};
     if (!b.error && r && (r.summary || (r.prices || []).length || r.availability || r.hotel)) {
-      const src = pick(b.src, ['paste', 'mail'], 'paste');
+      const src = pick(b.src, ['paste', 'mail', 'wa'], 'paste');
       mergeCall(h, { ...r, hotel: r.hotel || {} }, { t: 'text', src, at: now(), summary: str(r.summary, 1500), avail: pick(r.availability?.status, AVAIL, 'unknown'), availText: str(r.availability?.text, 400), quotes: (Array.isArray(r.keyQuotes) ? r.keyQuotes : []).slice(0, 8).map(x => ({ time: '', who: str(x.speaker, 40), text: str(x.text, 500) })) });
     } else if (b.error) h.log = [...(h.log || []), { t: 'note', at: now(), by: 'המערכת', text: 'לא הצלחתי לקרוא את הטקסט: ' + str(b.error, 200) }].slice(-80);
     h.updatedAt = now();
     await setJ(key, h.id, h);
     await saveUser(userId, u);
     return send(res, 200, { ok: true });
+  }
+
+  // WhatsApp messages from a hotel (owner 19.11): kept in its history, and read for prices / rooms / hours like a pasted text
+  if (what === 'wa') {
+    const items = (Array.isArray(b.items) ? b.items : []).slice(0, 100);
+    const byPhone = {};
+    for (const it of items) { const d = digits(it.phone).slice(-9); if (d.length >= 8 && str(it.text, 4000).trim()) (byPhone[d] = byPhone[d] || []).push(it); }
+    let filed = 0;
+    for (const sv of (await allJ(K.surveys)).filter(x => mine(x, userId))) {
+      const key = K.hotels(sv.id);
+      for (const h of await allJ(key)) {
+        const d = [h.phone, h.phone2].map(x => digits(x).slice(-9)).find(x => x.length >= 8 && byPhone[x]);
+        if (!d) continue;
+        const msgs = byPhone[d];
+        h.log = [...(h.log || []), ...msgs.map(m => ({ t: 'wa', at: str(m.at, 40) || now(), from: str(m.from, 120), text: str(m.text, 4000) }))].slice(-80);
+        h.parse = [...(h.parse || []), { id: rid('p'), src: 'wa', at: now(), by: 'וואטסאפ', text: msgs.map(m => 'הודעת וואטסאפ מ' + str(m.from, 120) + ' (' + str(m.at, 40) + '):\n' + str(m.text, 4000)).join('\n\n').slice(0, 20000) }].slice(-5);
+        h.updatedAt = now();
+        await setJ(key, h.id, h);
+        filed++;
+      }
+    }
+    return send(res, 200, { ok: true, filed });
   }
 
   if (what === 'web') {
