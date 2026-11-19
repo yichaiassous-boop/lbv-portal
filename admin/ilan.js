@@ -34,13 +34,14 @@ const again = async () => { try { data = await api('GET', '?ilan=1'); } catch (e
 
 /** Ilan's number(s): calls with them are read and turned into tasks. */
 function setupCard(small) {
+  const show = p => (String(p).startsWith('0') ? '' : '0') + p;
   const phones = data.cfg?.phones || [];
   const el = h(`<section class="il-setup ${small ? 'is-small' : ''}">
-    ${small ? `<p>השיחות נקראות מהמספרים: <b dir="ltr">${phones.map(esc).join(', ')}</b> <button type="button" class="il-link" data-edit>לשנות</button></p>` : `
+    ${small ? `<p>השיחות נקראות מהמספרים: <b dir="ltr">${phones.map(show).map(esc).join(', ')}</b> <button type="button" class="il-link" data-edit>לשנות</button></p>` : `
     <h3>מה המספר של אילן?</h3>
     <p>מרגע שתשמרו, כל שיחה איתו מהטלפון של העבודה נשלחת לבד, והמערכת כותבת מה הוא ביקש ומוסיפה כל בקשה לרשימת המטלות. גם השיחות איתו מהשבוע האחרון ייקראו.</p>`}
     <form class="il-phones" ${small ? 'hidden' : ''}>
-      <input class="input" name="p" dir="ltr" inputmode="tel" placeholder="050-0000000" value="${esc(phones.join(', '))}" aria-label="המספר של אילן (אפשר כמה, עם פסיק)">
+      <input class="input" name="p" dir="ltr" inputmode="tel" placeholder="050-0000000" value="${esc(phones.map(show).join(', '))}" aria-label="המספר של אילן (אפשר כמה, עם פסיק)">
       <button class="btn btn--gold">לשמור</button>
     </form>
   </section>`);
