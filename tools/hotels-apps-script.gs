@@ -327,9 +327,54 @@ function claudeWeb(prompt) {
   }
   return null;
 }
+/** Free web search (DuckDuckGo's plain page): [{url, title, snippet}]. */
+function ddg(q) {
+  const r = UrlFetchApp.fetch('https://html.duckduckgo.com/html/?q=' + encodeURIComponent(q) + '&kl=il-he', { muteHttpExceptions: true, followRedirects: true,
+    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36', 'Accept-Language': 'he,en;q=0.8' } });
+  if (r.getResponseCode() >= 300) return [];
+  const t = r.getContentText();
+  const strip = s => String(s || '').replace(/<[^>]+>/g, '').replace(/&#x27;|&#39;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/\s+/g, ' ').trim();
+  const out = [], parts = t.split('class="result__a"').slice(1);
+  for (const p of parts) {
+    const href = (p.match(/href="([^"]+)"/) || [])[1] || '';
+    let u = href.replace(/&amp;/g, '&');
+    const g = u.match(/[?&]uddg=([^&]+)/); if (g) u = decodeURIComponent(g[1]);
+    if (!/^https?:\/\//i.test(u) || /duckduckgo\.com\/y\.js|bing\.com\/aclick/i.test(u)) continue;   // ads
+    const title = strip((p.match(/>([\s\S]*?)<\/a>/) || [])[1]);
+    const snippet = strip((p.match(/class="result__snippet"[^>]*>([\s\S]*?)<\/(?:a|div|td)>/) || [])[1]);
+    out.push({ url: u, title: title, snippet: snippet });
+    if (out.length >= 10) break;
+  }
+  return out;
+}
+/** Look a hotel up for free: two web searches, then Gemini picks ONLY from what was found. null when it could not run. */
+function freeLook(w) {
+  const base = w.name + (w.city ? ' ' + w.city : '');
+  const res = ddg(base);
+  Utilities.sleep(1200);
+  const rev = ddg(base + ' ביקורות');
+  const all = res.concat(rev).filter((x, i, a) => a.findIndex(y => y.url === x.url) === i).slice(0, 16);
+  if (!all.length) return null;
+  const list = all.map((x, i) => (i + 1) + '. ' + x.title + '\n' + x.url + '\n' + x.snippet).join('\n\n');
+  const prompt = 'Web search results for the hotel / venue "' + w.name + '"' + (w.city ? ' (' + w.city + ')' : '') + '. Use ONLY these results, never your own knowledge, never guess. Answer ONLY one JSON object: {"found": true|false (true only if a result is clearly this exact place), "website": "the official site of this place, copied from a result URL (not booking / tripadvisor / google / facebook / instagram / directories / ads), or empty", "city": "", "about": "one short Hebrew line, from the results", "rating": the guest rating exactly as written in a snippet (number) or null, "ratingScale": 5 or 10, "reviews": number of reviews as written in that snippet or null, "reviewsSource": "the site of that rating, e.g. Booking, Google, TripAdvisor", "reviewsSummary": "Hebrew, 1-2 short sentences, only what the snippets say guests wrote, or empty", "reviewsUrl": "the result URL of that reviews page, or empty"}\n\nRESULTS:\n' + list;
+  const r = genWeb({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 0 } });
+  if (r.code >= 300) { console.error('freeLook: gemini ' + r.code); return null; }
+  const j = JSON.parse(r.body);
+  const text = (((j.candidates || [])[0] || {}).content || { parts: [] }).parts.map(p => p.text || '').join('');
+  const m = text.match(/\{[\s\S]*\}/);
+  if (!m) return null;
+  const h = JSON.parse(m[0]);
+  // links must really be among the results (nothing invented)
+  const host = u => String(u || '').replace(/^https?:\/\/(www\.)?/i, '').split(/[\/?#]/)[0].toLowerCase();
+  const hosts = all.map(x => host(x.url));
+  if (h.website && hosts.indexOf(host(h.website)) < 0) h.website = '';
+  if (h.reviewsUrl && !all.some(x => x.url === h.reviewsUrl)) h.reviewsUrl = '';
+  if (h.website && !/^https:/i.test(h.website)) h.website = String(h.website).replace(/^http:/i, 'https:');
+  return h;
+}
 function webLooks(st) {
   const useClaude = !!P('CLAUDE_KEY');
-  const list = (st.webLook || []).slice(0, useClaude ? 1 : 2).concat(useClaude ? (st.webRedo || []).slice(0, 1) : []);
+  const list = (st.webLook || []).slice(0, 2).concat((st.webRedo || []).slice(0, 1));
   for (const w of list) {
     let found = false, hotel = {}, photos = [], grounded = true, answered = false;
     try {
@@ -339,7 +384,9 @@ function webLooks(st) {
       const cm = ct && ct.match(/\{[\s\S]*\}/);
       let code = 0, body = '';
       if (cm) { try { hotel = JSON.parse(cm[0]); found = !!hotel.found; answered = true; } catch (e) { hotel = {}; } }
-      if (!answered) { const r = genWeb({ contents: [{ role: 'user', parts: [{ text: prompt }] }], tools: [{ google_search: {} }], generationConfig: { temperature: 0.1 } }); code = r.code; body = r.body; }
+      // free: web search + Gemini reading only the results
+      if (!answered) { try { const fl = freeLook(w); if (fl) { hotel = fl; found = !!fl.found; answered = true; } } catch (e) { console.error('freeLook', e); } }
+      if (!answered) { code = 503; }
       if (!answered && code >= 300) {
         // search blocked (quota) -> Gemini on its own knowledge: website / city / about only, never ratings, phone or e-mail
         console.log('webLook: search ' + code + ', trying without search');

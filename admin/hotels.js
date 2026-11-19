@@ -6,6 +6,7 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const photoSrc = u => /^media\/uploads\//.test(u) ? '/' + u : safeUrl(u);   // my photos (storage) or ones from the hotel's site
+const rateTxt = x => x.ratingScale === 10 ? `${x.rating}/10` : `${x.rating} ★`;
 const safeUrl = u => (/^https:\/\//i.test(String(u || '')) ? u : '');   // links from the robot / replies: https only
 const h = s => { const t = document.createElement('template'); t.innerHTML = s.trim(); return t.content.firstElementChild; };
 const dmy = iso => (iso || '').slice(0, 10).split('-').reverse().join('.');
@@ -286,7 +287,7 @@ function lookupCard() {
     for (const r of list) {
       const [an, ac] = AV[r.avail] || AV.unknown;
       const b = h(`<button type="button" class="hs-fd">
-        <span class="hs-fd__t"><b>${esc(r.name || 'מלון')}</b>${r.rating ? `<span class="hs-rate">${r.rating} ★</span>` : ''}<span class="pill pill--${ac}">${an}</span></span>
+        <span class="hs-fd__t"><b>${esc(r.name || 'מלון')}</b>${r.rating ? `<span class="hs-rate">${rateTxt(r)}</span>` : ''}<span class="pill pill--${ac}">${an}</span></span>
         <span class="hs-fd__s">${here && r.surveyId === here.id ? 'בכרטיסייה הזאת' : 'בכרטיסייה "' + esc(r.survey) + '"'}${r.city ? ' · ' + esc(r.city) : ''}${r.min ? ' · החל מ-' + money(r.min) : ''}</span>
         ${r.where.map(w => `<span class="hs-fd__w"><em>${w.kind}${w.at ? ' מ-' + when(w.at) : ''}:</em> …${mark(w.text, words)}…</span>`).join('')}
       </button>`);
@@ -600,7 +601,7 @@ function surveyView(pg) {
       const [an, ac] = AV[x.avail] || AV.unknown;
       const calls = (x.log || []).filter(l => l.t === 'call').length, mails = (x.log || []).filter(l => l.t === 'mail-in' || l.t === 'mail-out').length;
       const card = h(`<button type="button" class="hs-ho">
-        <div class="hs-ho__top"><b>${esc(x.name || 'בלי שם')}</b>${x.rating ? `<span class="hs-rate">${x.rating} ★</span>` : ''}<span class="pill pill--${ac}">${an}</span></div>
+        <div class="hs-ho__top"><b>${esc(x.name || 'בלי שם')}</b>${x.rating ? `<span class="hs-rate">${rateTxt(x)}</span>` : ''}<span class="pill pill--${ac}">${an}</span></div>
         <div class="hs-ho__sub">${esc(x.city)}${x.contact ? ' · ' + esc(x.contact) : ''}${x.phone ? ' · <bdi>' + esc(x.phone) + '</bdi>' : ''}</div>
         ${x.prices?.length ? `<div class="hs-ho__pr">${x.prices.slice(0, 4).map(p => `<span>${esc([p.level, p.board].filter(Boolean).join(' · ') || 'מחיר')}: <b>${money(p.price, p.currency)}</b>${p.per ? ' ' + esc(p.per) : ''}</span>`).join('')}${x.prices.length > 4 ? `<span>+${x.prices.length - 4}</span>` : ''}</div>` : '<div class="hs-ho__pr muted">עוד אין מחירים</div>'}
         ${hits.get(x.id) ? `<div class="hs-ho__hit">${hits.get(x.id)}</div>` : x.summary ? `<div class="hs-ho__sum">${esc(x.summary)}</div>` : ''}
@@ -720,7 +721,7 @@ function hotelView(sv, x) {
     <div class="hs-hhead__t"><h2>${esc(x.name || 'בלי שם')}</h2><span class="pill pill--${ac}">${an}</span><span class="st st--${x.status}">${ST[x.status]}</span></div>
     <p>${esc(x.city)}${x.contact ? ' · ' + esc(x.contact) : ''}${x.availText ? ' · ' + esc(x.availText) : ''}</p>
     ${x.about ? `<p class="hs-about">${esc(x.about)}</p>` : ''}
-    ${x.rating || x.reviewsText ? `<div class="hs-rev">${x.rating ? `<b class="hs-rate">${x.rating} ★</b><span>${x.reviewsCount ? x.reviewsCount.toLocaleString('he-IL') + ' ביקורות בגוגל' : 'בגוגל'}</span>` : ''}${x.reviewsText ? `<p>${esc(x.reviewsText)}</p>` : ''}${safeUrl(x.reviewsUrl) ? `<a href="${esc(x.reviewsUrl)}" target="_blank" rel="noopener">לכל הביקורות</a>` : ''}</div>` : ''}
+    ${x.rating || x.reviewsText ? `<div class="hs-rev">${x.rating ? `<b class="hs-rate">${rateTxt(x)}</b><span>${x.reviewsCount ? x.reviewsCount.toLocaleString('he-IL') + ' ביקורות' : 'דירוג'} ב${esc(x.reviewsSource || 'גוגל')}</span>` : ''}${x.reviewsText ? `<p>${esc(x.reviewsText)}</p>` : ''}${safeUrl(x.reviewsUrl) ? `<a href="${esc(x.reviewsUrl)}" target="_blank" rel="noopener">לכל הביקורות</a>` : ''}</div>` : ''}
     <div class="hs-photos">${[...(x.myPhotos || []), ...(x.photos || []).filter(safeUrl)].map(u => `<figure class="hs-ph"><a href="${esc(photoSrc(u))}" target="_blank" rel="noopener"><img src="${esc(photoSrc(u))}" alt="" loading="lazy" referrerpolicy="no-referrer"></a><button type="button" class="hs-ph__x" data-rm="${esc(u)}" aria-label="להסיר את התמונה">×</button></figure>`).join('')}
       <label class="hs-ph hs-ph--add"><input type="file" accept="image/*" multiple hidden><span>+ להוסיף תמונות</span></label></div>
     ${(x.myPhotos || []).length || (x.photos || []).length ? '' : `<p class="hs-ph__hint">${x.webDone ? 'לא מצאתי תמונות באתר של המלון.' : 'תמונות מהאתר של המלון יגיעו לבד תוך כמה דקות.'} אפשר גם להוסיף תמונות מהטלפון או מהמחשב.</p>`}

@@ -746,8 +746,9 @@ async function script(req, res, what, userId, b) {
       if (g.about && !h.about) h.about = str(g.about, 400);
       if (b.grounded === false) { h.webV = 3; await setJ(key, h.id, h); return send(res, 200, { ok: true }); }   // no search: no ratings / phone / e-mail
       h.webV = 3;
-      const rt = Number(g.rating), rc = Number(g.reviews);
-      if (rt > 0 && rt <= 5) h.rating = Math.round(rt * 10) / 10;
+      const rt = Number(g.rating), rc = Number(g.reviews), sc = Number(g.ratingScale) === 10 || rt > 5 ? 10 : 5;
+      if (rt > 0 && rt <= sc) { h.rating = Math.round(rt * 10) / 10; h.ratingScale = sc; }
+      if (g.reviewsSource) h.reviewsSource = str(g.reviewsSource, 40);
       if (rc > 0) h.reviewsCount = Math.round(rc);
       if (g.reviewsSummary) h.reviewsText = str(g.reviewsSummary, 600);
       if (safe(g.reviewsUrl)) h.reviewsUrl = safe(g.reviewsUrl);
