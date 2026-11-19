@@ -181,7 +181,7 @@ function robotJobs(sv, hotels) {
     if (h.mailAsk) mailScan.unshift({ surveyId: sv.id, hotelId: h.id, email: /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(em) ? em : '', name: h.name || '', phone: digits(h.phone).slice(-9), ask: true });
     else if (/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(em) && h.mailScan !== em) mailScan.push({ surveyId: sv.id, hotelId: h.id, email: em, name: h.name });
     // a new hotel: the robot looks it up on the web once (website, photos, missing details) - owner 19.11
-    if (h.name && (h.webV || 0) < 3 && (h.webTries3 || 0) < 3 && !(h.webDone && h.website && (h.photos || []).length)) webLook.push({ surveyId: sv.id, hotelId: h.id, name: h.name, city: h.city || '', website: h.website || '' });
+    if (h.name && (h.webV || 0) < 4 && (h.webTries4 || 0) < 3 && !(h.webDone && h.website && (h.photos || []).length)) webLook.push({ surveyId: sv.id, hotelId: h.id, name: h.name, city: h.city || '', website: h.website || '' });
     // looked up without a real web search (no reviews yet): again once the robot can search (Claude key)
     if (h.name && h.webNoSearch && !h.webGrounded && (h.webRedoTries || 0) < 2) webRedo.push({ surveyId: sv.id, hotelId: h.id, name: h.name, city: h.city || '', website: h.website || '', redo: true });
   }
@@ -731,6 +731,7 @@ async function script(req, res, what, userId, b) {
     if (!h) return send(res, 404, { error: 'not-found' });
     h.webTries = (h.webTries || 0) + 1;
     h.webTries3 = (h.webTries3 || 0) + 1;
+    h.webTries4 = (h.webTries4 || 0) + 1;
     if (b.redo) h.webRedoTries = (h.webRedoTries || 0) + 1;
     if (b.grounded === false) h.webNoSearch = true;
     if (b.grounded === true && b.found) { h.webGrounded = true; delete h.webNoSearch; }
@@ -745,7 +746,7 @@ async function script(req, res, what, userId, b) {
       if (ph.length) h.photos = [...new Set(ph)].slice(0, 8);
       if (g.about && !h.about) h.about = str(g.about, 400);
       if (b.grounded === false) { h.webV = 3; await setJ(key, h.id, h); return send(res, 200, { ok: true }); }   // no search: no ratings / phone / e-mail
-      h.webV = 3;
+      h.webV = 4;
       const rt = Number(g.rating), rc = Number(g.reviews), sc = Number(g.ratingScale) === 10 || rt > 5 ? 10 : 5;
       if (rt > 0 && rt <= sc) { h.rating = Math.round(rt * 10) / 10; h.ratingScale = sc; }
       if (g.reviewsSource) h.reviewsSource = str(g.reviewsSource, 40);
