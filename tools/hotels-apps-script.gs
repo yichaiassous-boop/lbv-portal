@@ -474,13 +474,10 @@ function watchFor(st, f, at) {
 }
 
 function gemini(part, prompt, schema) {
-  const r = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + MODEL + ':generateContent', {
-    method: 'post', contentType: 'application/json', muteHttpExceptions: true,
-    headers: { 'x-goog-api-key': P('GEMINI_KEY') },
-    payload: JSON.stringify({ contents: [{ role: 'user', parts: [part, { text: prompt }] }], generationConfig: { responseMimeType: 'application/json', responseSchema: schema, temperature: 0.2 } }),
-  });
-  if (r.getResponseCode() >= 300) throw new Error('gemini ' + r.getResponseCode() + ' ' + r.getContentText().slice(0, 300));
-  const j = JSON.parse(r.getContentText());
+  // busy (503) / no quota (429) on the main model -> the next model (genWeb)
+  const r = genWeb({ contents: [{ role: 'user', parts: [part, { text: prompt }] }], generationConfig: { responseMimeType: 'application/json', responseSchema: schema, temperature: 0.1 } });
+  if (r.code >= 300) throw new Error('gemini ' + r.code + ' ' + String(r.body).slice(0, 300));
+  const j = JSON.parse(r.body);
   const text = (((j.candidates || [])[0] || {}).content || { parts: [] }).parts.map(p => p.text || '').join('');
   return JSON.parse(text);
 }
