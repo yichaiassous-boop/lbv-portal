@@ -324,7 +324,7 @@ export default async function hotelsHandler(req, res) {
     if (q('ilan') || body.op === 'ilan') {
       if (!(isOwner(s) || ILAN_SEE.includes(uid))) return send(res, 403, { error: 'forbidden' });   // owner 19.11: only the owner and Maayan
       if (req.method === 'GET') {
-        const calls = (await allJ(K.ilanCalls)).sort((a2, b2) => String(b2.at).localeCompare(String(a2.at))).slice(0, 80);
+        const calls = (await allJ(K.ilanCalls)).filter(c => !c.hidden).sort((a2, b2) => String(b2.at).localeCompare(String(a2.at))).slice(0, 80);
         const tasks = (await allJ(K.ilanTasks)).sort((a2, b2) => (a2.done - b2.done) || String(b2.at).localeCompare(String(a2.at)));
         return send(res, 200, { cfg: await ilanCfg(), calls, tasks });
       }
@@ -342,6 +342,13 @@ export default async function hotelsHandler(req, res) {
         if (!c) return send(res, 404, { error: 'not-found' });
         for (const tid of c.tasks || []) { const t = await getJ(K.ilanTasks, tid); if (t && t.by === 'robot' && !t.done) await kv.hdel(K.ilanTasks, tid); }
         await kv.hdel(K.ilanCalls, c.id);
+        return send(res, 200, { ok: true });
+      }
+      if (act === 'hide') {   // owner 19.11: a duplicate call goes away with its open robot tasks; a mark stays so the robot never reads it again
+        const c = await getJ(K.ilanCalls, str(body.id, 120));
+        if (!c) return send(res, 404, { error: 'not-found' });
+        for (const tid of c.tasks || []) { const t = await getJ(K.ilanTasks, tid); if (t && t.by === 'robot' && !t.done) await kv.hdel(K.ilanTasks, tid); }
+        await setJ(K.ilanCalls, c.id, { id: c.id, at: c.at, hidden: true, hiddenAt: now(), tasks: [] });
         return send(res, 200, { ok: true });
       }
       if (act === 'import') {   // owner 19.11: a call read on the computer (not by Gemini) goes in the same way as the robot's
