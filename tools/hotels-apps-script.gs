@@ -307,27 +307,53 @@ function genWeb(payload) {
   }
   return { code: code, body: body };
 }
+/** Claude with web search (needs the script property CLAUDE_KEY). Returns the answer text, or null. */
+function claudeWeb(prompt) {
+  const key = P('CLAUDE_KEY');
+  if (!key) return null;
+  let messages = [{ role: 'user', content: prompt }];
+  for (let i = 0; i < 3; i++) {   // a long search can pause (pause_turn): continue it
+    const r = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
+      method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+      headers: { 'x-api-key': key, 'anthropic-version': '2026-10-21', 'anthropic-beta': 'server-side-fallback-2026-07-01' },
+      payload: JSON.stringify({ model: 'claude-opus-5-5', max_tokens: 16000, output_config: { effort: 'low' }, fallbacks: 'default',
+        tools: [{ type: 'web_search_20260209', name: 'web_search', max_uses: 6 }], messages: messages }),
+    });
+    if (r.getResponseCode() >= 300) { console.error('claudeWeb ' + r.getResponseCode() + ' ' + r.getContentText().slice(0, 300)); return null; }
+    const j = JSON.parse(r.getContentText());
+    if (j.stop_reason === 'pause_turn') { messages = [{ role: 'user', content: prompt }, { role: 'assistant', content: j.content }]; continue; }
+    if (j.stop_reason === 'refusal') return null;
+    return (j.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+  }
+  return null;
+}
 function webLooks(st) {
-  for (const w of (st.webLook || []).slice(0, 2)) {
+  const useClaude = !!P('CLAUDE_KEY');
+  const list = (st.webLook || []).slice(0, useClaude ? 1 : 2).concat(useClaude ? (st.webRedo || []).slice(0, 1) : []);
+  for (const w of list) {
     let found = false, hotel = {}, photos = [], grounded = true, answered = false;
     try {
       const prompt = 'Find the hotel / venue "' + w.name + '"' + (w.city ? ' in ' + w.city : '') + (w.website ? ' (website ' + w.website + ')' : '') + ' on the web. Answer ONLY one JSON object, no text around it: {"found": true|false, "website": "official https site, not a booking site", "city": "", "phone": "", "email": "", "about": "one short line in Hebrew: what kind of place, stars, area", "rating": the Google Maps rating as a number (or null), "reviews": how many Google reviews (number or null), "reviewsSummary": "in Hebrew, 2-3 short sentences: what guests praise and what they complain about (food, cleanliness, rooms, service, Shabbat), from real reviews only", "reviewsUrl": "https link to the reviews (Google Maps / TripAdvisor / Booking) or empty"}. found=false if you are not sure it is this place. Never guess a phone or e-mail: leave it empty if it is not written on an official page.';
-      const r = genWeb({ contents: [{ role: 'user', parts: [{ text: prompt }] }], tools: [{ google_search: {} }], generationConfig: { temperature: 0.1 } });
-      let code = r.code, body = r.body;
-      if (code >= 300) {
+      // Claude (real web search) first when there is a key
+      const ct = useClaude ? claudeWeb(prompt) : null;
+      const cm = ct && ct.match(/\{[\s\S]*\}/);
+      let code = 0, body = '';
+      if (cm) { try { hotel = JSON.parse(cm[0]); found = !!hotel.found; answered = true; } catch (e) { hotel = {}; } }
+      if (!answered) { const r = genWeb({ contents: [{ role: 'user', parts: [{ text: prompt }] }], tools: [{ google_search: {} }], generationConfig: { temperature: 0.1 } }); code = r.code; body = r.body; }
+      if (!answered && code >= 300) {
         // search blocked (quota) -> Gemini on its own knowledge: website / city / about only, never ratings, phone or e-mail
         console.log('webLook: search ' + code + ', trying without search');
         grounded = false;
         const r2 = genWeb({ contents: [{ role: 'user', parts: [{ text: 'The hotel / venue "' + w.name + '"' + (w.city ? ' in ' + w.city : '') + ' (Israel or abroad). Answer ONLY one JSON object: {"found": true|false, "website": "its official https site, not a booking site", "city": "", "about": "one short line in Hebrew: what kind of place and area"}. found=true only if you know this exact place for sure; otherwise found=false and empty fields.' }] }], generationConfig: { temperature: 0 } });
         code = r2.code; body = r2.body;
       }
-      if (code < 300) {
+      if (!answered && code < 300) {
         answered = true;
         const j = JSON.parse(body);
         const text = (((j.candidates || [])[0] || {}).content || { parts: [] }).parts.map(p => p.text || '').join('');
         const m = text.match(/\{[\s\S]*\}/);
         if (m) { hotel = JSON.parse(m[0]); found = !!hotel.found; }
-      } else console.error('webLook: gemini ' + code);
+      } else if (!answered) console.error('webLook: gemini ' + code);
       if (!grounded) hotel = { found: hotel.found, website: hotel.website, city: hotel.city, about: hotel.about };
       const siteUrl = String(hotel.website || w.website || '');
       if (found && /^https?:\/\//i.test(siteUrl)) {
@@ -336,7 +362,7 @@ function webLooks(st) {
       }
     } catch (e) { console.error('webLook', e); }
     if (!answered) continue;   // Gemini did not answer at all: try again next run, not counted as a try
-    site('post', 'web', { surveyId: w.surveyId, hotelId: w.hotelId, found: found, grounded: grounded, hotel: hotel, photos: photos });
+    site('post', 'web', { surveyId: w.surveyId, hotelId: w.hotelId, found: found, grounded: grounded, hotel: hotel, photos: photos, redo: !!w.redo });
   }
 }
 /** The site's own share image + its pictures (absolute https links only). */

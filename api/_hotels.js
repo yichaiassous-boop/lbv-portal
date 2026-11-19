@@ -170,7 +170,7 @@ function textHits(h, words) {
 /** Calls with a hotel's number join it by themselves: from 2 weeks before it was added until 2 weeks after (owner 19.11). */
 const WATCH_DAYS = 14;
 function robotJobs(sv, hotels) {
-  const watch = [], parses = [], mailScan = [], webLook = [], wa = [];
+  const watch = [], parses = [], mailScan = [], webLook = [], wa = [], webRedo = [];
   for (const h of hotels) {
     const t = Date.parse(h.createdAt || h.updatedAt || 0) || 0;
     for (const ph of [h.phone, h.phone2]) { const d = digits(ph); if (d.length >= 8 && Date.now() < t + WATCH_DAYS * 864e5) watch.push({ surveyId: sv.id, hotelId: h.id, phone: d, from: new Date(t - WATCH_DAYS * 864e5).toISOString(), to: new Date(t + WATCH_DAYS * 864e5).toISOString() }); }
@@ -182,8 +182,10 @@ function robotJobs(sv, hotels) {
     else if (/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(em) && h.mailScan !== em) mailScan.push({ surveyId: sv.id, hotelId: h.id, email: em, name: h.name });
     // a new hotel: the robot looks it up on the web once (website, photos, missing details) - owner 19.11
     if (h.name && (h.webV || 0) < 3 && (h.webTries3 || 0) < 3 && !(h.webDone && h.website && (h.photos || []).length)) webLook.push({ surveyId: sv.id, hotelId: h.id, name: h.name, city: h.city || '', website: h.website || '' });
+    // looked up without a real web search (no reviews yet): again once the robot can search (Claude key)
+    if (h.name && h.webNoSearch && !h.webGrounded && (h.webRedoTries || 0) < 2) webRedo.push({ surveyId: sv.id, hotelId: h.id, name: h.name, city: h.city || '', website: h.website || '', redo: true });
   }
-  return { watch, parses, mailScan, webLook, wa };
+  return { watch, parses, mailScan, webLook, wa, webRedo };
 }
 
 async function userRec(id) { return (await getJ(K.users, id)) || { mode: { on: false }, windows: [] }; }
@@ -575,9 +577,9 @@ async function script(req, res, what, userId, b) {
       windows = windows.concat(...riders.map(([, x]) => x.windows || [])).sort((a2, b2) => String(a2.from).localeCompare(String(b2.from))).slice(-600);
       if (!mode.on) mode = (riders.map(([, x]) => x.mode).find(x => x?.on)) || mode;
     }
-    const jobs = { watch: [], parses: [], mailScan: [], webLook: [], wa: [] };
-    for (const sv of surveys) { const j = robotJobs(sv, await allJ(K.hotels(sv.id))); jobs.watch.push(...j.watch); jobs.parses.push(...j.parses); jobs.mailScan.push(...j.mailScan); jobs.webLook.push(...j.webLook); jobs.wa.push(...j.wa); }
-    return send(res, 200, { windows, mode, surveys: active, outbox, threads, asks, watch: jobs.watch.slice(0, 300), parses: jobs.parses.slice(0, 5), mailScan: jobs.mailScan.slice(0, 5), webLook: jobs.webLook.slice(0, 3), wa: jobs.wa.slice(0, 300) });
+    const jobs = { watch: [], parses: [], mailScan: [], webLook: [], wa: [], webRedo: [] };
+    for (const sv of surveys) { const j = robotJobs(sv, await allJ(K.hotels(sv.id))); jobs.watch.push(...j.watch); jobs.parses.push(...j.parses); jobs.mailScan.push(...j.mailScan); jobs.webLook.push(...j.webLook); jobs.wa.push(...j.wa); jobs.webRedo.push(...j.webRedo); }
+    return send(res, 200, { windows, mode, surveys: active, outbox, threads, asks, watch: jobs.watch.slice(0, 300), parses: jobs.parses.slice(0, 5), mailScan: jobs.mailScan.slice(0, 5), webLook: jobs.webLook.slice(0, 3), webRedo: jobs.webRedo.slice(0, 2), wa: jobs.wa.slice(0, 300) });
   }
 
   // The robot's web-app address (for the phone app) + when the app last sent a recording
@@ -729,6 +731,9 @@ async function script(req, res, what, userId, b) {
     if (!h) return send(res, 404, { error: 'not-found' });
     h.webTries = (h.webTries || 0) + 1;
     h.webTries3 = (h.webTries3 || 0) + 1;
+    if (b.redo) h.webRedoTries = (h.webRedoTries || 0) + 1;
+    if (b.grounded === false) h.webNoSearch = true;
+    if (b.grounded === true && b.found) { h.webGrounded = true; delete h.webNoSearch; }
     if (b.found) {
       h.webDone = true;
       const g = b.hotel || {};
