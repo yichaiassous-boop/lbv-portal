@@ -208,17 +208,26 @@ function importBox(pc, who) {
 function lookupCard() {
   const here = openSurvey && cur ? cur.survey : null;   // inside a card: offer to add a hotel from another card
   const c = h(`<section class="card hs-look" id="hs-look">
-    <form class="hs-look__f"><label class="hs-look__l" for="hs-look-in">${here ? 'בדיקת מלון שכבר דיברתי איתו' : 'דיברתי כבר עם המקום הזה?'}</label>
-      <div class="hs-look__row"><input id="hs-look-in" type="search" inputmode="tel" placeholder="מספר טלפון של מלון (או שם)" value="${esc(look.text)}"><button class="btn btn--dark" type="submit">בדיקה</button></div>
-      <input id="hs-look-q" class="hs-look__q" type="search" placeholder="מה לחפש בשיחה? (לא חובה, למשל: מחיר לשבת, שעת כניסה)" value="${esc(look.q || '')}"></form>
+    <form class="hs-look__f" role="search"><label class="hs-look__l" for="hs-look-in">חיפוש</label>
+      <div class="hs-look__row"><input id="hs-look-in" type="search" enterkeyhint="search" autocomplete="off" placeholder="מספר טלפון, שם מלון או נושא" value="${esc(look.raw || '')}"><button class="btn btn--dark" type="submit">חיפוש</button></div>
+      <p class="hs-look__ex">מחפש בכל המלונות, השיחות, המיילים והוואטסאפ. למשל: <button type="button" data-ex="מחיר לשבת">מחיר לשבת</button> <button type="button" data-ex="תפוס">תפוס</button> <button type="button" data-ex="052-0000000 שעת כניסה">מספר + נושא</button></p></form>
     <div class="hs-look__out" aria-live="polite"></div></section>`);
   const out = $('.hs-look__out', c);
   const draw = () => {
     out.innerHTML = '';
     if (look.results == null) return;
+    const found = (look.found || []).slice().sort((a, b) => (here && b.surveyId === here.id ? 1 : 0) - (here && a.surveyId === here.id ? 1 : 0));
+    const sec = t => out.append(h(`<h3 class="hs-look__h">${t}</h3>`));
+    let sections = 0;
+    const startSec = t => { sections++; sec(t); };
     const phone = (look.phone || []).filter(pc => !look.results.some(r => r.last?.file?.id === pc.id));
     const local = (look.local || []).filter(x => !x.sent || !phone.length);
     if (local.length) out.append(phoneRecsBox(look.text, local, (n => local.some(x => x.rec && !x.sent) ? `בטלפון הזה יש ${n === 1 ? 'שיחה מוקלטת אחת' : n + ' שיחות מוקלטות'} עם "<bdi>${esc(look.text)}</bdi>"` : `בטלפון הזה יש ${local.length === 1 ? 'שיחה אחת' : local.length + ' שיחות'} עם "<bdi>${esc(look.text)}</bdi>"`)(local.filter(x => x.rec).length)));
+    if (!look.results.length && !phone.length && found.length) {
+      if (local.length) startSec('');
+      foundList(found);
+      return;
+    }
     if (!look.results.length && !phone.length) {
       if (local.length) return;
       out.append(h(look.local ? `<p class="hint">לא מצאתי שיחה עם "${esc(look.text)}" בטלפון, וגם לא מלון כזה באף כרטיסייה.</p>` : look.indexed
@@ -267,13 +276,28 @@ function lookupCard() {
       }
       out.append(box);
     });
-    phone.forEach(pc => out.append(phoneCall(pc)));
+    if (found.length) { startSec(`נמצא גם במלונות אחרים (${found.length})`); foundList(found); }
+    if (phone.length) { startSec('שיחות מהטלפון'); phone.forEach(pc => out.append(phoneCall(pc))); }
+  };
+  // a hotel where the words were said / written: name, card, price, and where exactly (with the words marked)
+  const foundList = list => {
+    const words = (look.words || '').toLowerCase().split(/\s+/).filter(w => w.length >= 2);
+    for (const r of list) {
+      const [an, ac] = AV[r.avail] || AV.unknown;
+      const b = h(`<button type="button" class="hs-fd">
+        <span class="hs-fd__t"><b>${esc(r.name || 'מלון')}</b>${r.rating ? `<span class="hs-rate">${r.rating} ★</span>` : ''}<span class="pill pill--${ac}">${an}</span></span>
+        <span class="hs-fd__s">${here && r.surveyId === here.id ? 'בכרטיסייה הזאת' : 'בכרטיסייה "' + esc(r.survey) + '"'}${r.city ? ' · ' + esc(r.city) : ''}${r.min ? ' · החל מ-' + money(r.min) : ''}</span>
+        ${r.where.map(w => `<span class="hs-fd__w"><em>${w.kind}${w.at ? ' מ-' + when(w.at) : ''}:</em> …${mark(w.text, words)}…</span>`).join('')}
+      </button>`);
+      b.addEventListener('click', () => { openSurvey = r.surveyId; openHotel = r.id; cur = null; look = { text: '', results: null, open: null }; again(); scrollTo({ top: 0 }); });
+      out.append(b);
+    }
   };
   // A call found on the phone (outside any card): "you talked N days ago, want a summary?" → yes → the robot listens to it
   const phoneCall = pc => {
     const who = pc.name.replace(/\.[a-z0-9]{2,4}$/i, '').replace(/[_ ]?\d{6}[_ -]\d{6}.*$/, '').replace(/^(call ?recording|recording|call)[ _-]*/i, '').trim() || pc.phone;
     const box = h(`<div class="hs-ans hs-ans--phone">
-      <p class="hs-ans__q">שיחה בטלפון עם <b><bdi>${esc(who)}</bdi></b>: דיברת <b>${relDay(pc.at)}</b> (${when(pc.at)}).${pc.sum && !pc.sum.error ? '' : ' רוצה סיכום של השיחה?'}</p>
+      <p class="hs-ans__q">שיחה בטלפון עם <b><bdi>${esc(who)}</bdi></b>: דיברת <b>${relDay(pc.at)}</b> (${when(pc.at)}).${pc.byText ? ' המילים שחיפשת נאמרו בה.' : pc.sum && !pc.sum.error ? '' : ' רוצה סיכום של השיחה?'}</p>
       <div class="row-tools hs-ans__yn"></div><div class="hs-ans__body"></div></div>`);
     const yn = $('.hs-ans__yn', box), body = $('.hs-ans__body', box);
     const show = () => {
@@ -306,12 +330,17 @@ function lookupCard() {
     }
     return box;
   };
+  $$('[data-ex]', c).forEach(b => b.addEventListener('click', () => { const i = $('#hs-look-in', c); i.value = b.dataset.ex.includes('052-0000000') ? '' : b.dataset.ex; i.focus(); if (i.value) $('form', c).requestSubmit(); else i.placeholder = 'מספר טלפון ואחריו נושא, למשל: 0521234567 מחיר'; }));
   $('form', c).addEventListener('submit', async e => {
     e.preventDefault();
-    look.text = $('#hs-look-in', c).value.trim(); look.q = $('#hs-look-q', c).value.trim(); look.open = null;
-    if (!look.text) { look.results = null; return draw(); }
-    try { const r = await api('GET', '?lookup=' + encodeURIComponent(look.text)); look.results = r.results; look.phone = r.phone || []; look.indexed = r.indexed; } catch (e2) { fail(e2); look.results = null; }
-    look.local = phoneFind(look.text);
+    // one box: a phone number (if any) + the words. Number + words = "find this in the calls with that number"
+    look.raw = $('#hs-look-in', c).value.trim(); look.open = null;
+    const num = (look.raw.match(/\+?\d[\d\s\-]{6,}\d/) || [''])[0], rest = look.raw.replace(num, ' ').replace(/\s+/g, ' ').trim();
+    look.text = num ? num.trim() : rest; look.q = num ? rest : ''; look.words = rest;
+    if (!look.raw) { look.results = null; return draw(); }
+    try { const r = await api('GET', '?lookup=' + encodeURIComponent(look.text || rest) + '&q=' + encodeURIComponent(num ? '' : rest)); look.results = r.results; look.found = r.found || []; look.phone = r.phone || []; look.indexed = r.indexed; } catch (e2) { fail(e2); look.results = null; }
+    // the phone's own calls: by number, or by a contact name when the words found nothing in the texts
+    look.local = num ? phoneFind(num) : rest.length >= 2 && !(look.found || []).length && !(look.phone || []).some(p => p.byText) ? phoneFind(rest) : null;
     draw();
   });
   draw();
@@ -541,22 +570,17 @@ function surveyView(pg) {
   // The two main actions inside a card
   const acts = h(`<section class="hs-acts">
     <button type="button" class="hs-act ${addOpen ? 'on' : ''}" data-a="add"><b>+ הוספת מלון</b><span>שם וטלפון, השאר מתמלא מהשיחה</span></button>
-    <button type="button" class="hs-act ${lookOpen ? 'on' : ''}" data-a="look"><b>בדיקת מלון שכבר דיברתי איתו</b><span>לפי מספר טלפון או שם, מכל הכרטיסיות</span></button>
   </section>`);
   $('[data-a=add]', acts).addEventListener('click', () => { addOpen = !addOpen; addPrefill = null; lookOpen = false; again(); });
-  $('[data-a=look]', acts).addEventListener('click', () => { lookOpen = !lookOpen; addOpen = false; again(); setTimeout(() => $('#hs-look-in')?.focus(), 0); });
+  pg.append(lookupCard());
   pg.append(acts);
   if (addOpen) pg.append(hotelForm(sv, null));
-  if (lookOpen) pg.append(lookupCard());
 
   // Search across everything that was said and written
   const bar = h(`<section class="hs-bar">
-    <input type="search" class="hs-q" placeholder="חיפוש בכל השיחות, המיילים וההערות (למשל: תפוס, מלון X, 1800)" value="${esc(query)}">
     <div class="hs-chips">${[['all', 'הכול'], ['avail', 'יש מקום'], ['followup', 'לחזור אליהם'], ['waiting', 'מחכים להצעה'], ['full', 'תפוס']].map(([k, n]) => `<button type="button" class="chip ${filter === k ? 'on' : ''}" data-f="${k}">${n}</button>`).join('')}
       <select class="hs-sort" aria-label="מיון">${[['price', 'לפי מחיר'], ['recent', 'לפי עדכון אחרון'], ['name', 'לפי שם']].map(([k, n]) => `<option value="${k}" ${sortBy === k ? 'selected' : ''}>${n}</option>`).join('')}</select></div>
   </section>`);
-  const q = $('.hs-q', bar);
-  q.addEventListener('input', () => { query = q.value; drawList(); });
   $$('[data-f]', bar).forEach(b => b.addEventListener('click', () => { filter = b.dataset.f; $$('[data-f]', bar).forEach(x => x.classList.toggle('on', x === b)); drawList(); }));
   $('.hs-sort', bar).addEventListener('change', e => { sortBy = e.target.value; drawList(); });
   pg.append(bar);

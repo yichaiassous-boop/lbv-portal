@@ -143,6 +143,30 @@ const isOwner = s => s.r === 'owner';
 const canSee = (s, sv) => sv && (isOwner(s) || sv.by?.id === meId(s) || (sv.shared || []).includes(meId(s)));
 const canManage = (s, sv) => sv && (isOwner(s) || sv.by?.id === meId(s));
 
+/* ---------- one search: words in everything said or written about a hotel ---------- */
+const flat = s => String(s || '').toLowerCase().replace(/["'״׳`]/g, '').replace(/\s+/g, ' ');
+// Hebrew glues ו/ה/ב/ל/מ/ש/כ to the word: "לשבת" also finds "שבת"
+const hasWord = (txt, w) => txt.includes(w) || (w.length > 3 && 'והבלמשכ'.includes(w[0]) && txt.includes(w.slice(1)));
+const textWords = raw => flat(str(raw, 120)).replace(/[.,;:!?()\-–]/g, ' ').split(' ').filter(w => w.length >= 2 && !/^\d{7,}$/.test(w)).slice(0, 6);
+const KIND = { call: 'בשיחה', 'mail-in': 'במייל מהמלון', 'mail-out': 'במייל שנשלח', wa: 'בוואטסאפ', text: 'בטקסט שנקרא', note: 'בהערה' };
+function textHits(h, words) {
+  const head = flat([h.name, h.city, h.contact, h.email, h.availText, h.summary, h.notes, h.about, h.reviewsText, ...(h.prices || []).map(p => [p.level, p.board, p.price, p.per, p.note].join(' '))].join(' '));
+  const logs = (h.log || []).map(l => ({ l, txt: [l.summary, l.availText, l.subject, l.body, l.text, l.from, ...(l.quotes || []).map(x => x.text), l.transcript].filter(Boolean).join(' \n ') }));
+  const all = head + ' ' + logs.map(o => flat(o.txt)).join(' ');
+  if (!words.every(w => hasWord(all, w))) return null;
+  const where = [];
+  for (const o of logs.sort((a, b) => (b.l.at || '').localeCompare(a.l.at || ''))) {
+    const low = flat(o.txt);
+    const w = words.find(x => hasWord(low, x));
+    if (!w) continue;
+    let i = low.indexOf(w); if (i < 0) i = low.indexOf(w.slice(1));
+    where.push({ kind: KIND[o.l.t] || 'בהיסטוריה', at: o.l.at || '', text: o.txt.replace(/\s+/g, ' ').slice(Math.max(0, i - 60), i + 120) });
+    if (where.length >= 3) break;
+  }
+  if (!where.length) where.push({ kind: 'בפרטי המלון', at: '', text: [h.summary, h.availText, h.notes].filter(Boolean).join(' · ').slice(0, 180) });
+  return where;
+}
+
 /** Calls with a hotel's number join it by themselves: from 2 weeks before it was added until 2 weeks after (owner 19.11). */
 const WATCH_DAYS = 14;
 function robotJobs(sv, hotels) {
@@ -288,8 +312,30 @@ export default async function hotelsHandler(req, res) {
         (d.length < 7 && n.length >= 2 && norm(c.name).includes(n))))
         .sort((a2, b2) => (b2.at || '').localeCompare(a2.at || '')).slice(0, 10)
         .map(c => ({ id: c.id, at: c.at, name: c.name, phone: c.phone, url: c.url, ask: !!c.ask, q: c.q || '', sum: c.sum || null }));
+      // one search for everything (owner 19.11): the words also in calls, mails, WhatsApp, notes, prices of every hotel I may see
+      const words = textWords(q('q'));
+      const found = [];
+      if (words.length) {
+        const seen = new Set(out.map(r => r.surveyId + '|' + r.id));
+        for (const sv of (await allJ(K.surveys)).filter(x => canSee(s, x))) {
+          for (const h of await allJ(K.hotels(sv.id))) {
+            if (seen.has(sv.id + '|' + h.id)) continue;
+            const where = textHits(h, words);
+            if (!where) continue;
+            found.push({ surveyId: sv.id, survey: sv.title, id: h.id, name: h.name, city: h.city, rating: h.rating || null, avail: h.avail, min: minPrice(h), prices: (h.prices || []).slice(0, 3), where, lastAt: (h.log || []).map(l => l.at).sort().pop() || h.updatedAt });
+          }
+        }
+        found.sort((a2, b2) => (b2.where.length - a2.where.length) || (b2.lastAt || '').localeCompare(a2.lastAt || ''));
+        // ...and calls on the phone whose summary / answer / transcript has the words
+        const have = new Set(phone.map(p => p.id));
+        for (const c of await allJ(K.calls)) {
+          if (have.has(c.id) || !(isOwner(s) || c.owner === uid) || !c.sum || c.sum.error) continue;
+          const txt = flat([c.name, c.sum.summary, c.sum.answer, c.sum.who, c.sum.transcript].join(' '));
+          if (words.every(w => hasWord(txt, w))) { phone.push({ id: c.id, at: c.at, name: c.name, phone: c.phone, url: c.url, ask: !!c.ask, q: c.q || '', sum: c.sum, byText: true }); if (phone.length >= 15) break; }
+        }
+      }
       const u = await userRec(uid);
-      return send(res, 200, { results: out.slice(0, 10), phone, indexed: !!u.indexedAt || phone.length > 0 });
+      return send(res, 200, { results: out.slice(0, 10), found: found.slice(0, 15), phone, indexed: !!u.indexedAt || phone.length > 0 });
     }
 
     // "Yes, summarize that call" → the robot listens to it on its next run (about 5 minutes)

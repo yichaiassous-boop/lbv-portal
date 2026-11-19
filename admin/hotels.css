@@ -245,3 +245,19 @@ mark { background: #FCE7A8; color: inherit; padding: 0 2px; border-radius: 3px; 
 .hs-rev span { color: #5B6478; font-size: .88rem; }
 .hs-rev p { flex-basis: 100%; margin: 2px 0 0; color: #3A4560; font-size: .92rem; }
 .hs-rev a { font-size: .88rem; }
+
+/* one search for everything (19.11) */
+.hs-look__ex { margin: 8px 0 0; font-size: .86rem; color: #5B6478; line-height: 1.9; }
+.hs-look__ex button { font: inherit; color: #3A4560; background: #F1EBDD; border: 0; border-radius: 999px; padding: 2px 10px; margin-inline-end: 4px; cursor: pointer; }
+.hs-look__ex button:focus-visible { outline: 2px solid #B08D57; outline-offset: 2px; }
+.hs-look__h { margin: 6px 0 0; font: 700 .95rem "Frank Ruhl Libre", serif; color: #3A4560; }
+.hs-look__h:empty { display: none; }
+.hs-fd { display: grid; gap: 4px; text-align: start; width: 100%; padding: 12px 14px; border: 1px solid #E6E8EE; border-radius: 12px; background: #fff; font: inherit; color: inherit; cursor: pointer; }
+.hs-fd:hover { border-color: #B08D57; }
+.hs-fd:focus-visible { outline: 2px solid #B08D57; outline-offset: 2px; }
+.hs-fd__t { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.hs-fd__t .pill { margin-inline-start: auto; }
+.hs-fd__s { font-size: .86rem; color: #5B6478; }
+.hs-fd__w { font-size: .9rem; color: #3A4560; overflow-wrap: anywhere; }
+.hs-fd__w em { font-style: normal; color: #8A6A35; font-weight: 600; }
+.hs-fd mark { background: #F6E7C1; color: inherit; border-radius: 3px; padding: 0 1px; }
