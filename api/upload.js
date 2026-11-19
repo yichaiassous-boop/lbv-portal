@@ -1,5 +1,6 @@
 import { handleUpload } from '@vercel/blob/client';
 import { isAuthed, can, storageReady, readBody } from './_lib.js';
+import { hasArea } from './_areas.js';
 
 // Photos and videos go straight from the admin's browser to Blob storage; this route only
 // hands out a short-lived upload token to a logged-in admin (so large videos never pass
@@ -12,8 +13,13 @@ export default async function handler(req, res) {
     const json = await handleUpload({
       body,
       request: req,
-      onBeforeGenerateToken: async () => {
-        if (!can(isAuthed(req), 'content')) throw new Error('login');
+      onBeforeGenerateToken: async pathname => {
+        const s = isAuthed(req);
+        // hotel photos (owner 19.11): anyone who works on hotels, images only, 25 MB
+        if (String(pathname || '').startsWith('hotels/') && s && await hasArea(s, 'hotels')) {
+          return { allowedContentTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/heic'], maximumSizeInBytes: 25 * 1024 * 1024, addRandomSuffix: true };
+        }
+        if (!can(s, 'content')) throw new Error('login');
         return {
           allowedContentTypes: ['image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'video/quicktime'],
           maximumSizeInBytes: 300 * 1024 * 1024,

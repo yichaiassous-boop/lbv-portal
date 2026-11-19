@@ -261,3 +261,12 @@ mark { background: #FCE7A8; color: inherit; padding: 0 2px; border-radius: 3px; 
 .hs-fd__w { font-size: .9rem; color: #3A4560; overflow-wrap: anywhere; }
 .hs-fd__w em { font-style: normal; color: #8A6A35; font-weight: 600; }
 .hs-fd mark { background: #F6E7C1; color: inherit; border-radius: 3px; padding: 0 1px; }
+
+/* photos: mine + from the hotel's site, add / remove (19.11) */
+.hs-ph { position: relative; margin: 0; flex: 0 0 auto; scroll-snap-align: start; }
+.hs-ph__x { position: absolute; top: 4px; inset-inline-end: 4px; width: 26px; height: 26px; border-radius: 50%; border: 0; background: rgba(15, 23, 42, .65); color: #fff; font-size: 18px; line-height: 26px; cursor: pointer; padding: 0; }
+.hs-ph__x:focus-visible { outline: 2px solid #B08D57; outline-offset: 2px; }
+.hs-ph--add { display: grid; place-items: center; height: 120px; min-width: 130px; padding: 0 14px; border: 1.5px dashed #C9B48C; border-radius: 10px; color: #8A6A35; font-weight: 600; cursor: pointer; background: #FBF7EF; }
+.hs-ph--add:focus-within { outline: 2px solid #B08D57; outline-offset: 2px; }
+@media (max-width: 640px) { .hs-ph--add { height: 96px; min-width: 110px; } }
+.hs-ph__hint { margin: 4px 0 0; font-size: .86rem; color: #5B6478; }

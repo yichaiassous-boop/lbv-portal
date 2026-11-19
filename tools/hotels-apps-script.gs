@@ -288,29 +288,47 @@ function mailScans(st) {
 /** A new hotel: find it on the web (Google Search through Gemini) - official site, city, phone, e-mail - and take photos from its site. */
 function webLooks(st) {
   for (const w of (st.webLook || []).slice(0, 2)) {
-    let found = false, hotel = {}, photos = [];
+    let found = false, hotel = {}, photos = [], grounded = true, answered = false;
     try {
       const prompt = 'Find the hotel / venue "' + w.name + '"' + (w.city ? ' in ' + w.city : '') + (w.website ? ' (website ' + w.website + ')' : '') + ' on the web. Answer ONLY one JSON object, no text around it: {"found": true|false, "website": "official https site, not a booking site", "city": "", "phone": "", "email": "", "about": "one short line in Hebrew: what kind of place, stars, area", "rating": the Google Maps rating as a number (or null), "reviews": how many Google reviews (number or null), "reviewsSummary": "in Hebrew, 2-3 short sentences: what guests praise and what they complain about (food, cleanliness, rooms, service, Shabbat), from real reviews only", "reviewsUrl": "https link to the reviews (Google Maps / TripAdvisor / Booking) or empty"}. found=false if you are not sure it is this place. Never guess a phone or e-mail: leave it empty if it is not written on an official page.';
       const r = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + MODEL + ':generateContent', {
         method: 'post', contentType: 'application/json', muteHttpExceptions: true, headers: { 'x-goog-api-key': P('GEMINI_KEY') },
         payload: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], tools: [{ google_search: {} }], generationConfig: { temperature: 0.1 } }),
       });
-      if (r.getResponseCode() < 300) {
-        const j = JSON.parse(r.getContentText());
+      let code = r.getResponseCode(), body = r.getContentText();
+      if (code >= 300) {
+        // search blocked (quota) -> Gemini on its own knowledge: website / city / about only, never ratings, phone or e-mail
+        console.log('webLook: search ' + code + ', trying without search');
+        grounded = false;
+        const r2 = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + MODEL + ':generateContent', {
+          method: 'post', contentType: 'application/json', muteHttpExceptions: true, headers: { 'x-goog-api-key': P('GEMINI_KEY') },
+          payload: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'The hotel / venue "' + w.name + '"' + (w.city ? ' in ' + w.city : '') + ' (Israel or abroad). Answer ONLY one JSON object: {"found": true|false, "website": "its official https site, not a booking site", "city": "", "about": "one short line in Hebrew: what kind of place and area"}. found=true only if you know this exact place for sure; otherwise found=false and empty fields.' }] }], generationConfig: { temperature: 0 } }),
+        });
+        code = r2.getResponseCode(); body = r2.getContentText();
+      }
+      if (code < 300) {
+        answered = true;
+        const j = JSON.parse(body);
         const text = (((j.candidates || [])[0] || {}).content || { parts: [] }).parts.map(p => p.text || '').join('');
         const m = text.match(/\{[\s\S]*\}/);
         if (m) { hotel = JSON.parse(m[0]); found = !!hotel.found; }
-      }
+      } else console.error('webLook: gemini ' + code);
+      if (!grounded) hotel = { found: hotel.found, website: hotel.website, city: hotel.city, about: hotel.about };
       const siteUrl = String(hotel.website || w.website || '');
-      if (found && /^https?:\/\//i.test(siteUrl)) photos = sitePhotos(siteUrl);
+      if (found && /^https?:\/\//i.test(siteUrl)) {
+        photos = sitePhotos(siteUrl);
+        if (photos === null) { photos = []; if (!grounded) hotel.website = ''; }   // the site does not open: do not keep a guessed address
+      }
     } catch (e) { console.error('webLook', e); }
-    site('post', 'web', { surveyId: w.surveyId, hotelId: w.hotelId, found: found, hotel: hotel, photos: photos });
+    if (!answered) continue;   // Gemini did not answer at all: try again next run, not counted as a try
+    site('post', 'web', { surveyId: w.surveyId, hotelId: w.hotelId, found: found, grounded: grounded, hotel: hotel, photos: photos });
   }
 }
 /** The site's own share image + its pictures (absolute https links only). */
 function sitePhotos(url) {
-  const r = UrlFetchApp.fetch(url, { muteHttpExceptions: true, followRedirects: true, headers: { 'User-Agent': 'Mozilla/5.0' } });
-  if (r.getResponseCode() >= 300) return [];
+  let r;
+  try { r = UrlFetchApp.fetch(url, { muteHttpExceptions: true, followRedirects: true, headers: { 'User-Agent': 'Mozilla/5.0' } }); } catch (e) { return null; }
+  if (r.getResponseCode() >= 400) return null;
   const html = r.getContentText().slice(0, 600000), base = url.replace(/^(https?:\/\/[^\/]+).*$/i, '$1');
   const abs = u => { u = String(u || '').trim().replace(/&amp;/g, '&'); if (!u || /^data:/i.test(u)) return ''; if (/^\/\//.test(u)) u = 'https:' + u; else if (/^\//.test(u)) u = base + u; else if (!/^https?:/i.test(u)) return ''; return u.replace(/^http:/i, 'https:'); };
   const out = [];

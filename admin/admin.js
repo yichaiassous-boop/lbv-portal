@@ -89,6 +89,14 @@ async function uploadFile(file) {
   }
   throw new Error('no-storage');
 }
+/** A hotel photo: straight to storage under hotels/ (local preview: media/uploads). */
+async function hotelPhoto(file) {
+  if (storage === 'blob') {
+    const { upload } = await import('https://cdn.jsdelivr.net/npm/@vercel/blob@2.8.1/client/+esm');
+    return (await upload(`hotels/${file.name.replace(/[^\w.\-]/g, '_')}`, file, { access: 'public', handleUploadUrl: '/api/upload' })).url;
+  }
+  return uploadFile(file);
+}
 const preview = p => !p ? '' : /^(https?:|data:|\/)/.test(p) ? p : '../' + p.replace(/^\.\.\//, '');
 
 /** Photo/video slot with preview, upload/replace and remove. */
@@ -411,7 +419,7 @@ function render() {
     return appHolidays(pg, actx, state.trips || [], asks);
   }
   if (page === 'appsite') return appSite(pg, actx, allPages().filter(p => p.group === 'site' || p.group === 'people' || ['contact', 'banners'].includes(p.id)));
-  if (page === 'hotels') return hotelsPage(pg, { toast, showLogin, rerender: () => page === 'hotels' && render() });
+  if (page === 'hotels') return hotelsPage(pg, { toast, showLogin, rerender: () => page === 'hotels' && render(), upload: hotelPhoto });
   ({ dashboard, inbox, mail, quotes, team, contact, banners, stats, guide, support, users, account })[page](pg);
 }
 $$('#langPick button').forEach(b => b.addEventListener('click', () => {

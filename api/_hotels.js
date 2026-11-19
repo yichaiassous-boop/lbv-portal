@@ -180,7 +180,7 @@ function robotJobs(sv, hotels) {
     const em = String(h.email || '').trim().toLowerCase();
     if (/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(em) && h.mailScan !== em) mailScan.push({ surveyId: sv.id, hotelId: h.id, email: em, name: h.name });
     // a new hotel: the robot looks it up on the web once (website, photos, missing details) - owner 19.11
-    if (h.name && (h.webV || 0) < 2 && (h.webTries || 0) < 4) webLook.push({ surveyId: sv.id, hotelId: h.id, name: h.name, city: h.city || '', website: h.website || '' });
+    if (h.name && (h.webV || 0) < 3 && (h.webTries3 || 0) < 3 && !(h.webDone && h.website && (h.photos || []).length)) webLook.push({ surveyId: sv.id, hotelId: h.id, name: h.name, city: h.city || '', website: h.website || '' });
   }
   return { watch, parses, mailScan, webLook, wa };
 }
@@ -434,7 +434,7 @@ export default async function hotelsHandler(req, res) {
       return send(res, 200, { ...sv, token: sv.link ? viewToken(sv.id) : undefined });
     }
 
-    if (op === 'hotel' || op === 'note' || op === 'mail' || op === 'draft' || op === 'paste') {
+    if (op === 'hotel' || op === 'note' || op === 'mail' || op === 'draft' || op === 'paste' || op === 'photos') {
       const sv = await getJ(K.surveys, body.surveyId);
       if (!canSee(s, sv)) return send(res, 404, { error: 'not-found' });
       const key = K.hotels(sv.id);
@@ -448,6 +448,18 @@ export default async function hotelsHandler(req, res) {
         if (!old) h.log.push({ t: 'note', at: now(), by: s.n, text: 'נוסף ידנית' });
         await setJ(key, h.id, h);
         return send(res, 200, { ...h, min: minPrice(h) });
+      }
+      if (op === 'photos') {
+        if (!old) return send(res, 404, { error: 'not-found' });
+        const ok = u => /^https:\/\/[a-z0-9-]+\.public\.blob\.vercel-storage\.com\/hotels\/[^\s"'<>]+$/i.test(u) || /^media\/uploads\/[\w.\-]+$/.test(u);
+        const add = (Array.isArray(body.add) ? body.add : []).map(x => String(x || '').slice(0, 500)).filter(ok);
+        const rm = new Set((Array.isArray(body.remove) ? body.remove : []).map(x => String(x || '')));
+        old.myPhotos = [...(old.myPhotos || []).filter(u => !rm.has(u)), ...add].filter((u, i, a) => a.indexOf(u) === i).slice(0, 24);
+        if (rm.size) old.photos = (old.photos || []).filter(u => !rm.has(u));
+        if (add.length) old.log = [...(old.log || []), { t: 'note', at: now(), by: s.n, text: add.length === 1 ? 'נוספה תמונה' : `נוספו ${add.length} תמונות` }].slice(-80);
+        old.updatedAt = now();
+        await setJ(key, old.id, old);
+        return send(res, 200, { myPhotos: old.myPhotos, photos: old.photos || [] });
       }
       if (op === 'paste') {
         if (!old) return send(res, 404, { error: 'not-found' });
@@ -710,17 +722,19 @@ async function script(req, res, what, userId, b) {
     const key = K.hotels(sv.id), h = await getJ(key, str(b.hotelId, 40));
     if (!h) return send(res, 404, { error: 'not-found' });
     h.webTries = (h.webTries || 0) + 1;
+    h.webTries3 = (h.webTries3 || 0) + 1;
     if (b.found) {
       h.webDone = true;
       const g = b.hotel || {};
       const safe = u => /^https:\/\/[^\s"'<>]+$/i.test(String(u || '')) ? String(u).slice(0, 500) : null;
       // only fills what is empty: what LBV typed always wins
-      for (const k of ['city', 'phone', 'email']) if (!h[k] && g[k]) h[k] = str(g[k], 160);
+      for (const k of (b.grounded === false ? ['city'] : ['city', 'phone', 'email'])) if (!h[k] && g[k]) h[k] = str(g[k], 160);
       if (!safe(h.website) && safe(g.website)) h.website = safe(g.website);
       const ph = (Array.isArray(b.photos) ? b.photos : []).map(safe).filter(Boolean);
       if (ph.length) h.photos = [...new Set(ph)].slice(0, 8);
-      if (g.about) h.about = str(g.about, 400);
-      h.webV = 2;
+      if (g.about && !h.about) h.about = str(g.about, 400);
+      if (b.grounded === false) { h.webV = 3; await setJ(key, h.id, h); return send(res, 200, { ok: true }); }   // no search: no ratings / phone / e-mail
+      h.webV = 3;
       const rt = Number(g.rating), rc = Number(g.reviews);
       if (rt > 0 && rt <= 5) h.rating = Math.round(rt * 10) / 10;
       if (rc > 0) h.reviewsCount = Math.round(rc);

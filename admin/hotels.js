@@ -5,6 +5,7 @@
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const photoSrc = u => /^media\/uploads\//.test(u) ? '/' + u : safeUrl(u);   // my photos (storage) or ones from the hotel's site
 const safeUrl = u => (/^https:\/\//i.test(String(u || '')) ? u : '');   // links from the robot / replies: https only
 const h = s => { const t = document.createElement('template'); t.innerHTML = s.trim(); return t.content.firstElementChild; };
 const dmy = iso => (iso || '').slice(0, 10).split('-').reverse().join('.');
@@ -720,7 +721,9 @@ function hotelView(sv, x) {
     <p>${esc(x.city)}${x.contact ? ' · ' + esc(x.contact) : ''}${x.availText ? ' · ' + esc(x.availText) : ''}</p>
     ${x.about ? `<p class="hs-about">${esc(x.about)}</p>` : ''}
     ${x.rating || x.reviewsText ? `<div class="hs-rev">${x.rating ? `<b class="hs-rate">${x.rating} ★</b><span>${x.reviewsCount ? x.reviewsCount.toLocaleString('he-IL') + ' ביקורות בגוגל' : 'בגוגל'}</span>` : ''}${x.reviewsText ? `<p>${esc(x.reviewsText)}</p>` : ''}${safeUrl(x.reviewsUrl) ? `<a href="${esc(x.reviewsUrl)}" target="_blank" rel="noopener">לכל הביקורות</a>` : ''}</div>` : ''}
-    ${(x.photos || []).filter(safeUrl).length ? `<div class="hs-photos">${x.photos.filter(safeUrl).map(u => `<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" alt="" loading="lazy" referrerpolicy="no-referrer"></a>`).join('')}</div>` : ''}
+    <div class="hs-photos">${[...(x.myPhotos || []), ...(x.photos || []).filter(safeUrl)].map(u => `<figure class="hs-ph"><a href="${esc(photoSrc(u))}" target="_blank" rel="noopener"><img src="${esc(photoSrc(u))}" alt="" loading="lazy" referrerpolicy="no-referrer"></a><button type="button" class="hs-ph__x" data-rm="${esc(u)}" aria-label="להסיר את התמונה">×</button></figure>`).join('')}
+      <label class="hs-ph hs-ph--add"><input type="file" accept="image/*" multiple hidden><span>+ להוסיף תמונות</span></label></div>
+    ${(x.myPhotos || []).length || (x.photos || []).length ? '' : `<p class="hs-ph__hint">${x.webDone ? 'לא מצאתי תמונות באתר של המלון.' : 'תמונות מהאתר של המלון יגיעו לבד תוך כמה דקות.'} אפשר גם להוסיף תמונות מהטלפון או מהמחשב.</p>`}
     <div class="hs-tools">
       ${x.phone ? `<a class="btn btn--dark btn--sm" href="tel:${esc(x.phone.replace(/[^\d+]/g, ''))}">להתקשר <bdi>${esc(x.phone)}</bdi></a>` : ''}
       <button class="btn btn--gold btn--sm" type="button" data-mail>מייל למלון</button>
@@ -731,7 +734,23 @@ function hotelView(sv, x) {
   </section>`);
   $('[data-back]', head).addEventListener('click', () => { openHotel = null; mailOpen = false; pasteOpen = false; again(); });
   $('[data-paste]', head).addEventListener('click', () => { pasteOpen = !pasteOpen; again(); });
-  head.querySelectorAll('.hs-photos img').forEach(img => img.addEventListener('error', () => img.parentElement.remove()));
+  head.querySelectorAll('.hs-photos img').forEach(img => img.addEventListener('error', () => img.closest('.hs-ph').remove()));
+  // add photos: from the phone (gallery / camera) or the computer
+  $('.hs-ph--add input', head).addEventListener('change', async e => {
+    const files = [...e.target.files].filter(f => /^image\//.test(f.type) || /\.(jpe?g|png|webp|heic)$/i.test(f.name)).slice(0, 12);
+    if (!files.length) return;
+    if (!ctx.upload) return ctx.toast('אי אפשר להעלות מכאן', 'err');
+    const lab = $('.hs-ph--add span', head); lab.textContent = `מעלה ${files.length === 1 ? 'תמונה' : files.length + ' תמונות'}…`;
+    try {
+      const urls = [];
+      for (const f of files) { if (f.size > 25 * 1024 * 1024) { ctx.toast('תמונה גדולה מדי (עד 25MB)', 'err'); continue; } urls.push(await ctx.upload(f)); }
+      if (urls.length) { await api('POST', '', { op: 'photos', surveyId: sv.id, id: x.id, add: urls }); await refreshSurvey(); ctx.toast(urls.length === 1 ? 'התמונה נוספה' : 'התמונות נוספו'); again(); }
+    } catch (e2) { fail(e2); lab.textContent = '+ להוסיף תמונות'; }
+  });
+  head.querySelectorAll('[data-rm]').forEach(b => b.addEventListener('click', async () => {
+    if (!confirm('להסיר את התמונה מהמלון?')) return;
+    try { await api('POST', '', { op: 'photos', surveyId: sv.id, id: x.id, remove: [b.dataset.rm] }); await refreshSurvey(); again(); } catch (e2) { fail(e2); }
+  }));
   $('[data-mail]', head).addEventListener('click', async () => {
     mailOpen = !mailOpen;
     if (mailOpen) { try { mailDraft = await api('POST', '', { op: 'draft', surveyId: sv.id, id: x.id }); } catch (e) { fail(e); } }
