@@ -633,7 +633,7 @@ async function script(req, res, what, userId, b) {
         // calls with him that are already in the robot's folder (uploaded earlier, e.g. in check mode) but not read for Ilan yet
         const have = await kv.hgetall(K.ilanCalls) || {};
         const files = (await allJ(K.calls)).filter(x => !have[x.id] && c.phones.includes(digits(x.phone)) && (Date.parse(x.at) || 0) >= Date.parse(c.since))
-          .sort((a2, b2) => String(a2.at).localeCompare(String(b2.at))).slice(0, 2).map(x => ({ id: x.id, at: x.at }));
+          .sort((a2, b2) => String(b2.at).localeCompare(String(a2.at))).slice(0, 2).map(x => ({ id: x.id, at: x.at }));   // newest first
         ilan = { phones: c.phones, since: c.since, files };
         const to = new Date(Date.now() + 3650 * 864e5).toISOString();
         jobs.watch.unshift(...c.phones.map(p => ({ ilan: true, phone: p, from: c.since, to })));
