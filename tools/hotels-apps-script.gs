@@ -397,8 +397,9 @@ function genWeb(payload) {
   const text = JSON.stringify(payload);
   // a big recording uploaded through the Files API belongs to the first key only
   const keys = /"file_data"/.test(text) ? geminiKeys().slice(0, 1) : geminiKeys();
-  for (let k = 0; k < keys.length; k++) {
-    for (const m of WEB_MODELS.filter((x, i, a) => a.indexOf(x) === i)) {
+  // owner 19.11: a light model writes poor Hebrew, so every strong model is tried on every key before a light one
+  for (const m of WEB_MODELS.filter((x, i, a) => a.indexOf(x) === i)) {
+    for (let k = 0; k < keys.length; k++) {
       const r = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + m + ':generateContent', {
         method: 'post', contentType: 'application/json', muteHttpExceptions: true, headers: { 'x-goog-api-key': keys[k] }, payload: text,
       });

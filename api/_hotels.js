@@ -319,6 +319,13 @@ export default async function hotelsHandler(req, res) {
         await setJ(K.ilan, 'cfg', cfg);
         return send(res, 200, { ok: true, cfg });
       }
+      if (act === 'redo') {   // read this call again (the robot picks it up on its next run); my own and done tasks stay
+        const c = await getJ(K.ilanCalls, str(body.id, 120));
+        if (!c) return send(res, 404, { error: 'not-found' });
+        for (const tid of c.tasks || []) { const t = await getJ(K.ilanTasks, tid); if (t && t.by === 'robot' && !t.done) await kv.hdel(K.ilanTasks, tid); }
+        await kv.hdel(K.ilanCalls, c.id);
+        return send(res, 200, { ok: true });
+      }
       if (act === 'add') {
         const text = str(body.text, 400); if (!text) return send(res, 400, { error: 'text' });
         const t = { id: 'it' + crypto.randomBytes(6).toString('hex'), text, due: str(body.due, 10), quote: '', callId: '', at: now(), done: false, doneAt: null, by: 'me' };

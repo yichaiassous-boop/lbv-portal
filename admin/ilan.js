@@ -112,10 +112,14 @@ function callsCard() {
       ${(c.wants || []).length ? `<h4>מה אילן רוצה</h4><ul class="il-wants">${c.wants.map(w => `<li>${esc(w)}</li>`).join('')}</ul>` : ''}
       ${tasks.length ? `<h4>מטלות מהשיחה</h4><ul class="il-wants">${tasks.map(t => `<li class="${t.done ? 'is-done' : ''}">${esc(t.text)}${t.due ? ` (עד ${dm(t.due)})` : ''}</li>`).join('')}</ul>` : ''}
       ${(c.quotes || []).length ? `<h4>מה נאמר</h4><ul class="ev__q">${c.quotes.map(q => `<li><time>${esc(q.time)}</time>${q.speaker ? `<b>${esc(q.speaker)}:</b> ` : ''}"${esc(q.text)}"</li>`).join('')}</ul>` : ''}
-      <div class="il-call__foot">${rec ? `<a class="btn btn--line btn--sm" href="${esc(rec)}" target="_blank" rel="noopener">להקשיב להקלטה</a>` : ''}${c.transcript ? '<button type="button" class="btn btn--line btn--sm" data-tr>כל השיחה בכתב</button>' : ''}</div>
+      <div class="il-call__foot">${rec ? `<a class="btn btn--line btn--sm" href="${esc(rec)}" target="_blank" rel="noopener">להקשיב להקלטה</a>` : ''}${c.transcript ? '<button type="button" class="btn btn--line btn--sm" data-tr>כל השיחה בכתב</button>' : ''}<button type="button" class="btn btn--line btn--sm" data-redo>לקרוא את השיחה מחדש</button></div>
       <pre class="il-tr" hidden>${esc(c.transcript)}</pre>
     </details>`);
     d.querySelector('[data-tr]')?.addEventListener('click', () => { const p = d.querySelector('.il-tr'); p.hidden = !p.hidden; });
+    d.querySelector('[data-redo]').addEventListener('click', async () => {
+      if (!confirm('לקרוא את השיחה מחדש? הסיכום והמטלות שהמערכת כתבה מהשיחה הזאת יוחלפו (מטלות שסימנת כבוצעו נשארות). זה לוקח כמה דקות.')) return;
+      try { await act({ act: 'redo', id: c.id }); ctx.toast('השיחה תיקרא מחדש בדקות הקרובות'); await again(); } catch (err) { fail(err); }
+    });
     d.addEventListener('toggle', () => { if (d.open) openCall = c.id; else if (openCall === c.id) openCall = null; });
     box.append(d);
   }
