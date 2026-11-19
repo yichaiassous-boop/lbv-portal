@@ -80,6 +80,7 @@ const K = {
   ilanCalls: 'hs:ilan:c',            // recording file id → { at, file, summary, wants, quotes, transcript }
   ilanTasks: 'hs:ilan:t',            // task id → { text, due, quote, callId, at, done, doneAt, by }
 };
+const ILAN_SEE = ['cad5d8ff-c32d-4df9-918e-38cfd1d315d8'];   // owner 19.11: besides the owner only מעיין sees the Ilan tasks (not Ilan, not the others)
 const ILAN_BACK_DAYS = 7;            // when his number is saved, his calls of the last week are read too
 async function ilanCfg() { return (await getJ(K.ilan, 'cfg')) || { phones: [], since: null }; }
 
@@ -297,12 +298,13 @@ export default async function hotelsHandler(req, res) {
     /* ----- the admin ----- */
     const s = req.lbvUser || isAuthed(req);
     if (!s) return send(res, 401, { error: 'login' });
-    if (!(await (await import('./_areas.js')).hasArea(s, 'hotels'))) return send(res, 403, { error: 'forbidden' });
+    const ilanReq = Boolean(q('ilan') || body.op === 'ilan');   // the Ilan tab has its own rule (owner + מעיין), not the hotels area
+    if (!ilanReq && !(await (await import('./_areas.js')).hasArea(s, 'hotels'))) return send(res, 403, { error: 'forbidden' });
     const uid = meId(s);
 
     // Owner 19.11: calls with Ilan → a summary of what he asks for + a to-do list. Only the owner sees it.
     if (q('ilan') || body.op === 'ilan') {
-      if (!isOwner(s)) return send(res, 403, { error: 'forbidden' });
+      if (!(isOwner(s) || ILAN_SEE.includes(uid))) return send(res, 403, { error: 'forbidden' });   // owner 19.11: only the owner and Maayan
       if (req.method === 'GET') {
         const calls = (await allJ(K.ilanCalls)).sort((a2, b2) => String(b2.at).localeCompare(String(a2.at))).slice(0, 80);
         const tasks = (await allJ(K.ilanTasks)).sort((a2, b2) => (a2.done - b2.done) || String(b2.at).localeCompare(String(a2.at)));

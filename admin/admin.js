@@ -316,7 +316,7 @@ const GROUPS = () => [
   { id: 'events', name: 'לוח אירועים', pages: [{ id: 'events', title: 'לוח אירועים', sub: 'כל האירועים של LBV במקום אחד: מתי, איפה, עם מי, ובאיזה מצב' }] },
   { id: 'screens', name: 'השלט', pages: [{ id: 'remote', title: 'השלט של המסכים', sub: 'שליטה מהטלפון במסך של האירוע' }] },
   { id: 'hotels', name: 'בדיקת מלונות', pages: [{ id: 'hotels', title: 'בדיקת מלונות', sub: 'מתקשרים למלונות, והמערכת ממלאת לבד מהשיחות: פרטים, זמינות, מחירים, מיילים וסיכום' }] },
-  { id: 'ilan', name: 'מטלות מאילן', pages: [{ id: 'ilan', title: 'מטלות מאילן', sub: 'מה אילן ביקש בשיחות איתו, ורשימה של מה לעשות. רק אתם רואים את זה' }] },
+  { id: 'ilan', name: 'מטלות מאילן', pages: [{ id: 'ilan', title: 'מטלות מאילן', sub: 'מה אילן ביקש בשיחות איתו, ורשימה של מה לעשות. רק הבעלים ומעיין רואים את זה' }] },
   { id: 'site', name: 'עמודי האתר', pages: windows() },
   { id: 'people', name: 'צוות', pages: [{ id: 'team', title: 'צוות ודבר המנכ״ל', sub: 'תמונות, שמות ותפקידים, והמכתב של אילן', lang: true }] },
   { id: 'settings', name: 'הגדרות', pages: [
@@ -339,7 +339,7 @@ function pageAllowed(id) {
   if (id === 'appholidays') return canDo('content') && has('site');
   if (id === 'events') return has('events');
   if (id === 'hotels') return has('hotels');   // each sees only their own surveys and those shared with them
-  if (id === 'ilan') return !me || me.role === 'owner';   // the owner's own calls with Ilan
+  if (id === 'ilan') return !me || me.role === 'owner' || me.id === 'cad5d8ff-c32d-4df9-918e-38cfd1d315d8';   // only the owner and מעיין
   if (id === 'remote') return has('remote');
   if (['guide', 'support', 'stats', 'account'].includes(id)) return true;
   return canDo('content') && has('site');

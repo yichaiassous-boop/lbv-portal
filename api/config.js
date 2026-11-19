@@ -42,7 +42,7 @@ export default async function handler(req, res) {
     storage: storageReady() ? 'blob' : 'none',
     configured: Boolean(process.env.ADMIN_PASSWORD),
     authed: !!s,
-    user: s ? { name: s.n, role: s.r, areas } : null,
+    user: s ? { id: s.id || '', name: s.n, role: s.r, areas } : null,
     leads: leadsReady(),
   });
 }

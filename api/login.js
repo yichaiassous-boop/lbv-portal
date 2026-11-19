@@ -50,5 +50,5 @@ export default async function handler(req, res) {
   }
   await cleared(req);
   res.setHeader('Set-Cookie', sessionCookie(user));
-  return res.status(200).json({ ok: true, storage: storageReady() ? 'blob' : 'none', user: { name: user.n, role: user.r, areas: await areasOf(user) } });
+  return res.status(200).json({ ok: true, storage: storageReady() ? 'blob' : 'none', user: { id: user.id || '', name: user.n, role: user.r, areas: await areasOf(user) } });
 }
