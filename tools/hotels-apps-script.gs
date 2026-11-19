@@ -10,6 +10,9 @@
  *   5. sends the e-mails written in the admin, from this Gmail, and brings back the hotels' replies;
  *   6. keeps one Google Sheet per survey up to date;
  *   0. receives the recordings from the phone app "LBV שיחות" (doPost below) and keeps them in the Drive folder;
+ *   8. reads pasted texts / price quotes and the hotels' e-mails (Gmail of LBV) and fills the hotel's details;
+ *  10. looks a new hotel up on the web (site, photos, missing phone / e-mail);
+ *   9. calls with a hotel's number join that hotel by themselves for 2 weeks around when it was added;
  *   7. tells the site which recordings exist on the phone (file name, number and time only, nothing is listened to),
  *      so "did I already talk to this number?" finds every call; a call is summarized only when the owner asks.
  *
@@ -66,6 +69,9 @@ function tick() {
     try { answerAsks(st); } catch (e) { console.error('asks', e); }
     try { outbox(st); } catch (e) { console.error('outbox', e); }
     try { replies(st); } catch (e) { console.error('replies', e); }
+    try { parses(st); } catch (e) { console.error('parses', e); }
+    try { mailScans(st); } catch (e) { console.error('mailScans', e); }
+    try { webLooks(st); } catch (e) { console.error('webLooks', e); }
     try { sheets(st); } catch (e) { console.error('sheets', e); }
   } finally { lock.releaseLock(); }
 }
@@ -112,7 +118,7 @@ function recordings(st) {
   for (const f of files) {
     if (done >= MAX_PER_RUN) return;   // the rest next run (SINCE stays at the last one handled)
     const at = recordedAt(f);
-    const w = windowFor(st, at);
+    const w = windowFor(st, at) || watchFor(st, f, at);
     if (w) {
       const sv = (st.surveys || []).find(s => s.id === w.surveyId);
       if (sv) {
@@ -208,7 +214,12 @@ function listen(file, sv, at) {
     'duration: how long the call is, mm:ss.',
   ].join('\n');
 
-  const schema = {
+  const schema = hotelSchema();
+  return gemini(part, prompt, schema);
+}
+
+function hotelSchema() {
+  return {
     type: 'OBJECT',
     properties: {
       relevant: { type: 'BOOLEAN' },
@@ -223,8 +234,98 @@ function listen(file, sv, at) {
     },
     required: ['relevant'],
   };
-  return gemini(part, prompt, schema);
 }
+
+/** Pasted text, a quote or hotel e-mails → the same details as a call (prices, rooms, availability, conditions). */
+function readText(text, sv, hotelName, src) {
+  const prompt = [
+    'This is ' + (src === 'mail' ? 'an e-mail exchange between La Belle Vie (לה בל וי, an Israeli events and holiday company) and a hotel / venue' : 'a text La Belle Vie (לה בל וי, an Israeli events and holiday company) pasted about a hotel / venue: a price quote, a message, notes'),
+    'The hotel in La Belle Vie\'s list: "' + (hotelName || '') + '". Survey: "' + (sv ? sv.title : '') + '". Dates needed: ' + (sv ? (sv.from || '?') + ' to ' + (sv.to || '?') : '?') + '. What is needed: ' + (sv ? sv.need || '-' : '-') + '.',
+    'Price levels used in this survey: ' + ((sv && sv.levels) || []).join(', ') + '. Use one of these names for "level" when it fits, otherwise the hotel\'s own room name.',
+    'Today is ' + Utilities.formatDate(new Date(), 'Asia/Jerusalem', 'EEEE yyyy-MM-dd') + ' (Israel). Turn relative days into a date.',
+    'Answer in JSON only. Write summary, availability text and notes in Hebrew. relevant = true if the text is about rooms, a hall, meals, availability, prices or conditions.',
+    'availability: rooms AND hall/meals if mentioned; rooms = how many rooms. prices: one row per room type + board or per package, the number only in price, per = per what. Hours (check-in, check-out, meal times) and conditions go into prices[].note or the summary.',
+    'hotel: name, city, contact person, phone, email, website if written. followUp: whether something has to be sent / answered, by when and what.',
+    'keyQuotes: the sentences that matter as proof later, the exact words written, speaker = who wrote them.',
+    '',
+    String(text).slice(0, 30000),
+  ].join('\n');
+  return gemini({ text: prompt }, 'Read the text above and answer.', hotelSchema());
+}
+function surveyOf(st, id) { return (st.surveys || []).find(x => x.id === id) || null; }
+/** "הדבקת טקסט" in the admin: read it and fill the hotel. */
+function parses(st) {
+  for (const p of (st.parses || []).slice(0, 3)) {
+    let result, error = '';
+    try { result = readText(p.text, surveyOf(st, p.surveyId), p.name, 'paste'); } catch (e) { error = String(e).slice(0, 280); }
+    site('post', 'parsed', { surveyId: p.surveyId, hotelId: p.hotelId, id: p.id, src: 'paste', result: result || null, error: error });
+  }
+}
+/** A hotel got an e-mail address: bring every mail with it (last 6 months) into its history and read the details from them. */
+function mailScans(st) {
+  const me = Session.getEffectiveUser().getEmail().toLowerCase();
+  for (const m of (st.mailScan || []).slice(0, 3)) {
+    try {
+      const threads = GmailApp.search('(from:' + m.email + ' OR to:' + m.email + ') newer_than:180d', 0, 10);
+      const items = [], incoming = [];
+      for (const t of threads) for (const msg of t.getMessages()) {
+        const out = msg.getFrom().toLowerCase().indexOf(me) >= 0;
+        items.push({ surveyId: m.surveyId, hotelId: m.hotelId, threadId: t.getId(), msgId: msg.getId(), at: msg.getDate().toISOString(), from: msg.getFrom(), to: msg.getTo(), out: out, subject: msg.getSubject(), body: msg.getPlainBody().slice(0, 12000), files: [] });
+        if (!out) incoming.push('From: ' + msg.getFrom() + '\nDate: ' + msg.getDate().toISOString() + '\nSubject: ' + msg.getSubject() + '\n' + msg.getPlainBody().slice(0, 6000));
+      }
+      if (items.length) site('post', 'replies', { items: items.slice(-40) });
+      if (incoming.length) {
+        let result = null, error = '';
+        try { result = readText(incoming.slice(-6).join('\n\n----\n\n'), surveyOf(st, m.surveyId), m.name, 'mail'); } catch (e) { error = String(e).slice(0, 280); }
+        site('post', 'parsed', { surveyId: m.surveyId, hotelId: m.hotelId, src: 'mail', result: result, error: error });
+      }
+      site('post', 'mailscan', { surveyId: m.surveyId, hotelId: m.hotelId, email: m.email });
+    } catch (e) { console.error('mailScan', e); }
+  }
+}
+/** A new hotel: find it on the web (Google Search through Gemini) - official site, city, phone, e-mail - and take photos from its site. */
+function webLooks(st) {
+  for (const w of (st.webLook || []).slice(0, 2)) {
+    let found = false, hotel = {}, photos = [];
+    try {
+      const prompt = 'Find the hotel / venue "' + w.name + '"' + (w.city ? ' in ' + w.city : '') + (w.website ? ' (website ' + w.website + ')' : '') + ' on the web. Answer ONLY one JSON object, no text around it: {"found": true|false, "website": "official https site, not a booking site", "city": "", "phone": "", "email": "", "about": "one short line in Hebrew: what kind of place, stars, area"}. found=false if you are not sure it is this place. Never guess a phone or e-mail: leave it empty if it is not written on an official page.';
+      const r = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + MODEL + ':generateContent', {
+        method: 'post', contentType: 'application/json', muteHttpExceptions: true, headers: { 'x-goog-api-key': P('GEMINI_KEY') },
+        payload: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], tools: [{ google_search: {} }], generationConfig: { temperature: 0.1 } }),
+      });
+      if (r.getResponseCode() < 300) {
+        const j = JSON.parse(r.getContentText());
+        const text = (((j.candidates || [])[0] || {}).content || { parts: [] }).parts.map(p => p.text || '').join('');
+        const m = text.match(/\{[\s\S]*\}/);
+        if (m) { hotel = JSON.parse(m[0]); found = !!hotel.found; }
+      }
+      const siteUrl = String(hotel.website || w.website || '');
+      if (found && /^https?:\/\//i.test(siteUrl)) photos = sitePhotos(siteUrl);
+    } catch (e) { console.error('webLook', e); }
+    site('post', 'web', { surveyId: w.surveyId, hotelId: w.hotelId, found: found, hotel: hotel, photos: photos });
+  }
+}
+/** The site's own share image + its pictures (absolute https links only). */
+function sitePhotos(url) {
+  const r = UrlFetchApp.fetch(url, { muteHttpExceptions: true, followRedirects: true, headers: { 'User-Agent': 'Mozilla/5.0' } });
+  if (r.getResponseCode() >= 300) return [];
+  const html = r.getContentText().slice(0, 600000), base = url.replace(/^(https?:\/\/[^\/]+).*$/i, '$1');
+  const abs = u => { u = String(u || '').trim().replace(/&amp;/g, '&'); if (!u || /^data:/i.test(u)) return ''; if (/^\/\//.test(u)) u = 'https:' + u; else if (/^\//.test(u)) u = base + u; else if (!/^https?:/i.test(u)) return ''; return u.replace(/^http:/i, 'https:'); };
+  const out = [];
+  const og = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)/i) || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image/i);
+  if (og) out.push(abs(og[1]));
+  const re = /<img[^>]+(?:data-src|src)=["']([^"']+\.(?:jpe?g|webp|png)(?:\?[^"']*)?)["']/gi; let m;
+  while ((m = re.exec(html)) && out.length < 12) { const u = abs(m[1]); if (u && !/logo|icon|sprite|flag|pixel|avatar|badge/i.test(u)) out.push(u); }
+  return [...new Set(out.filter(Boolean))].slice(0, 8);
+}
+/** Calls with a watched hotel number (2 weeks around when it was added) join that hotel even without check mode. */
+function watchFor(st, f, at) {
+  const d = String(phoneOf(f) || '').replace(/\D/g, '').replace(/^972/, '0').slice(-9);
+  if (d.length < 8) return null;
+  const ms = at.getTime();
+  return (st.watch || []).find(w => w.phone === d && ms >= Date.parse(w.from) && ms <= Date.parse(w.to)) || null;
+}
+
 function gemini(part, prompt, schema) {
   const r = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + MODEL + ':generateContent', {
     method: 'post', contentType: 'application/json', muteHttpExceptions: true,
@@ -289,6 +390,11 @@ function replies(st) {
     }
   }
   if (items.length) site('post', 'replies', { items: items });
+  for (const it of items.slice(0, 3)) {
+    let result = null, error = '';
+    try { result = readText('From: ' + it.from + '\nSubject: ' + it.subject + '\n' + it.body, surveyOf(st, it.surveyId), '', 'mail'); } catch (e) { error = String(e).slice(0, 280); }
+    try { site('post', 'parsed', { surveyId: it.surveyId, hotelId: it.hotelId, src: 'mail', result: result, error: error }); } catch (e) {}
+  }
 }
 function savedFolder() {
   const n = 'סקר מלונות - קבצים מהמלונות';
@@ -332,6 +438,17 @@ function doPost(e) {
   let b;
   try { b = JSON.parse(e.postData.contents); } catch (err) { return reply({ ok: false, error: 'json' }); }
   if (!b.secret || b.secret !== P('APP_SECRET')) return reply({ ok: false, error: 'secret' });
+  if (b.op === 'jobs') {
+    const cache = CacheService.getScriptCache();
+    let st = null;
+    try { st = JSON.parse(cache.get('phoneJobs') || 'null'); } catch (err) {}
+    if (!st) {
+      const s = site('get', 'status');
+      st = { windows: (s.windows || []).map(w => ({ from: Date.parse(w.from) || 0, to: w.to ? Date.parse(w.to) || 0 : 0 })), watch: (s.watch || []).map(w => ({ phone: w.phone, from: Date.parse(w.from) || 0, to: Date.parse(w.to) || 0 })) };
+      try { cache.put('phoneJobs', JSON.stringify(st), 60); } catch (err) {}
+    }
+    return reply({ ok: true, windows: st.windows, watch: st.watch });
+  }
   if (b.op !== 'upload' || !b.data || !b.name) return reply({ ok: false, error: 'op' });
   const folder = recFolder();
   const name = String(b.name).slice(0, 200);

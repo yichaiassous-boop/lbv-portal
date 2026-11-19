@@ -208,3 +208,16 @@ mark { background: #FCE7A8; color: inherit; padding: 0 2px; border-radius: 3px; 
 
 /* calls found on this phone (number / contact) with a button that brings their recordings */
 .hs-prec__l { margin: 6px 0 10px; padding-inline-start: 18px; display: grid; gap: 4px; font-size: .88rem; color: #3A4560; }
+
+/* hotel page: what the robot found on the web (19.11) */
+.hs-about { color: #3A4560; font-size: .92rem; margin-top: 2px; }
+.hs-photos { display: flex; gap: 8px; overflow-x: auto; margin: 12px 0 4px; padding-bottom: 4px; scroll-snap-type: x mandatory; }
+.hs-photos a { flex: 0 0 auto; scroll-snap-align: start; }
+.hs-photos img { display: block; height: 120px; width: auto; max-width: 220px; object-fit: cover; border-radius: 10px; background: #EEF0F4; }
+@media (max-width: 640px) { .hs-photos img { height: 96px; } }
+.ev--text { border-inline-start-color: #B08D57; }
+/* phone panel: only problems are listed; the rest hides under "פרטים" */
+.hs-phone__ok { margin: 6px 0; color: #3A4560; }
+.hs-phone__more { margin: 4px 0 8px; font-size: .86rem; color: #5B6478; }
+.hs-phone__more summary { cursor: pointer; }
+.hs-phone__more ul { margin: 6px 0 0; padding-inline-start: 18px; display: grid; gap: 3px; list-style: disc; }

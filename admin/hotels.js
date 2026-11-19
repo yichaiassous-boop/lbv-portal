@@ -57,6 +57,7 @@ function pushWindows() {
     if (!window.LBVApp?.setWindows || !home) return;
     const w = (home.windows || []).map(x => ({ from: Date.parse(x.from) || 0, to: x.to ? Date.parse(x.to) || 0 : 0 })).filter(x => x.from);
     window.LBVApp.setWindows(JSON.stringify(w));
+    if (window.LBVApp.setWatch) window.LBVApp.setWatch(JSON.stringify((home.watch || []).map(x => ({ phone: x.phone, from: Date.parse(x.from) || 0, to: Date.parse(x.to) || 0 }))));
   } catch (e) {}
 }
 /** Inside the phone app: calls on this phone with that number / contact, and whether each has a recording. */
@@ -100,7 +101,7 @@ function modeBar() {
       ${m.on ? '' : `<select class="hs-sel" aria-label="לאיזו כרטיסייה">${home.surveys.map(s => `<option value="${s.id}" ${s.id === (openSurvey || home.surveys[0]?.id) ? 'selected' : ''}>${esc(s.title)}</option>`).join('')}</select>`}
       <button type="button" class="hs-switch" role="switch" aria-checked="${!!m.on}"><span></span>${m.on ? 'לכבות' : 'להדליק'}</button>
     </div>
-    <p class="hs-mode__con">${con.connected ? `<i class="dot ${con.ping && Date.now() - Date.parse(con.ping) < 20 * 60e3 ? 'ok' : 'warn'}"></i>החיבור לטלפון: בדיקה אחרונה ${ago(con.ping)}${con.last ? ` · שיחה אחרונה נקלטה ${ago(con.last)}` : ''}${con.skipped ? ` · ${con.skipped} שיחות לא קשורות דולגו` : ''}` : '<i class="dot no"></i>הטלפון עוד לא מחובר. <a href="#" data-connect>לשלבי החיבור</a>'}</p>
+    <p class="hs-mode__con">${con.connected ? `${con.ping && Date.now() - Date.parse(con.ping) < 20 * 60e3 ? '' : '<i class="dot warn"></i>'}החיבור לטלפון: בדיקה אחרונה ${ago(con.ping)}${con.last ? ` · שיחה אחרונה נקלטה ${ago(con.last)}` : ''}${con.skipped ? ` · ${con.skipped} שיחות לא קשורות דולגו` : ''}` : '<i class="dot no"></i>הטלפון עוד לא מחובר. <a href="#" data-connect>לשלבי החיבור</a>'}</p>
   </section>`);
   $('.hs-switch', el).addEventListener('click', async () => {
     if (!m.on && !home.surveys.length) return ctx.toast('קודם פותחים כרטיסייה', 'info');
@@ -140,7 +141,8 @@ function phonePanel(m, con) {
   const el = h(`<div class="hs-phone">
     <b class="hs-phone__t">מצב הטלפון</b>
     ${other ? `<p class="hs-phone__who">באפליקציה נכנסת בתור <b>${esc(meNow.name || '')}</b>. הרובוט של LBV מחובר לחשבון של הבעלים, ולכן הטלפון לא מתחבר. יוצאים ונכנסים עם שם המשתמש של הבעלים והסיסמה הראשית.</p><button type="button" class="btn btn--gold btn--sm" data-switch>לצאת ולהיכנס כבעלים</button>` : ''}
-    <ul>${rows.map(([ok, yes, no]) => `<li class="${ok ? 'is-ok' : 'is-no'}"><i class="dot ${ok ? 'ok' : 'no'}"></i>${ok ? yes : no}</li>`).join('')}</ul>
+    ${rows.some(r => !r[0]) ? `<ul>${rows.filter(r => !r[0] && r[2]).map(([ok, yes, no]) => `<li class="is-no"><i class="dot no"></i>${no}</li>`).join('')}</ul>` : '<p class="hs-phone__ok">הכול מחובר ועובד.</p>'}
+    <details class="hs-phone__more"><summary>פרטים</summary><ul>${rows.filter(r => r[0]).map(([ok, yes]) => `<li>${yes}</li>`).join('')}</ul></details>
     <small>${p.lastSync ? `בדיקה אחרונה בטלפון: ${ago(new Date(p.lastSync).toISOString())}` : ''}${p.err ? ` · תקלה אחרונה: ${esc(String(p.err).slice(0, 120))}` : ''} ${p.pairSt && !p.paired ? ` · חיבור: ${esc(String(p.pairSt).slice(0, 20))}` : ''} · גרסה ${esc(p.version)}</small>
     <div class="hs-phone__act">${needFix ? '<button type="button" class="btn btn--gold btn--sm" data-fix>לסדר את ההרשאות</button>' : ''}${p.paired ? (p.waiting > 0 ? '<button type="button" class="btn btn--gold btn--sm" data-sync>לשלוח הכול עכשיו</button>' : '<button type="button" class="btn btn--line btn--sm" data-sync>לבדוק הקלטות עכשיו</button>') : con.app ? '<button type="button" class="btn btn--gold btn--sm" data-pair>לחבר את הטלפון</button>' : ''}</div>
   </div>`);
@@ -658,13 +660,19 @@ function hotelView(sv, x) {
     <button type="button" class="hs-back" data-back>→ כל המלונות</button>
     <div class="hs-hhead__t"><h2>${esc(x.name || 'בלי שם')}</h2><span class="pill pill--${ac}">${an}</span><span class="st st--${x.status}">${ST[x.status]}</span></div>
     <p>${esc(x.city)}${x.contact ? ' · ' + esc(x.contact) : ''}${x.availText ? ' · ' + esc(x.availText) : ''}</p>
+    ${x.about ? `<p class="hs-about">${esc(x.about)}</p>` : ''}
+    ${(x.photos || []).filter(safeUrl).length ? `<div class="hs-photos">${x.photos.filter(safeUrl).map(u => `<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" alt="" loading="lazy" referrerpolicy="no-referrer"></a>`).join('')}</div>` : ''}
     <div class="hs-tools">
       ${x.phone ? `<a class="btn btn--dark btn--sm" href="tel:${esc(x.phone.replace(/[^\d+]/g, ''))}">להתקשר <bdi>${esc(x.phone)}</bdi></a>` : ''}
       <button class="btn btn--gold btn--sm" type="button" data-mail>מייל למלון</button>
+      <button class="btn btn--line btn--sm" type="button" data-paste>להדביק הצעת מחיר או הודעה</button>
+      ${safeUrl(x.website) ? `<a class="btn btn--line btn--sm" href="${esc(x.website)}" target="_blank" rel="noopener">לאתר של המלון</a>` : ''}
       ${sv.manage ? '<button class="btn btn--danger btn--sm" type="button" data-del>מחיקת המלון</button>' : ''}
     </div>
   </section>`);
-  $('[data-back]', head).addEventListener('click', () => { openHotel = null; mailOpen = false; again(); });
+  $('[data-back]', head).addEventListener('click', () => { openHotel = null; mailOpen = false; pasteOpen = false; again(); });
+  $('[data-paste]', head).addEventListener('click', () => { pasteOpen = !pasteOpen; again(); });
+  head.querySelectorAll('.hs-photos img').forEach(img => img.addEventListener('error', () => img.parentElement.remove()));
   $('[data-mail]', head).addEventListener('click', async () => {
     mailOpen = !mailOpen;
     if (mailOpen) { try { mailDraft = await api('POST', '', { op: 'draft', surveyId: sv.id, id: x.id }); } catch (e) { fail(e); } }
@@ -676,6 +684,7 @@ function hotelView(sv, x) {
   });
   wrap.append(head);
   if (mailOpen && mailDraft) wrap.append(mailForm(sv, x));
+  if (pasteOpen) wrap.append(pasteForm(sv, x));
 
   const cols = h('<div class="hs-cols"></div>');
   cols.append(timeline(sv, x));
@@ -685,6 +694,27 @@ function hotelView(sv, x) {
   cols.append(side);
   wrap.append(cols);
   return wrap;
+}
+
+let pasteOpen = false;
+/** Paste a price quote / a WhatsApp message / notes: the robot reads it and fills prices, rooms, hours, conditions. */
+function pasteForm(sv, x) {
+  const f = h(`<form class="card hs-form hs-paste">
+    <h2>להדביק טקסט על ${esc(x.name)}</h2>
+    <p class="hint">הצעת מחיר, הודעת וואטסאפ או מה שהמלון כתב. המחירים, החדרים, השעות והתנאים יתמלאו כאן לבד תוך כ-5 דקות.</p>
+    <label class="field"><span>הטקסט</span><textarea name="text" rows="8" required minlength="10"></textarea></label>
+    <div class="row-tools"><button class="btn btn--gold" type="submit">למלא את הפרטים</button><button class="btn btn--line" type="button" data-x>ביטול</button></div>
+  </form>`);
+  $('[data-x]', f).addEventListener('click', () => { pasteOpen = false; again(); });
+  f.addEventListener('submit', async e => {
+    e.preventDefault();
+    if (busy) return; busy = true;
+    try {
+      await api('POST', '', { op: 'paste', surveyId: sv.id, id: x.id, text: f.text.value });
+      pasteOpen = false; await refreshSurvey(); ctx.toast('התקבל. הפרטים יתמלאו תוך כ-5 דקות'); again();
+    } catch (e2) { fail(e2); } finally { busy = false; }
+  });
+  return f;
 }
 
 function mailForm(sv, x) {
@@ -746,6 +776,11 @@ function timeline(sv, x) {
         ${(l.files || []).length ? `<div class="row-tools">${l.files.filter(f => safeUrl(f.url)).map(f => `<a class="btn btn--line btn--sm" href="${esc(f.url)}" target="_blank" rel="noopener">${esc(f.name)}</a>`).join('')}</div>` : ''}
         ${l.error ? `<p class="err">${esc(l.error)}</p>` : ''}</li>`);
       ol.append(li);
+    } else if (l.t === 'text') {
+      const [an, ac] = AV[l.avail] || AV.unknown;
+      ol.append(h(`<li class="ev ev--text"><div class="ev__h"><b>${l.src === 'mail' ? 'נקרא מהמיילים' : 'נקרא מטקסט שהודבק'}</b><time>${when(l.at)}</time>${l.avail && l.avail !== 'unknown' ? `<span class="pill pill--${ac}">${an}</span>` : ''}</div>
+        ${l.summary ? `<p>${esc(l.summary)}</p>` : ''}
+        ${l.quotes?.length ? `<ul class="ev__q">${l.quotes.map(q => `<li>${q.who ? `<b>${esc(q.who)}:</b> ` : ''}"${esc(q.text)}"</li>`).join('')}</ul>` : ''}</li>`));
     } else {
       ol.append(h(`<li class="ev ev--note"><div class="ev__h"><b>הערה</b><time>${when(l.at)}</time>${l.by ? `<span>${esc(l.by)}</span>` : ''}</div><p>${esc(l.text)}</p></li>`));
     }
