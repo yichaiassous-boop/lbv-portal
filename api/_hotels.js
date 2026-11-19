@@ -178,7 +178,8 @@ function robotJobs(sv, hotels) {
     // WhatsApp: hotels added in the last 60 days, by number + hotel name + contact person
     if (Date.now() < t + 60 * 864e5) for (const ph of [h.phone, h.phone2]) { const d = digits(ph).slice(-9); if (d.length >= 8) wa.push({ phone: d, names: [h.name, h.contact].map(x => String(x || '').trim()).filter(x => x.length >= 3) }); }
     const em = String(h.email || '').trim().toLowerCase();
-    if (/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(em) && h.mailScan !== em) mailScan.push({ surveyId: sv.id, hotelId: h.id, email: em, name: h.name });
+    if (h.mailAsk) mailScan.unshift({ surveyId: sv.id, hotelId: h.id, email: /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(em) ? em : '', name: h.name || '', phone: digits(h.phone).slice(-9), ask: true });
+    else if (/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(em) && h.mailScan !== em) mailScan.push({ surveyId: sv.id, hotelId: h.id, email: em, name: h.name });
     // a new hotel: the robot looks it up on the web once (website, photos, missing details) - owner 19.11
     if (h.name && (h.webV || 0) < 3 && (h.webTries3 || 0) < 3 && !(h.webDone && h.website && (h.photos || []).length)) webLook.push({ surveyId: sv.id, hotelId: h.id, name: h.name, city: h.city || '', website: h.website || '' });
   }
@@ -434,7 +435,7 @@ export default async function hotelsHandler(req, res) {
       return send(res, 200, { ...sv, token: sv.link ? viewToken(sv.id) : undefined });
     }
 
-    if (op === 'hotel' || op === 'note' || op === 'mail' || op === 'draft' || op === 'paste' || op === 'photos') {
+    if (op === 'hotel' || op === 'note' || op === 'mail' || op === 'draft' || op === 'paste' || op === 'photos' || op === 'mailNow') {
       const sv = await getJ(K.surveys, body.surveyId);
       if (!canSee(s, sv)) return send(res, 404, { error: 'not-found' });
       const key = K.hotels(sv.id);
@@ -469,6 +470,11 @@ export default async function hotelsHandler(req, res) {
         old.log = [...(old.log || []), { t: 'note', at: now(), by: s.n, text: 'הודבק טקסט לקריאה: ' + text.slice(0, 140) + (text.length > 140 ? '…' : '') }].slice(-80);
         await setJ(key, old.id, old);
         return send(res, 200, { ok: true });
+      }
+      if (op === 'mailNow') {
+        old.mailAsk = now(); delete old.mailAskDone;
+        await setJ(key, old.id, old);
+        return send(res, 200, { ...old, min: minPrice(old) });
       }
       if (op === 'note') {
         const text = str(body.text, 2000);
@@ -750,7 +756,14 @@ async function script(req, res, what, userId, b) {
     if (!mine(sv, userId)) return send(res, 404, { error: 'not-found' });
     const key = K.hotels(sv.id), h = await getJ(key, str(b.hotelId, 40));
     if (!h) return send(res, 404, { error: 'not-found' });
-    h.mailScan = str(b.email, 160).toLowerCase();
+    if (b.email) h.mailScan = str(b.email, 160).toLowerCase();
+    if (b.ask) {
+      delete h.mailAsk;
+      h.mailAskDone = { at: now(), found: Math.max(0, Math.round(Number(b.found) || 0)), by: b.email ? 'email' : 'name' };
+      // the hotel had no e-mail: take the address the hotel wrote from
+      const fe = String(b.hotelEmail || '').trim().toLowerCase();
+      if (!h.email && /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(fe)) { h.email = fe.slice(0, 160); h.mailScan = h.email; }
+    }
     await setJ(key, h.id, h);
     return send(res, 200, { ok: true });
   }

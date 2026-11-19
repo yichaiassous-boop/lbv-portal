@@ -268,11 +268,17 @@ function mailScans(st) {
   const me = Session.getEffectiveUser().getEmail().toLowerCase();
   for (const m of (st.mailScan || []).slice(0, 3)) {
     try {
-      const threads = GmailApp.search('(from:' + m.email + ' OR to:' + m.email + ') newer_than:180d', 0, 10);
+      const nm = String(m.name || '').replace(/["()]/g, ' ').trim();
+      const q = m.email ? '(from:' + m.email + ' OR to:' + m.email + ')'
+        : '(' + [nm.length >= 3 ? '"' + nm + '"' : '', String(m.phone || '').length >= 8 ? '"' + m.phone + '"' : ''].filter(Boolean).join(' OR ') + ')';
+      if (q === '()') { site('post', 'mailscan', { surveyId: m.surveyId, hotelId: m.hotelId, email: '', ask: true, found: 0 }); continue; }
+      const threads = GmailApp.search(q + ' newer_than:365d', 0, m.email ? 10 : 6);
+      const senders = {};
       const items = [], incoming = [];
       for (const t of threads) for (const msg of t.getMessages()) {
         const out = msg.getFrom().toLowerCase().indexOf(me) >= 0;
         items.push({ surveyId: m.surveyId, hotelId: m.hotelId, threadId: t.getId(), msgId: msg.getId(), at: msg.getDate().toISOString(), from: msg.getFrom(), to: msg.getTo(), out: out, subject: msg.getSubject(), body: msg.getPlainBody().slice(0, 12000), files: [] });
+        if (!out) { const fm = (msg.getFrom().match(/[^\s<>"]+@[^\s<>"]+/) || [''])[0].toLowerCase(); if (fm) senders[fm] = (senders[fm] || 0) + 1; }
         if (!out) incoming.push('From: ' + msg.getFrom() + '\nDate: ' + msg.getDate().toISOString() + '\nSubject: ' + msg.getSubject() + '\n' + msg.getPlainBody().slice(0, 6000));
       }
       if (items.length) site('post', 'replies', { items: items.slice(-40) });
@@ -281,7 +287,8 @@ function mailScans(st) {
         try { result = readText(incoming.slice(-6).join('\n\n----\n\n'), surveyOf(st, m.surveyId), m.name, 'mail'); } catch (e) { error = String(e).slice(0, 280); }
         site('post', 'parsed', { surveyId: m.surveyId, hotelId: m.hotelId, src: 'mail', result: result, error: error });
       }
-      site('post', 'mailscan', { surveyId: m.surveyId, hotelId: m.hotelId, email: m.email });
+      const top = Object.keys(senders).sort((a, b) => senders[b] - senders[a])[0] || '';
+      site('post', 'mailscan', { surveyId: m.surveyId, hotelId: m.hotelId, email: m.email, ask: !!m.ask, found: items.length, hotelEmail: !m.email && !/noreply|no-reply|mailer-daemon|booking\.com|google\.com/i.test(top) ? top : '' });
     } catch (e) { console.error('mailScan', e); }
   }
 }

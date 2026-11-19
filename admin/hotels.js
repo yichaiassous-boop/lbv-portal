@@ -724,9 +724,12 @@ function hotelView(sv, x) {
     <div class="hs-photos">${[...(x.myPhotos || []), ...(x.photos || []).filter(safeUrl)].map(u => `<figure class="hs-ph"><a href="${esc(photoSrc(u))}" target="_blank" rel="noopener"><img src="${esc(photoSrc(u))}" alt="" loading="lazy" referrerpolicy="no-referrer"></a><button type="button" class="hs-ph__x" data-rm="${esc(u)}" aria-label="להסיר את התמונה">×</button></figure>`).join('')}
       <label class="hs-ph hs-ph--add"><input type="file" accept="image/*" multiple hidden><span>+ להוסיף תמונות</span></label></div>
     ${(x.myPhotos || []).length || (x.photos || []).length ? '' : `<p class="hs-ph__hint">${x.webDone ? 'לא מצאתי תמונות באתר של המלון.' : 'תמונות מהאתר של המלון יגיעו לבד תוך כמה דקות.'} אפשר גם להוסיף תמונות מהטלפון או מהמחשב.</p>`}
+    ${x.mailAsk ? '<p class="hs-mailnow">בודק את המייל של LBV על המלון הזה. התשובה תופיע כאן תוך כמה דקות.</p>'
+      : x.mailAskDone ? `<p class="hs-mailnow">נבדק במייל ${esc(new Date(x.mailAskDone.at).toLocaleString('he-IL', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' }))}: ${x.mailAskDone.found ? (x.mailAskDone.found === 1 ? 'נמצא מייל אחד, הוא בהיסטוריה' : 'נמצאו ' + x.mailAskDone.found + ' מיילים, הם בהיסטוריה') : (x.mailAskDone.by === 'email' ? 'לא נמצאו מיילים עם הכתובת של המלון' : 'לא נמצאו מיילים עם השם או המספר של המלון')}.</p>` : ''}
     <div class="hs-tools">
       ${x.phone ? `<a class="btn btn--dark btn--sm" href="tel:${esc(x.phone.replace(/[^\d+]/g, ''))}">להתקשר <bdi>${esc(x.phone)}</bdi></a>` : ''}
       <button class="btn btn--gold btn--sm" type="button" data-mail>מייל למלון</button>
+      <button class="btn btn--line btn--sm" type="button" data-mailnow ${x.mailAsk ? 'disabled' : ''}>${x.mailAsk ? 'בודק במייל…' : 'לבדוק במייל'}</button>
       <button class="btn btn--line btn--sm" type="button" data-paste>להדביק הצעת מחיר או הודעה</button>
       ${safeUrl(x.website) ? `<a class="btn btn--line btn--sm" href="${esc(x.website)}" target="_blank" rel="noopener">לאתר של המלון</a>` : ''}
       ${sv.manage ? '<button class="btn btn--danger btn--sm" type="button" data-del>מחיקת המלון</button>' : ''}
@@ -734,6 +737,9 @@ function hotelView(sv, x) {
   </section>`);
   $('[data-back]', head).addEventListener('click', () => { openHotel = null; mailOpen = false; pasteOpen = false; again(); });
   $('[data-paste]', head).addEventListener('click', () => { pasteOpen = !pasteOpen; again(); });
+  $('[data-mailnow]', head).addEventListener('click', async () => {
+    try { await api('POST', '', { op: 'mailNow', surveyId: sv.id, id: x.id }); await refreshSurvey(); ctx.toast('בודק במייל. התשובה תגיע תוך כמה דקות'); again(); } catch (e2) { fail(e2); }
+  });
   head.querySelectorAll('.hs-photos img').forEach(img => img.addEventListener('error', () => img.closest('.hs-ph').remove()));
   // add photos: from the phone (gallery / camera) or the computer
   $('.hs-ph--add input', head).addEventListener('change', async e => {
