@@ -339,7 +339,7 @@ function mailScans(st) {
 }
 /** A new hotel: find it on the web (Google Search through Gemini) - official site, city, phone, e-mail - and take photos from its site. */
 /** Gemini with a fallback: busy (503) or no quota (429) on one model -> the next one. Returns {code, body}. */
-const WEB_MODELS = [MODEL, 'gemini-3.8-flash', 'gemini-3.6-flash'];
+const WEB_MODELS = [MODEL, 'gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-2.5-flash'];
 function genWeb(payload) {
   let code = 0, body = '';
   for (const m of WEB_MODELS.filter((x, i, a) => a.indexOf(x) === i)) {
@@ -400,24 +400,40 @@ function freeLook(w) {
   const rev = ddg(base + ' ביקורות');
   const all = res.concat(rev).filter((x, i, a) => a.findIndex(y => y.url === x.url) === i).slice(0, 16);
   if (!all.length) return null;
-  const list = all.map((x, i) => (i + 1) + '. ' + x.title + '\n' + x.url + '\n' + x.snippet).join('\n\n');
-  const prompt = 'Web search results for the hotel / venue "' + w.name + '"' + (w.city ? ' (' + w.city + ')' : '') + '. Use ONLY these results, never your own knowledge, never guess. Answer ONLY one JSON object: {"found": true|false (true only if a result is clearly this exact place), "website": "the official site of this place, copied from a result URL (not booking / tripadvisor / google / facebook / instagram / directories / ads), or empty", "city": "", "about": "one short Hebrew line, from the results", "rating": the guest rating exactly as written in a snippet (number) or null, "ratingScale": 5 or 10, "reviews": number of reviews as written in that snippet or null, "reviewsSource": "the site of that rating, e.g. Booking, Google, TripAdvisor", "reviewsSummary": "Hebrew, 1-2 short sentences, only what the snippets say guests wrote, or empty", "reviewsUrl": "the result URL of that reviews page, or empty"}\n\nRESULTS:\n' + list;
-  const r = genWeb({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 0 } });
-  if (r.code >= 300) { console.error('freeLook: gemini ' + r.code); return null; }
-  const j = JSON.parse(r.body);
-  const text = (((j.candidates || [])[0] || {}).content || { parts: [] }).parts.map(p => p.text || '').join('');
-  const m = text.match(/\{[\s\S]*\}/);
-  if (!m) return null;
-  const h = JSON.parse(m[0]);
-  // links must really be among the results (nothing invented)
+  // no AI here (it would use the calls' quota): simple, safe rules on the search results only
   const host = u => String(u || '').replace(/^https?:\/\/(www\.)?/i, '').split(/[\/?#]/)[0].toLowerCase();
-  const hosts = all.map(x => host(x.url));
-  if (h.website && hosts.indexOf(host(h.website)) < 0) h.website = '';
-  if (h.reviewsUrl && !all.some(x => x.url === h.reviewsUrl)) h.reviewsUrl = '';
-  if (h.website && !/^https:/i.test(h.website)) h.website = String(h.website).replace(/^http:/i, 'https:');
+  const words = String(w.name).replace(/["'()\/,.-]/g, ' ').split(/\s+/).filter(x => x.length >= 3 && !/^(מלון|כפר|הנופש|נופש|אכסניית|אכסניה|בית|הארחה|resort|hotel|the)$/i.test(x));
+  const about = x => { const t = x.title + ' ' + x.snippet + ' ' + x.url; return words.length && words.some(wd => t.toLowerCase().indexOf(wd.toLowerCase()) >= 0); };
+  const DIR = /booking\.|tripadvisor|google\.|goo\.gl|facebook\.|instagram\.|tiktok\.|youtube\.|waze\.|wikipedia\.|wikitravel|expedia\.|hotels\.com|agoda\.|trivago\.|kayak\.|airbnb\.|holidaycheck|zimmer|zimer|tzimer|b144\.|d\.co\.il|easy\.co\.il|rest\.co\.il|linkedin\.|twitter\.|x\.com|mapcarta|yelp\.|foursquare|gov\.il|ynet\.|mako\.|walla\.|haaretz|maariv|israelhayom|karamel|lametayel|isrotel|fattal|dan\.co\.il|hotels-israel|hotelsisrael|eshet|issta|gulliver|ophir|deal|lastminute|duckduckgo/i;
+  const h = { found: false, website: '', city: '', about: '', rating: null, ratingScale: 5, reviews: null, reviewsSource: '', reviewsSummary: '', reviewsUrl: '' };
+  // the official site: the first search result about this place that is not a booking site / directory / news
+  const site = res.concat(rev).find(x => about(x) && !DIR.test(host(x.url)));
+  if (site) {
+    h.website = 'https://' + site.url.replace(/^https?:\/\//i, '').split(/[?#]/)[0].replace(/^([^\/]+).*$/, '$1') + '/';
+    h.about = String(site.snippet || '').split(/(?<=[.!?])\s/)[0].slice(0, 160);
+    h.found = true;
+  }
+  // the rating exactly as written in a result: "8.6 מתוך 10", "7.57 מתוך 234 ביקורות", "4.5/5", "דירוג 9.1"
+  const NAMES = { 'booking.com': 'Booking', 'tripadvisor': 'TripAdvisor', 'google': 'Google', 'expedia': 'Expedia', 'hotels.com': 'Hotels.com', 'agoda': 'Agoda', 'karamel': 'קרמל', 'zimmer': 'צימר', 'zimer': 'צימר' };
+  const srcName = u => { const hs = host(u); for (const k in NAMES) if (hs.indexOf(k) >= 0) return NAMES[k]; return hs; };
+  for (const x of all) {
+    if (!about(x)) continue;
+    const t = x.snippet + ' ' + x.title;
+    // "7.57 מתוך 234 ביקורות" = a score of 7.57 from 234 reviews
+    const sr = t.match(/(\d{1,2}[.,]\d{1,2})\s*(?:מתוך|from)\s*([\d,]{2,7})\s*(?:ביקורות|חוות דעת|reviews)/i);
+    let m = sr ? null : t.match(/(\d{1,2}(?:[.,]\d{1,2})?)\s*(?:מתוך|\/|out of)\s*(10|5)(?!\d)/i);
+    let rt = sr ? Number(sr[1].replace(',', '.')) : m ? Number(m[1].replace(',', '.')) : NaN, sc = sr ? (rt > 5 ? 10 : 5) : m ? Number(m[2]) : 0;
+    if (sr) m = sr;
+    if (!m) { m = t.match(/(?:דירוג|ציון|rating|scored?)\D{0,12}(\d{1,2}(?:[.,]\d{1,2})?)/i); if (m) { rt = Number(m[1].replace(',', '.')); sc = rt > 5 ? 10 : 5; } }
+    if (!(rt > 0 && rt <= (sc || 10))) continue;
+    const rc = t.match(/([\d,]{1,7})\s*(?:ביקורות|חוות דעת|מדרגים|reviews|ratings)/i);
+    h.rating = Math.round(rt * 100) / 100; h.ratingScale = sc === 10 ? 10 : 5;
+    h.reviews = rc ? Number(rc[1].replace(/,/g, '')) || null : null;
+    h.reviewsSource = srcName(x.url); h.reviewsUrl = x.url; h.found = true;
+    break;
+  }
   // pages about this place (for photos when its own site blocks robots)
-  const words = String(w.name).split(/s+/).filter(x => x.length >= 4);
-  h._pages = all.filter(x => x.url === h.reviewsUrl || (h.website && host(x.url) === host(h.website)) || words.some(wd => (x.title + ' ' + x.snippet).indexOf(wd) >= 0)).map(x => x.url).slice(0, 6);
+  h._pages = all.filter(x => x.url === h.reviewsUrl || (h.website && host(x.url) === host(h.website)) || about(x)).map(x => x.url).slice(0, 6);
   return h;
 }
 function webLooks(st) {
@@ -435,7 +451,7 @@ function webLooks(st) {
       if (cm) { try { hotel = JSON.parse(cm[0]); found = !!hotel.found; answered = true; } catch (e) { hotel = {}; } }
       // free: web search + Gemini reading only the results
       if (!answered) { try { const fl = freeLook(w); if (fl) { hotel = fl; found = !!fl.found; answered = true; } } catch (e) { console.error('freeLook', e); } }
-      if (!answered) { code = 503; }
+      if (!answered) { answered = true; found = false; hotel = { found: false }; }   // nothing found on the web: counted as a try, no AI guess
       if (!answered && code >= 300) {
         // search blocked (quota) -> Gemini on its own knowledge: website / city / about only, never ratings, phone or e-mail
         console.log('webLook: search ' + code + ', trying without search');
