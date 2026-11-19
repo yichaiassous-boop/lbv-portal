@@ -68,10 +68,10 @@ function tick() {
   try {
     try { site('post', 'app', { url: P('APP_URL') || ScriptApp.getService().getUrl() || '', secret: P('APP_SECRET'), last: P('APP_LAST') }); } catch (e) { console.error('app', e); }
     const st = site('get', 'status');
+    try { indexCalls(); } catch (e) { console.error('index', e); }   // owner 19.11: the list of calls first (quick), so a slow reading never hides new calls
     try { ilanOld(st); } catch (e) { console.error('ilanOld', e); }   // owner 19.11: Ilan's calls first
     try { recordings(st); } catch (e) { console.error('recordings', e); }
     try { relistens(st); } catch (e) { console.error('relistens', e); }   // early: it needs minutes
-    try { indexCalls(); } catch (e) { console.error('index', e); }
     try { answerAsks(st); } catch (e) { console.error('asks', e); }
     try { outbox(st); } catch (e) { console.error('outbox', e); }
     try { replies(st); } catch (e) { console.error('replies', e); }
@@ -126,8 +126,8 @@ function recordings(st) {
     const at = recordedAt(f);
     // owner 19.11: a call with Ilan → what he asks for + tasks (never a hotel)
     if (ilanFor(st, f, at)) {
-      const result = listenIlan(f, at);
-      site('post', 'ilan', { at: at.toISOString(), file: { id: f.getId(), name: f.getName(), url: f.getUrl() }, result: result });
+      // a failed reading (no quota / busy) never blocks the other calls: ilanOld() tries it again from the list
+      try { site('post', 'ilan', { at: at.toISOString(), file: { id: f.getId(), name: f.getName(), url: f.getUrl() }, result: listenIlan(f, at) }); } catch (e) { console.error('ilan ' + f.getName(), e); }
       done++;
       props().setProperty('SINCE', f.getDateCreated().toISOString());
       continue;
@@ -194,7 +194,7 @@ function listen(file, sv, at, question) {
   if (/octet/.test(mime)) mime = /\.amr$/i.test(file.getName()) ? 'audio/amr' : /\.mp3$/i.test(file.getName()) ? 'audio/mpeg' : /\.wav$/i.test(file.getName()) ? 'audio/wav' : 'audio/mp4';
   let part;
   if (blob.getBytes().length < 14 * 1024 * 1024) part = { inline_data: { mime_type: mime, data: Utilities.base64Encode(blob.getBytes()) } };
-  else part = { file_data: { mime_type: mime, file_uri: uploadToGemini(blob, mime, file.getName()) } };
+  else part = { big: { blob: blob, mime: mime, name: file.getName() } };   // uploaded per key inside gemini()
 
   if (!sv) return gemini(part, [
     'This is a recording of a phone call made from the work phone of La Belle Vie (in Hebrew: לה בל וי), an Israeli events and holiday company.',
@@ -271,7 +271,7 @@ function listenIlan(file, at) {
   const blob = file.getBlob();
   let mime = blob.getContentType() || 'audio/mp4';
   if (/octet/.test(mime)) mime = /\.amr$/i.test(file.getName()) ? 'audio/amr' : /\.mp3$/i.test(file.getName()) ? 'audio/mpeg' : /\.wav$/i.test(file.getName()) ? 'audio/wav' : 'audio/mp4';
-  const part = blob.getBytes().length < 14 * 1024 * 1024 ? { inline_data: { mime_type: mime, data: Utilities.base64Encode(blob.getBytes()) } } : { file_data: { mime_type: mime, file_uri: uploadToGemini(blob, mime, file.getName()) } };
+  const part = blob.getBytes().length < 14 * 1024 * 1024 ? { inline_data: { mime_type: mime, data: Utilities.base64Encode(blob.getBytes()) } } : { big: { blob: blob, mime: mime, name: file.getName() } };
   const Q = { type: 'OBJECT', properties: { time: { type: 'STRING' }, speaker: { type: 'STRING' }, text: { type: 'STRING' } } };
   return gemini(part, [
     'This is a recording of a phone call between the owner of the work phone of La Belle Vie (in Hebrew: לה בל וי), an Israeli events company, and Ilan (אילן).',
@@ -394,14 +394,16 @@ const WEB_MODELS = [MODEL, 'gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.7-f
 function geminiKeys() { return ['GEMINI_KEY', 'GEMINI_KEY2', 'GEMINI_KEY3'].map(P).filter(Boolean); }
 function genWeb(payload) {
   let code = 0, body = '';
-  const text = JSON.stringify(payload);
-  // a big recording uploaded through the Files API belongs to the first key only
-  const keys = /"file_data"/.test(text) ? geminiKeys().slice(0, 1) : geminiKeys();
+  // payload may be a function of the key: a big recording is uploaded to that key's own Files API (owner 19.11: before, only key 1 was used and the robot stuck when it ran out)
+  const texts = {};
+  const textFor = key => texts[key] || (texts[key] = JSON.stringify(typeof payload === 'function' ? payload(key) : payload));
+  const keys = geminiKeys();
   // owner 19.11: a light model writes poor Hebrew, so every strong model is tried on every key before a light one
   for (const m of WEB_MODELS.filter((x, i, a) => a.indexOf(x) === i)) {
     for (let k = 0; k < keys.length; k++) {
+      if (elapsed() > 270) { console.log('gemini: out of time, next run'); return { code: code || 503, body: body || 'out of time' }; }   // owner 19.11: never let one recording run the robot into the 6-minute limit
       const r = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + m + ':generateContent', {
-        method: 'post', contentType: 'application/json', muteHttpExceptions: true, headers: { 'x-goog-api-key': keys[k] }, payload: text,
+        method: 'post', contentType: 'application/json', muteHttpExceptions: true, headers: { 'x-goog-api-key': keys[k] }, payload: textFor(keys[k]),
       });
       code = r.getResponseCode(); body = r.getContentText();
       if (code < 300 || (code !== 429 && code !== 503 && code !== 404)) return { code: code, body: body };
@@ -570,18 +572,20 @@ function watchFor(st, f, at) {
 
 function gemini(part, prompt, schema) {
   // busy (503) / no quota (429) on the main model -> the next model (genWeb)
-  const r = genWeb({ contents: [{ role: 'user', parts: [part, { text: prompt }] }], generationConfig: { responseMimeType: 'application/json', responseSchema: schema, temperature: 0.1 } });
+  const body = p => ({ contents: [{ role: 'user', parts: [p, { text: prompt }] }], generationConfig: { responseMimeType: 'application/json', responseSchema: schema, temperature: 0.1 } });
+  const r = genWeb(part.big ? key => body({ file_data: { mime_type: part.big.mime, file_uri: uploadToGemini(part.big.blob, part.big.mime, part.big.name, key) } }) : body(part));
   if (r.code >= 300) throw new Error('gemini ' + r.code + ' ' + String(r.body).slice(0, 300));
   const j = JSON.parse(r.body);
   const text = (((j.candidates || [])[0] || {}).content || { parts: [] }).parts.map(p => p.text || '').join('');
   return JSON.parse(text);
 }
 /** Big recordings go through the Gemini Files API (kept there 48 hours, then deleted by Google). */
-function uploadToGemini(blob, mime, name) {
+function uploadToGemini(blob, mime, name, key) {
+  key = key || P('GEMINI_KEY');
   const bytes = blob.getBytes();
   const start = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/upload/v1beta/files', {
     method: 'post', contentType: 'application/json', muteHttpExceptions: true,
-    headers: { 'x-goog-api-key': P('GEMINI_KEY'), 'X-Goog-Upload-Protocol': 'resumable', 'X-Goog-Upload-Command': 'start', 'X-Goog-Upload-Header-Content-Length': String(bytes.length), 'X-Goog-Upload-Header-Content-Type': mime },
+    headers: { 'x-goog-api-key': key, 'X-Goog-Upload-Protocol': 'resumable', 'X-Goog-Upload-Command': 'start', 'X-Goog-Upload-Header-Content-Length': String(bytes.length), 'X-Goog-Upload-Header-Content-Type': mime },
     payload: JSON.stringify({ file: { display_name: name.slice(0, 100) } }),
   });
   const h = start.getAllHeaders();
@@ -590,7 +594,7 @@ function uploadToGemini(blob, mime, name) {
   const f = JSON.parse(r.getContentText()).file;
   for (let i = 0; i < 30 && f.state === 'PROCESSING'; i++) {
     Utilities.sleep(2000);
-    const s = JSON.parse(UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/' + f.name, { headers: { 'x-goog-api-key': P('GEMINI_KEY') } }).getContentText());
+    const s = JSON.parse(UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/' + f.name, { headers: { 'x-goog-api-key': key } }).getContentText());
     f.state = s.state;
   }
   return f.uri;
