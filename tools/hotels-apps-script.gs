@@ -221,7 +221,19 @@ function listen(file, sv, at, question) {
   ].join('\n');
 
   const schema = hotelSchema();
-  return gemini(part, prompt, schema);
+  const res = gemini(part, prompt, schema);
+  // second, careful pass on the written conversation: every place that was talked about, each with only its own details
+  try {
+    if (res && res.relevant && !((res.places || []).length >= 2) && String(res.transcript || '').length > 200) {
+      const pl = gemini({ text: 'Conversation (Hebrew, from a phone call of La Belle Vie, an Israeli events company, about hotels / venues for: ' + (sv.need || sv.title) + '):\n\n' + String(res.transcript).slice(0, 30000) + '\n\nSummary: ' + (res.summary || '') }, [
+        'List EVERY hotel / venue / place to stay that was talked about in this conversation, as places[]. One entry per place, with ONLY what was said about that place: name (its real name as said, never two places joined), city / area, phone if said, availability (status + text + rooms) and prices.',
+        'prices: one row per room type / package, the number only (exactly as said, never rounded or guessed), currency, per = per what (לחדר לשבת / לחדר ללילה / לאדם ...), level from: ' + (sv.levels || []).join(', ') + ' when it fits.',
+        'If a number or detail is not clearly about one place, leave it out. Places only mentioned in passing with no detail: include with name only. Write in Hebrew.',
+      ].join('\n'), { type: 'OBJECT', properties: { places: schema.properties.places } });
+      if (pl && (pl.places || []).length >= 2) res.places = pl.places;
+    }
+  } catch (e) { console.error('places pass', e); }
+  return res;
 }
 
 /** "לקרוא את השיחה מחדש": the hotel's calls read again with today's rules; the answer replaces the old reading. */
