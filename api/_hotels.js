@@ -645,6 +645,28 @@ async function script(req, res, what, userId, b) {
       avail: pick(r.availability?.status, AVAIL, 'unknown'), availText: str(r.availability?.text, 400),
       transcript: str(r.transcript, 30000),
     };
+    const places = (Array.isArray(r.places) ? r.places : []).filter(p => p && str(p.name, 160)).slice(0, 6);
+    if (places.length >= 2) {
+      // one call, several places: each place gets only what was said about it
+      const names = places.map(p => str(p.name, 160));
+      const saved = [];
+      for (const p of places) {
+        const nm = str(p.name, 160);
+        let h = findHotel(hotels, { name: nm, phone: p.phone || '' });
+        if (!h) { h = { ...cleanHotel({ name: nm, status: 'new' }), id: rid('h'), createdAt: now(), log: [] }; hotels.push(h); }
+        const others = names.filter(n => n !== nm);
+        const sub = { hotel: { name: nm, city: p.city || '', phone: p.phone || '' }, availability: p.availability || {}, prices: p.prices || [], summary: str(p.note || '', 1000) };
+        const c = { ...call, avail: pick(p.availability?.status, AVAIL, 'unknown'), availText: str(p.availability?.text, 400),
+          summary: str((p.note ? p.note + ' ' : '') + 'בשיחה דיברו גם על: ' + others.join(', ') + '. ' + (r.summary || ''), 1500) };
+        mergeCall(h, sub, c);
+        h.updatedAt = now();
+        await setJ(key, h.id, h);
+        saved.push({ id: h.id, name: h.name });
+      }
+      await kv.hset(K.files, file.id, saved[0].id);
+      u.lastCall = now(); await saveUser(userId, u);
+      return send(res, 200, { ok: true, hotelId: saved[0].id, name: saved[0].name, places: saved });
+    }
     let h = findHotel(hotels, r.hotel || {});
     if (!h) h = { ...cleanHotel({ name: r.hotel?.name || file.name, status: 'new' }), id: rid('h'), createdAt: now(), log: [] };
     mergeCall(h, r, call);

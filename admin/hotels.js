@@ -6,6 +6,7 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const photoSrc = u => /^media\/uploads\//.test(u) ? '/' + u : safeUrl(u);   // my photos (storage) or ones from the hotel's site
+const siteName = u => String(u || '').replace(/^https?:\/\/(www\.)?/i, '').replace(/\/$/, '');
 const rateTxt = x => x.ratingScale === 10 ? `${x.rating}/10` : `${x.rating} ★`;
 const safeUrl = u => (/^https:\/\//i.test(String(u || '')) ? u : '');   // links from the robot / replies: https only
 const h = s => { const t = document.createElement('template'); t.innerHTML = s.trim(); return t.content.firstElementChild; };
@@ -721,10 +722,11 @@ function hotelView(sv, x) {
     <div class="hs-hhead__t"><h2>${esc(x.name || 'בלי שם')}</h2><span class="pill pill--${ac}">${an}</span><span class="st st--${x.status}">${ST[x.status]}</span></div>
     <p>${esc(x.city)}${x.contact ? ' · ' + esc(x.contact) : ''}${x.availText ? ' · ' + esc(x.availText) : ''}</p>
     ${x.about ? `<p class="hs-about">${esc(x.about)}</p>` : ''}
+    ${safeUrl(x.website) ? `<p class="hs-site">האתר של המלון: <a href="${esc(x.website)}" target="_blank" rel="noopener"><bdi>${esc(siteName(x.website))}</bdi></a></p>` : ''}
     ${x.rating || x.reviewsText ? `<div class="hs-rev">${x.rating ? `<b class="hs-rate">${rateTxt(x)}</b><span>${x.reviewsCount ? x.reviewsCount.toLocaleString('he-IL') + ' ביקורות' : 'דירוג'} ב${esc(x.reviewsSource || 'גוגל')}</span>` : ''}${x.reviewsText ? `<p>${esc(x.reviewsText)}</p>` : ''}${safeUrl(x.reviewsUrl) ? `<a href="${esc(x.reviewsUrl)}" target="_blank" rel="noopener">לכל הביקורות</a>` : ''}</div>` : ''}
     <div class="hs-photos">${[...(x.myPhotos || []), ...(x.photos || []).filter(safeUrl)].map(u => `<figure class="hs-ph"><a href="${esc(photoSrc(u))}" target="_blank" rel="noopener"><img src="${esc(photoSrc(u))}" alt="" loading="lazy" referrerpolicy="no-referrer"></a><button type="button" class="hs-ph__x" data-rm="${esc(u)}" aria-label="להסיר את התמונה">×</button></figure>`).join('')}
       <label class="hs-ph hs-ph--add"><input type="file" accept="image/*" multiple hidden><span>+ להוסיף תמונות</span></label></div>
-    ${(x.myPhotos || []).length || (x.photos || []).length ? '' : `<p class="hs-ph__hint">${x.webDone ? 'לא מצאתי תמונות באתר של המלון.' : 'תמונות מהאתר של המלון יגיעו לבד תוך כמה דקות.'} אפשר גם להוסיף תמונות מהטלפון או מהמחשב.</p>`}
+    ${(x.myPhotos || []).length || (x.photos || []).length ? '' : `<p class="hs-ph__hint">${x.webDone ? 'לא מצאתי תמונות של המלון ברשת.' : 'תמונות מהרשת יגיעו לבד תוך כמה דקות.'} אפשר גם להוסיף תמונות מהטלפון או מהמחשב.</p>`}
     ${x.mailAsk ? '<p class="hs-mailnow">בודק את המייל של LBV על המלון הזה. התשובה תופיע כאן תוך כמה דקות.</p>'
       : x.mailAskDone ? `<p class="hs-mailnow">נבדק במייל ${esc(new Date(x.mailAskDone.at).toLocaleString('he-IL', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' }))}: ${x.mailAskDone.found ? (x.mailAskDone.found === 1 ? 'נמצא מייל אחד, הוא בהיסטוריה' : 'נמצאו ' + x.mailAskDone.found + ' מיילים, הם בהיסטוריה') : (x.mailAskDone.by === 'email' ? 'לא נמצאו מיילים עם הכתובת של המלון' : 'לא נמצאו מיילים עם השם או המספר של המלון')}.</p>` : ''}
     <div class="hs-tools">

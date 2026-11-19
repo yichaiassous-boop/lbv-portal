@@ -214,6 +214,9 @@ function listen(file, sv, at, question) {
     'followUp: whether someone has to call back / send something, by when (YYYY-MM-DD if a date was said), and what.',
     'transcript: the whole conversation, each turn on its own line (separated by a newline), "mm:ss הנציג:" / "mm:ss המלון:".',
     'duration: how long the call is, mm:ss.',
+    '',
+    'BE EXACT. Listen to the whole recording before answering. Write numbers, prices, dates and names exactly as they were said; never round, guess or fill in. If a word or number is not clear, write (לא ברור) in the transcript instead of guessing.',
+    'SEVERAL PLACES: a call can talk about more than one hotel / venue (a representative of a chain talking about two of its hotels, or an internal La Belle Vie team call comparing options). Then fill places[] with ONE entry per place, each with ONLY what was said about that place: its own name (the real name, never two names joined like "X / Y"), city, phone if said, availability and prices. Never move a price or a condition from one place to another. If it is not clear which place a detail belongs to, do not put it under any place: say so in the summary. hotel = the place the call is mostly about (or the first one). With only one place, leave places empty.',
   ].join('\n');
 
   const schema = hotelSchema();
@@ -229,6 +232,10 @@ function hotelSchema() {
       availability: { type: 'OBJECT', properties: { status: { type: 'STRING', enum: ['unknown', 'available', 'partial', 'full'] }, text: { type: 'STRING' }, rooms: { type: 'STRING' } } },
       prices: { type: 'ARRAY', items: { type: 'OBJECT', properties: { level: { type: 'STRING' }, board: { type: 'STRING' }, price: { type: 'NUMBER' }, currency: { type: 'STRING', enum: ['ILS', 'EUR', 'USD'] }, per: { type: 'STRING' }, note: { type: 'STRING' } } } },
       followUp: { type: 'OBJECT', properties: { needed: { type: 'BOOLEAN' }, date: { type: 'STRING' }, what: { type: 'STRING' } } },
+      places: { type: 'ARRAY', items: { type: 'OBJECT', properties: {
+        name: { type: 'STRING' }, city: { type: 'STRING' }, phone: { type: 'STRING' }, note: { type: 'STRING' },
+        availability: { type: 'OBJECT', properties: { status: { type: 'STRING', enum: ['unknown', 'available', 'partial', 'full'] }, text: { type: 'STRING' }, rooms: { type: 'STRING' } } },
+        prices: { type: 'ARRAY', items: { type: 'OBJECT', properties: { level: { type: 'STRING' }, board: { type: 'STRING' }, price: { type: 'NUMBER' }, currency: { type: 'STRING', enum: ['ILS', 'EUR', 'USD'] }, per: { type: 'STRING' }, note: { type: 'STRING' } } } } } } },
       summary: { type: 'STRING' },
       duration: { type: 'STRING' },
       keyQuotes: { type: 'ARRAY', items: { type: 'OBJECT', properties: { time: { type: 'STRING' }, speaker: { type: 'STRING' }, text: { type: 'STRING' } } } },
@@ -370,6 +377,9 @@ function freeLook(w) {
   if (h.website && hosts.indexOf(host(h.website)) < 0) h.website = '';
   if (h.reviewsUrl && !all.some(x => x.url === h.reviewsUrl)) h.reviewsUrl = '';
   if (h.website && !/^https:/i.test(h.website)) h.website = String(h.website).replace(/^http:/i, 'https:');
+  // pages about this place (for photos when its own site blocks robots)
+  const words = String(w.name).split(/s+/).filter(x => x.length >= 4);
+  h._pages = all.filter(x => x.url === h.reviewsUrl || (h.website && host(x.url) === host(h.website)) || words.some(wd => (x.title + ' ' + x.snippet).indexOf(wd) >= 0)).map(x => x.url).slice(0, 6);
   return h;
 }
 function webLooks(st) {
@@ -407,6 +417,15 @@ function webLooks(st) {
         photos = sitePhotos(siteUrl);
         if (photos === null) { photos = []; if (!grounded) hotel.website = ''; }   // the site does not open: do not keep a guessed address
       }
+      // the site blocks robots / has no pictures: the main picture of other pages about this place
+      if (found && !photos.length && hotel._pages) {
+        for (const pu of hotel._pages) {
+          if (photos.length >= 6) break;
+          const ph = sitePhotos(pu);
+          if (ph && ph.length) photos = photos.concat(ph.slice(0, 2)).filter((x, i, a) => a.indexOf(x) === i);
+        }
+      }
+      delete hotel._pages;
     } catch (e) { console.error('webLook', e); }
     if (!answered) continue;   // Gemini did not answer at all: try again next run, not counted as a try
     site('post', 'web', { surveyId: w.surveyId, hotelId: w.hotelId, found: found, grounded: grounded, hotel: hotel, photos: photos, redo: !!w.redo });
