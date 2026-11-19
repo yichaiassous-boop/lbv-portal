@@ -339,7 +339,7 @@ function pageAllowed(id) {
   if (id === 'appholidays') return canDo('content') && has('site');
   if (id === 'events') return has('events');
   if (id === 'hotels') return has('hotels');   // each sees only their own surveys and those shared with them
-  if (id === 'ilan') return !me || me.role === 'owner' || me.id === 'cad5d8ff-c32d-4df9-918e-38cfd1d315d8';   // only the owner and מעיין
+  if (id === 'ilan') return !!me && (me.role === 'owner' || me.id === 'cad5d8ff-c32d-4df9-918e-38cfd1d315d8');   // only the owner and מעיין (owner 19.11: Ilan must never see it, not even for a moment)
   if (id === 'remote') return has('remote');
   if (['guide', 'support', 'stats', 'account'].includes(id)) return true;
   return canDo('content') && has('site');
