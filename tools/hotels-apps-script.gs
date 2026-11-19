@@ -389,7 +389,7 @@ function mailScans(st) {
 }
 /** A new hotel: find it on the web (Google Search through Gemini) - official site, city, phone, e-mail - and take photos from its site. */
 /** Gemini with a fallback: busy (503) or no quota (429) on one model -> the next one. Returns {code, body}. */
-const WEB_MODELS = [MODEL, 'gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-2.5-flash'];
+const WEB_MODELS = [MODEL, 'gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.7-flash', 'gemini-3-flash-preview', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'];   // each has its own free daily quota (2.5-flash: 404 for new users)
 function genWeb(payload) {
   let code = 0, body = '';
   for (const m of WEB_MODELS.filter((x, i, a) => a.indexOf(x) === i)) {
