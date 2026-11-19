@@ -82,6 +82,24 @@ const K = {
 };
 const ILAN_SEE = ['cad5d8ff-c32d-4df9-918e-38cfd1d315d8'];   // owner 19.11: besides the owner only מעיין sees the Ilan tasks (not Ilan, not the others)
 const ILAN_BACK_DAYS = 7;            // when his number is saved, his calls of the last week are read too
+/** One Ilan call (summary, wants, quotes, transcript, tasks) into the tab: from the robot, or (owner 19.11) imported from the computer when Gemini is stuck. */
+async function saveIlanCall(b) {
+  const file = { id: str(b.file?.id, 120), name: str(b.file?.name, 200), url: link(b.file?.url, 400) };
+  if (!file.id) return { code: 400, body: { error: 'file' } };
+  if (await getJ(K.ilanCalls, file.id)) return { code: 200, body: { ok: true, duplicate: true } };
+  const r = b.result || {};
+  const qs = a => (Array.isArray(a) ? a : []).slice(0, 12).map(x => ({ time: str(x?.time, 8), speaker: str(x?.speaker, 30), text: str(x?.text, 400) })).filter(x => x.text);
+  const call = { id: file.id, at: str(b.at, 30) || now(), file, summary: str(r.summary, 3000), wants: (Array.isArray(r.wants) ? r.wants : []).slice(0, 20).map(x => str(x, 400)).filter(Boolean),
+    quotes: qs(r.keyQuotes), transcript: str(r.transcript, 40000), duration: str(r.duration, 8), tasks: [] };
+  for (const x of (Array.isArray(r.tasks) ? r.tasks : []).slice(0, 25)) {
+    const text = str(x?.text, 400); if (!text) continue;
+    const t = { id: 'it' + crypto.randomBytes(6).toString('hex'), text, due: /^\d{4}-\d{2}-\d{2}$/.test(str(x?.due, 10)) ? str(x.due, 10) : '', when: str(x?.when, 80), quote: str(x?.quote, 400), callId: file.id, at: call.at, done: false, doneAt: null, by: 'robot' };
+    await setJ(K.ilanTasks, t.id, t); call.tasks.push(t.id);
+  }
+  await setJ(K.ilanCalls, file.id, call);
+  await kv.hset(K.files, file.id, 'ilan');
+  return { code: 200, body: { ok: true, tasks: call.tasks.length } };
+}
 async function ilanCfg() { return (await getJ(K.ilan, 'cfg')) || { phones: [], since: null }; }
 
 /* ---------- small helpers ---------- */
@@ -325,6 +343,11 @@ export default async function hotelsHandler(req, res) {
         for (const tid of c.tasks || []) { const t = await getJ(K.ilanTasks, tid); if (t && t.by === 'robot' && !t.done) await kv.hdel(K.ilanTasks, tid); }
         await kv.hdel(K.ilanCalls, c.id);
         return send(res, 200, { ok: true });
+      }
+      if (act === 'import') {   // owner 19.11: a call read on the computer (not by Gemini) goes in the same way as the robot's
+        if (!isOwner(s)) return send(res, 403, { error: 'owner' });
+        const out = await saveIlanCall(body);
+        return send(res, out.code, out.body);
       }
       if (act === 'add') {
         const text = str(body.text, 400); if (!text) return send(res, 400, { error: 'text' });
@@ -696,21 +719,8 @@ async function script(req, res, what, userId, b) {
 
   if (what === 'ilan') {
     if (userId !== 'owner') return send(res, 403, { error: 'owner' });
-    const file = { id: str(b.file?.id, 120), name: str(b.file?.name, 200), url: link(b.file?.url, 400) };
-    if (!file.id) return send(res, 400, { error: 'file' });
-    if (await getJ(K.ilanCalls, file.id)) return send(res, 200, { ok: true, duplicate: true });
-    const r = b.result || {};
-    const qs = a => (Array.isArray(a) ? a : []).slice(0, 12).map(x => ({ time: str(x?.time, 8), speaker: str(x?.speaker, 30), text: str(x?.text, 400) })).filter(x => x.text);
-    const call = { id: file.id, at: str(b.at, 30) || now(), file, summary: str(r.summary, 3000), wants: (Array.isArray(r.wants) ? r.wants : []).slice(0, 20).map(x => str(x, 400)).filter(Boolean),
-      quotes: qs(r.keyQuotes), transcript: str(r.transcript, 40000), duration: str(r.duration, 8), tasks: [] };
-    for (const x of (Array.isArray(r.tasks) ? r.tasks : []).slice(0, 25)) {
-      const text = str(x?.text, 400); if (!text) continue;
-      const t = { id: 'it' + crypto.randomBytes(6).toString('hex'), text, due: /^\d{4}-\d{2}-\d{2}$/.test(str(x?.due, 10)) ? str(x.due, 10) : '', when: str(x?.when, 80), quote: str(x?.quote, 400), callId: file.id, at: call.at, done: false, doneAt: null, by: 'robot' };
-      await setJ(K.ilanTasks, t.id, t); call.tasks.push(t.id);
-    }
-    await setJ(K.ilanCalls, file.id, call);
-    await kv.hset(K.files, file.id, 'ilan');
-    return send(res, 200, { ok: true, tasks: call.tasks.length });
+    const out = await saveIlanCall(b);
+    return send(res, out.code, out.body);
   }
 
   if (what === 'call') {
