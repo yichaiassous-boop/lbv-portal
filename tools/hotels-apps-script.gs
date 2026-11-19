@@ -19,7 +19,7 @@
  * Setup (once): Project Settings → Script properties:
  *   SITE        https://<the site>            (no slash at the end)
  *   LBV_KEY     the key from the admin (סקר מלונות → חיבור הטלפון)
- *   GEMINI_KEY  the Gemini API key
+ *   GEMINI_KEY  the Gemini API key   (GEMINI_KEY2, GEMINI_KEY3: optional free keys from other Google accounts, used when the first one is out of quota)
  *   FOLDER      the name of the Drive folder with the recordings (e.g. "הקלטות שיחות")
  * Then run  setup()  once and allow the permissions.
  * For the phone app: Deploy → New deployment → Web app, "Execute as: Me", "Who has access: Anyone".
@@ -68,8 +68,8 @@ function tick() {
   try {
     try { site('post', 'app', { url: P('APP_URL') || ScriptApp.getService().getUrl() || '', secret: P('APP_SECRET'), last: P('APP_LAST') }); } catch (e) { console.error('app', e); }
     const st = site('get', 'status');
+    try { ilanOld(st); } catch (e) { console.error('ilanOld', e); }   // owner 19.11: Ilan's calls first
     try { recordings(st); } catch (e) { console.error('recordings', e); }
-    try { ilanOld(st); } catch (e) { console.error('ilanOld', e); }
     try { relistens(st); } catch (e) { console.error('relistens', e); }   // early: it needs minutes
     try { indexCalls(); } catch (e) { console.error('index', e); }
     try { answerAsks(st); } catch (e) { console.error('asks', e); }
@@ -390,15 +390,22 @@ function mailScans(st) {
 /** A new hotel: find it on the web (Google Search through Gemini) - official site, city, phone, e-mail - and take photos from its site. */
 /** Gemini with a fallback: busy (503) or no quota (429) on one model -> the next one. Returns {code, body}. */
 const WEB_MODELS = [MODEL, 'gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.7-flash', 'gemini-3-flash-preview', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'];   // each has its own free daily quota (2.5-flash: 404 for new users)
+/** Owner 19.11: more free keys from other Google accounts (script properties GEMINI_KEY2, GEMINI_KEY3), each with its own daily quota. */
+function geminiKeys() { return ['GEMINI_KEY', 'GEMINI_KEY2', 'GEMINI_KEY3'].map(P).filter(Boolean); }
 function genWeb(payload) {
   let code = 0, body = '';
-  for (const m of WEB_MODELS.filter((x, i, a) => a.indexOf(x) === i)) {
-    const r = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + m + ':generateContent', {
-      method: 'post', contentType: 'application/json', muteHttpExceptions: true, headers: { 'x-goog-api-key': P('GEMINI_KEY') }, payload: JSON.stringify(payload),
-    });
-    code = r.getResponseCode(); body = r.getContentText();
-    if (code < 300 || (code !== 429 && code !== 503 && code !== 404)) break;
-    console.log('webLook: ' + m + ' ' + code + (payload.tools ? ' (search)' : ''));
+  const text = JSON.stringify(payload);
+  // a big recording uploaded through the Files API belongs to the first key only
+  const keys = /"file_data"/.test(text) ? geminiKeys().slice(0, 1) : geminiKeys();
+  for (let k = 0; k < keys.length; k++) {
+    for (const m of WEB_MODELS.filter((x, i, a) => a.indexOf(x) === i)) {
+      const r = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + m + ':generateContent', {
+        method: 'post', contentType: 'application/json', muteHttpExceptions: true, headers: { 'x-goog-api-key': keys[k] }, payload: text,
+      });
+      code = r.getResponseCode(); body = r.getContentText();
+      if (code < 300 || (code !== 429 && code !== 503 && code !== 404)) return { code: code, body: body };
+      console.log('gemini key ' + (k + 1) + ': ' + m + ' ' + code + (payload.tools ? ' (search)' : ''));
+    }
   }
   return { code: code, body: body };
 }
