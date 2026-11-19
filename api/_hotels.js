@@ -716,12 +716,14 @@ async function script(req, res, what, userId, b) {
     const sv = await getJ(K.surveys, str(b.surveyId, 40));
     if (!mine(sv, userId)) return send(res, 404, { error: 'not-found' });
     const key = K.hotels(sv.id), h = await getJ(key, str(b.hotelId, 40));
-    if (h) {
+    let stop = !h || !h.relisten;
+    if (h && h.relisten) {
+      // the robot counts every try before it starts (a try cut by Google's time limit still counts): 3 tries, then stop
       h.relistenTries = (h.relistenTries || 0) + 1;
-      if (h.relistenTries >= 3) { delete h.relisten; h.relistenFail = now(); h.log = [...(h.log || []), { t: 'note', at: now(), by: 'המערכת', text: 'לא הצלחתי לקרוא את השיחה מחדש: ' + str(b.error, 200) }].slice(-80); }
+      if (h.relistenTries > 3) { stop = true; delete h.relisten; h.relistenFail = now(); h.log = [...(h.log || []), { t: 'note', at: now(), by: 'המערכת', text: 'לא הצלחתי לקרוא את השיחה מחדש: ' + str(b.error, 200) }].slice(-80); }
       await setJ(key, h.id, h);
     }
-    return send(res, 200, { ok: true });
+    return send(res, 200, { ok: true, stop });
   }
 
   if (what === 'mailsent') {

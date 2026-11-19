@@ -58,7 +58,11 @@ function site(method, what, payload, extra) {
   return JSON.parse(r.getContentText() || '{}');
 }
 
+/** Google stops a run after 6 minutes: long steps check the time and wait for the next run instead of being cut. */
+let T0 = Date.now();
+const elapsed = () => (Date.now() - T0) / 1000;
 function tick() {
+  T0 = Date.now();
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(1000)) return;
   try {
@@ -239,7 +243,11 @@ function listen(file, sv, at, question) {
 /** "לקרוא את השיחה מחדש": the hotel's calls read again with today's rules; the answer replaces the old reading. */
 function relistens(st) {
   for (const j of (st.relisten || []).slice(0, 1)) {
+    if (elapsed() > 90) return;   // reading a call takes minutes: start it only early in the run
     const sv = surveyOf(st, j.surveyId);
+    // counted before it starts: a run cut by the time limit still counts, so it can never block the robot (3 tries)
+    const go = site('post', 'relistenFail', { surveyId: j.surveyId, hotelId: j.hotelId, error: 'לא הסתיים בזמן' });
+    if (go && go.stop) continue;
     try {
       if (!sv) throw new Error('survey');
       for (const c of j.files) {
@@ -249,7 +257,7 @@ function relistens(st) {
         if (result && result.relevant) { result.hotel = result.hotel || {}; if (!result.hotel.phone) result.hotel.phone = phoneOf(f); }
         site('post', 'call', { surveyId: sv.id, at: at.toISOString(), file: { id: f.getId(), name: f.getName(), url: f.getUrl() }, result: result, replace: j.hotelId });
       }
-    } catch (e) { console.error('relisten', e); site('post', 'relistenFail', { surveyId: j.surveyId, hotelId: j.hotelId, error: String(e).slice(0, 200) }); }
+    } catch (e) { console.error('relisten', e); }
   }
 }
 
@@ -416,6 +424,7 @@ function webLooks(st) {
   const useClaude = !!P('CLAUDE_KEY');
   const list = (st.webLook || []).slice(0, 2).concat((st.webRedo || []).slice(0, 1));
   for (const w of list) {
+    if (elapsed() > 200) return;   // the rest next run
     let found = false, hotel = {}, photos = [], grounded = true, answered = false;
     try {
       const prompt = 'Find the hotel / venue "' + w.name + '"' + (w.city ? ' in ' + w.city : '') + (w.website ? ' (website ' + w.website + ')' : '') + ' on the web. Answer ONLY one JSON object, no text around it: {"found": true|false, "website": "official https site, not a booking site", "city": "", "phone": "", "email": "", "about": "one short line in Hebrew: what kind of place, stars, area", "rating": the Google Maps rating as a number (or null), "reviews": how many Google reviews (number or null), "reviewsSummary": "in Hebrew, 2-3 short sentences: what guests praise and what they complain about (food, cleanliness, rooms, service, Shabbat), from real reviews only", "reviewsUrl": "https link to the reviews (Google Maps / TripAdvisor / Booking) or empty"}. found=false if you are not sure it is this place. Never guess a phone or e-mail: leave it empty if it is not written on an official page.';
