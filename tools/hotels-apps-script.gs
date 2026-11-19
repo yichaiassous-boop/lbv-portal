@@ -71,6 +71,7 @@ function tick() {
     try { replies(st); } catch (e) { console.error('replies', e); }
     try { parses(st); } catch (e) { console.error('parses', e); }
     try { mailScans(st); } catch (e) { console.error('mailScans', e); }
+    try { relistens(st); } catch (e) { console.error('relistens', e); }
     try { webLooks(st); } catch (e) { console.error('webLooks', e); }
     try { sheets(st); } catch (e) { console.error('sheets', e); }
   } finally { lock.releaseLock(); }
@@ -221,6 +222,23 @@ function listen(file, sv, at, question) {
 
   const schema = hotelSchema();
   return gemini(part, prompt, schema);
+}
+
+/** "לקרוא את השיחה מחדש": the hotel's calls read again with today's rules; the answer replaces the old reading. */
+function relistens(st) {
+  for (const j of (st.relisten || []).slice(0, 1)) {
+    const sv = surveyOf(st, j.surveyId);
+    try {
+      if (!sv) throw new Error('survey');
+      for (const c of j.files) {
+        const f = DriveApp.getFileById(c.id);
+        const at = c.at ? new Date(c.at) : recordedAt(f);
+        const result = listen(f, sv, at);
+        if (result && result.relevant) { result.hotel = result.hotel || {}; if (!result.hotel.phone) result.hotel.phone = phoneOf(f); }
+        site('post', 'call', { surveyId: sv.id, at: at.toISOString(), file: { id: f.getId(), name: f.getName(), url: f.getUrl() }, result: result, replace: j.hotelId });
+      }
+    } catch (e) { console.error('relisten', e); site('post', 'relistenFail', { surveyId: j.surveyId, hotelId: j.hotelId, error: String(e).slice(0, 200) }); }
+  }
 }
 
 function hotelSchema() {

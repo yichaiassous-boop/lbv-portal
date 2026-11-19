@@ -170,7 +170,7 @@ function textHits(h, words) {
 /** Calls with a hotel's number join it by themselves: from 2 weeks before it was added until 2 weeks after (owner 19.11). */
 const WATCH_DAYS = 14;
 function robotJobs(sv, hotels) {
-  const watch = [], parses = [], mailScan = [], webLook = [], wa = [], webRedo = [];
+  const watch = [], parses = [], mailScan = [], webLook = [], wa = [], webRedo = [], relisten = [];
   for (const h of hotels) {
     const t = Date.parse(h.createdAt || h.updatedAt || 0) || 0;
     for (const ph of [h.phone, h.phone2]) { const d = digits(ph); if (d.length >= 8 && Date.now() < t + WATCH_DAYS * 864e5) watch.push({ surveyId: sv.id, hotelId: h.id, phone: d, from: new Date(t - WATCH_DAYS * 864e5).toISOString(), to: new Date(t + WATCH_DAYS * 864e5).toISOString() }); }
@@ -185,7 +185,12 @@ function robotJobs(sv, hotels) {
     // looked up without a real web search (no reviews yet): again once the robot can search (Claude key)
     if (h.name && h.webNoSearch && !h.webGrounded && (h.webRedoTries || 0) < 2) webRedo.push({ surveyId: sv.id, hotelId: h.id, name: h.name, city: h.city || '', website: h.website || '', redo: true });
   }
-  return { watch, parses, mailScan, webLook, wa, webRedo };
+  for (const h of hotels) {
+    if (!h.relisten || (h.relistenTries || 0) >= 3) continue;
+    const files = (h.log || []).filter(l => l.t === 'call' && l.file?.id).map(l => ({ id: l.file.id, at: l.at }));
+    if (files.length) relisten.push({ surveyId: sv.id, hotelId: h.id, files: files.slice(-3) });
+  }
+  return { watch, parses, mailScan, webLook, wa, webRedo, relisten };
 }
 
 async function userRec(id) { return (await getJ(K.users, id)) || { mode: { on: false }, windows: [] }; }
@@ -437,7 +442,7 @@ export default async function hotelsHandler(req, res) {
       return send(res, 200, { ...sv, token: sv.link ? viewToken(sv.id) : undefined });
     }
 
-    if (op === 'hotel' || op === 'note' || op === 'mail' || op === 'draft' || op === 'paste' || op === 'photos' || op === 'mailNow') {
+    if (op === 'hotel' || op === 'note' || op === 'mail' || op === 'draft' || op === 'paste' || op === 'photos' || op === 'mailNow' || op === 'relisten') {
       const sv = await getJ(K.surveys, body.surveyId);
       if (!canSee(s, sv)) return send(res, 404, { error: 'not-found' });
       const key = K.hotels(sv.id);
@@ -472,6 +477,12 @@ export default async function hotelsHandler(req, res) {
         old.log = [...(old.log || []), { t: 'note', at: now(), by: s.n, text: 'הודבק טקסט לקריאה: ' + text.slice(0, 140) + (text.length > 140 ? '…' : '') }].slice(-80);
         await setJ(key, old.id, old);
         return send(res, 200, { ok: true });
+      }
+      if (op === 'relisten') {
+        if (!(old.log || []).some(l => l.t === 'call' && l.file?.id)) return send(res, 400, { error: 'no-call' });
+        old.relisten = now(); delete old.relistenTries; delete old.relistenFail;
+        await setJ(key, old.id, old);
+        return send(res, 200, { ...old, min: minPrice(old) });
       }
       if (op === 'mailNow') {
         old.mailAsk = now(); delete old.mailAskDone;
@@ -577,9 +588,9 @@ async function script(req, res, what, userId, b) {
       windows = windows.concat(...riders.map(([, x]) => x.windows || [])).sort((a2, b2) => String(a2.from).localeCompare(String(b2.from))).slice(-600);
       if (!mode.on) mode = (riders.map(([, x]) => x.mode).find(x => x?.on)) || mode;
     }
-    const jobs = { watch: [], parses: [], mailScan: [], webLook: [], wa: [], webRedo: [] };
-    for (const sv of surveys) { const j = robotJobs(sv, await allJ(K.hotels(sv.id))); jobs.watch.push(...j.watch); jobs.parses.push(...j.parses); jobs.mailScan.push(...j.mailScan); jobs.webLook.push(...j.webLook); jobs.wa.push(...j.wa); jobs.webRedo.push(...j.webRedo); }
-    return send(res, 200, { windows, mode, surveys: active, outbox, threads, asks, watch: jobs.watch.slice(0, 300), parses: jobs.parses.slice(0, 5), mailScan: jobs.mailScan.slice(0, 5), webLook: jobs.webLook.slice(0, 3), webRedo: jobs.webRedo.slice(0, 2), wa: jobs.wa.slice(0, 300) });
+    const jobs = { watch: [], parses: [], mailScan: [], webLook: [], wa: [], webRedo: [], relisten: [] };
+    for (const sv of surveys) { const j = robotJobs(sv, await allJ(K.hotels(sv.id))); jobs.watch.push(...j.watch); jobs.parses.push(...j.parses); jobs.mailScan.push(...j.mailScan); jobs.webLook.push(...j.webLook); jobs.wa.push(...j.wa); jobs.webRedo.push(...j.webRedo); jobs.relisten.push(...j.relisten); }
+    return send(res, 200, { windows, mode, surveys: active, outbox, threads, asks, watch: jobs.watch.slice(0, 300), parses: jobs.parses.slice(0, 5), mailScan: jobs.mailScan.slice(0, 5), webLook: jobs.webLook.slice(0, 3), webRedo: jobs.webRedo.slice(0, 2), relisten: jobs.relisten.slice(0, 1), wa: jobs.wa.slice(0, 300) });
   }
 
   // The robot's web-app address (for the phone app) + when the app last sent a recording
@@ -628,7 +639,7 @@ async function script(req, res, what, userId, b) {
   if (what === 'call') {
     const file = { id: str(b.file?.id, 120), name: str(b.file?.name, 200), url: link(b.file?.url, 400) };
     if (!file.id) return send(res, 400, { error: 'file' });
-    if (await kv.hget(K.files, file.id)) return send(res, 200, { ok: true, duplicate: true });
+    if (!b.replace && await kv.hget(K.files, file.id)) return send(res, 200, { ok: true, duplicate: true });
     const r = b.result || {};
     if (!r.relevant) {
       u.skipped = (u.skipped || 0) + 1; await saveUser(userId, u);
@@ -638,6 +649,26 @@ async function script(req, res, what, userId, b) {
     const sv = await getJ(K.surveys, b.surveyId);
     if (!mine(sv, userId)) return send(res, 400, { error: 'survey' });
     const key = K.hotels(sv.id);
+    // read again: take back what the old reading of this call wrote on that hotel
+    let old = b.replace ? await getJ(key, str(b.replace, 40)) : null;
+    if (old) {
+      old.log = (old.log || []).filter(l => !(l.t === 'call' && l.file?.id === file.id));
+      if (!(old.log || []).some(l => l.t === 'call' || l.t === 'text')) { old.prices = []; old.avail = 'unknown'; old.availText = ''; old.summary = ''; old.rooms = ''; }
+      delete old.relisten; delete old.relistenTries; delete old.relistenFail;
+      await setJ(key, old.id, old);
+    }
+    // the old card is not one of the places: its notes, mails and my photos move to the first place, then it goes
+    const finish = async ids => {
+      if (!old || ids.includes(old.id)) return;
+      const cur = await getJ(key, old.id), to = await getJ(key, ids[0]);
+      if (!cur || !to) return;
+      if ((cur.log || []).some(l => l.t === 'call' && l.file?.id !== file.id)) return;   // it has other calls of its own: keep it
+      to.log = [...(to.log || []), ...(cur.log || []), { t: 'note', at: now(), by: 'המערכת', text: 'השיחה נקראה מחדש. הכרטיס "' + (cur.name || '') + '" פוצל לפי המקומות שדיברו עליהם.' }].sort((a2, b2) => String(a2.at).localeCompare(String(b2.at))).slice(-80);
+      to.myPhotos = [...new Set([...(to.myPhotos || []), ...(cur.myPhotos || [])])].slice(0, 24);
+      if (!to.notes && cur.notes) to.notes = cur.notes;
+      await setJ(key, to.id, to);
+      await kv.hdel(key, old.id);
+    };
     const hotels = await allJ(key);
     const call = {
       t: 'call', at: str(b.at, 40) || now(), file, dur: str(r.duration, 20),
@@ -653,6 +684,7 @@ async function script(req, res, what, userId, b) {
       for (const p of places) {
         const nm = str(p.name, 160);
         let h = findHotel(hotels, { name: nm, phone: p.phone || '' });
+        if (h && old && h.id === old.id) h.name = nm;   // the old mixed card becomes this place
         if (!h) { h = { ...cleanHotel({ name: nm, status: 'new' }), id: rid('h'), createdAt: now(), log: [] }; hotels.push(h); }
         const others = names.filter(n => n !== nm);
         const sub = { hotel: { name: nm, city: p.city || '', phone: p.phone || '' }, availability: p.availability || {}, prices: p.prices || [], summary: str(p.note || '', 1000) };
@@ -664,17 +696,32 @@ async function script(req, res, what, userId, b) {
         saved.push({ id: h.id, name: h.name });
       }
       await kv.hset(K.files, file.id, saved[0].id);
+      await finish(saved.map(x => x.id));
       u.lastCall = now(); await saveUser(userId, u);
       return send(res, 200, { ok: true, hotelId: saved[0].id, name: saved[0].name, places: saved });
     }
     let h = findHotel(hotels, r.hotel || {});
+    if (h && old && h.id === old.id && r.hotel?.name) h.name = str(r.hotel.name, 160);
     if (!h) h = { ...cleanHotel({ name: r.hotel?.name || file.name, status: 'new' }), id: rid('h'), createdAt: now(), log: [] };
     mergeCall(h, r, call);
     h.updatedAt = now();
     await setJ(key, h.id, h);
     await kv.hset(K.files, file.id, h.id);
+    await finish([h.id]);
     u.lastCall = now(); await saveUser(userId, u);
     return send(res, 200, { ok: true, hotelId: h.id, name: h.name });
+  }
+
+  if (what === 'relistenFail') {
+    const sv = await getJ(K.surveys, str(b.surveyId, 40));
+    if (!mine(sv, userId)) return send(res, 404, { error: 'not-found' });
+    const key = K.hotels(sv.id), h = await getJ(key, str(b.hotelId, 40));
+    if (h) {
+      h.relistenTries = (h.relistenTries || 0) + 1;
+      if (h.relistenTries >= 3) { delete h.relisten; h.relistenFail = now(); h.log = [...(h.log || []), { t: 'note', at: now(), by: 'המערכת', text: 'לא הצלחתי לקרוא את השיחה מחדש: ' + str(b.error, 200) }].slice(-80); }
+      await setJ(key, h.id, h);
+    }
+    return send(res, 200, { ok: true });
   }
 
   if (what === 'mailsent') {
