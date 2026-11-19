@@ -575,7 +575,7 @@ function surveyView(pg) {
       const [an, ac] = AV[x.avail] || AV.unknown;
       const calls = (x.log || []).filter(l => l.t === 'call').length, mails = (x.log || []).filter(l => l.t === 'mail-in' || l.t === 'mail-out').length;
       const card = h(`<button type="button" class="hs-ho">
-        <div class="hs-ho__top"><b>${esc(x.name || 'בלי שם')}</b><span class="pill pill--${ac}">${an}</span></div>
+        <div class="hs-ho__top"><b>${esc(x.name || 'בלי שם')}</b>${x.rating ? `<span class="hs-rate">${x.rating} ★</span>` : ''}<span class="pill pill--${ac}">${an}</span></div>
         <div class="hs-ho__sub">${esc(x.city)}${x.contact ? ' · ' + esc(x.contact) : ''}${x.phone ? ' · <bdi>' + esc(x.phone) + '</bdi>' : ''}</div>
         ${x.prices?.length ? `<div class="hs-ho__pr">${x.prices.slice(0, 4).map(p => `<span>${esc([p.level, p.board].filter(Boolean).join(' · ') || 'מחיר')}: <b>${money(p.price, p.currency)}</b>${p.per ? ' ' + esc(p.per) : ''}</span>`).join('')}${x.prices.length > 4 ? `<span>+${x.prices.length - 4}</span>` : ''}</div>` : '<div class="hs-ho__pr muted">עוד אין מחירים</div>'}
         ${hits.get(x.id) ? `<div class="hs-ho__hit">${hits.get(x.id)}</div>` : x.summary ? `<div class="hs-ho__sum">${esc(x.summary)}</div>` : ''}
@@ -695,6 +695,7 @@ function hotelView(sv, x) {
     <div class="hs-hhead__t"><h2>${esc(x.name || 'בלי שם')}</h2><span class="pill pill--${ac}">${an}</span><span class="st st--${x.status}">${ST[x.status]}</span></div>
     <p>${esc(x.city)}${x.contact ? ' · ' + esc(x.contact) : ''}${x.availText ? ' · ' + esc(x.availText) : ''}</p>
     ${x.about ? `<p class="hs-about">${esc(x.about)}</p>` : ''}
+    ${x.rating || x.reviewsText ? `<div class="hs-rev">${x.rating ? `<b class="hs-rate">${x.rating} ★</b><span>${x.reviewsCount ? x.reviewsCount.toLocaleString('he-IL') + ' ביקורות בגוגל' : 'בגוגל'}</span>` : ''}${x.reviewsText ? `<p>${esc(x.reviewsText)}</p>` : ''}${safeUrl(x.reviewsUrl) ? `<a href="${esc(x.reviewsUrl)}" target="_blank" rel="noopener">לכל הביקורות</a>` : ''}</div>` : ''}
     ${(x.photos || []).filter(safeUrl).length ? `<div class="hs-photos">${x.photos.filter(safeUrl).map(u => `<a href="${esc(u)}" target="_blank" rel="noopener"><img src="${esc(u)}" alt="" loading="lazy" referrerpolicy="no-referrer"></a>`).join('')}</div>` : ''}
     <div class="hs-tools">
       ${x.phone ? `<a class="btn btn--dark btn--sm" href="tel:${esc(x.phone.replace(/[^\d+]/g, ''))}">להתקשר <bdi>${esc(x.phone)}</bdi></a>` : ''}

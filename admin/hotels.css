@@ -237,3 +237,11 @@ mark { background: #FCE7A8; color: inherit; padding: 0 2px; border-radius: 3px; 
 /* WhatsApp messages from a hotel (19.11) */
 .ev--wa { border-inline-start-color: #3E8E6B; }
 .ev__wa { white-space: pre-wrap; }
+
+/* hotel reviews from the web (19.11) */
+.hs-rate { display: inline-flex; align-items: center; gap: 3px; font-weight: 700; color: #8A6A35; font-size: .9rem; white-space: nowrap; }
+.hs-ho__top .hs-rate { margin-inline-start: auto; }
+.hs-rev { margin: 10px 0 2px; padding: 10px 12px; background: #FBF7EF; border-radius: 10px; display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline; }
+.hs-rev span { color: #5B6478; font-size: .88rem; }
+.hs-rev p { flex-basis: 100%; margin: 2px 0 0; color: #3A4560; font-size: .92rem; }
+.hs-rev a { font-size: .88rem; }

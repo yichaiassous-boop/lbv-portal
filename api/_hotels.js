@@ -156,7 +156,7 @@ function robotJobs(sv, hotels) {
     const em = String(h.email || '').trim().toLowerCase();
     if (/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(em) && h.mailScan !== em) mailScan.push({ surveyId: sv.id, hotelId: h.id, email: em, name: h.name });
     // a new hotel: the robot looks it up on the web once (website, photos, missing details) - owner 19.11
-    if (h.name && !h.webDone && (h.webTries || 0) < 2) webLook.push({ surveyId: sv.id, hotelId: h.id, name: h.name, city: h.city || '', website: h.website || '' });
+    if (h.name && (h.webV || 0) < 2 && (h.webTries || 0) < 4) webLook.push({ surveyId: sv.id, hotelId: h.id, name: h.name, city: h.city || '', website: h.website || '' });
   }
   return { watch, parses, mailScan, webLook, wa };
 }
@@ -674,6 +674,12 @@ async function script(req, res, what, userId, b) {
       const ph = (Array.isArray(b.photos) ? b.photos : []).map(safe).filter(Boolean);
       if (ph.length) h.photos = [...new Set(ph)].slice(0, 8);
       if (g.about) h.about = str(g.about, 400);
+      h.webV = 2;
+      const rt = Number(g.rating), rc = Number(g.reviews);
+      if (rt > 0 && rt <= 5) h.rating = Math.round(rt * 10) / 10;
+      if (rc > 0) h.reviewsCount = Math.round(rc);
+      if (g.reviewsSummary) h.reviewsText = str(g.reviewsSummary, 600);
+      if (safe(g.reviewsUrl)) h.reviewsUrl = safe(g.reviewsUrl);
     }
     await setJ(key, h.id, h);
     return send(res, 200, { ok: true });
