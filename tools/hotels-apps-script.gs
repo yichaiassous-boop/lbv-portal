@@ -69,13 +69,13 @@ function tick() {
     try { site('post', 'app', { url: P('APP_URL') || ScriptApp.getService().getUrl() || '', secret: P('APP_SECRET'), last: P('APP_LAST') }); } catch (e) { console.error('app', e); }
     const st = site('get', 'status');
     try { recordings(st); } catch (e) { console.error('recordings', e); }
+    try { relistens(st); } catch (e) { console.error('relistens', e); }   // early: it needs minutes
     try { indexCalls(); } catch (e) { console.error('index', e); }
     try { answerAsks(st); } catch (e) { console.error('asks', e); }
     try { outbox(st); } catch (e) { console.error('outbox', e); }
     try { replies(st); } catch (e) { console.error('replies', e); }
     try { parses(st); } catch (e) { console.error('parses', e); }
     try { mailScans(st); } catch (e) { console.error('mailScans', e); }
-    try { relistens(st); } catch (e) { console.error('relistens', e); }
     try { webLooks(st); } catch (e) { console.error('webLooks', e); }
     try { sheets(st); } catch (e) { console.error('sheets', e); }
   } finally { lock.releaseLock(); }
