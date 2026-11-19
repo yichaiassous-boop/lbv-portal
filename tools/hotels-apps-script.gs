@@ -422,7 +422,9 @@ function webLooks(st) {
         for (const pu of hotel._pages) {
           if (photos.length >= 6) break;
           const ph = sitePhotos(pu);
-          if (ph && ph.length) photos = photos.concat(ph.slice(0, 2)).filter((x, i, a) => a.indexOf(x) === i);
+          // only real photos: jpg / webp (png is mostly logos and icons), the page's main picture first
+          const real = (ph || []).filter(u => /\.(jpe?g|webp)(\?|$)/i.test(u) || /bstatic\.com/i.test(u));
+          if (real.length) photos = photos.concat(real.slice(0, 2)).filter((x, i, a) => a.indexOf(x) === i);
         }
       }
       delete hotel._pages;
