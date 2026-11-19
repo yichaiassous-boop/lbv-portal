@@ -277,3 +277,57 @@ mark { background: #FCE7A8; color: inherit; padding: 0 2px; border-radius: 3px; 
 /* hotel website line (19.11) */
 .hs-site { margin: 4px 0 0; font-size: .95rem; color: #3A4560; }
 .hs-site a { color: #8A6A2F; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; word-break: break-all; }
+
+/* מטלות מאילן (admin/ilan.js) */
+.il-setup { padding: 22px; border-radius: var(--r); background: #fff; border: 1px solid var(--line); max-width: 640px; }
+.il-setup h3 { margin: 0 0 6px; font: 700 1.3rem/1.3 "Frank Ruhl Libre", serif; }
+.il-setup p { margin: 0 0 14px; color: var(--ink-2); line-height: 1.6; }
+.il-setup.is-small { padding: 12px 16px; background: transparent; border-style: dashed; }
+.il-setup.is-small p { margin: 0; font-size: .9rem; }
+.il-setup.is-small form { margin-top: 10px; }
+.il-phones, .il-add { display: flex; gap: 8px; flex-wrap: wrap; }
+.il-phones .input { flex: 1 1 200px; }
+.il-add { margin: 0 0 14px; }
+.il-add .input[name=t] { flex: 1 1 240px; }
+.il-add .input[type=date] { flex: 0 0 160px; }
+.il-card { padding: 20px 22px; border-radius: var(--r); background: #fff; border: 1px solid var(--line); margin-bottom: 16px; }
+.il-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.il-head h3 { margin: 0; font: 700 1.35rem/1.2 "Frank Ruhl Libre", serif; }
+.il-head span { color: var(--ink-3); font-size: .9rem; }
+.il-tasks { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.il-task { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: start; padding: 12px 4px; border-bottom: 1px solid var(--line); }
+.il-task:last-child { border-bottom: 0; }
+.il-task__body p { margin: 0 0 4px; font-size: 1.02rem; line-height: 1.5; color: var(--ink); }
+.il-task__body small { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; color: var(--ink-3); font-size: .85rem; }
+.il-task__body em { font-style: normal; font-weight: 700; color: var(--ink-2); }
+.il-task__body em.late { color: #B42318; }
+.il-task__body q { display: block; margin-top: 6px; padding-inline-start: 10px; border-inline-start: 2px solid var(--gold); color: var(--ink-2); font-size: .88rem; }
+.il-task.is-done p { text-decoration: line-through; color: var(--ink-3); }
+.il-check { position: relative; width: 26px; height: 26px; margin-top: 1px; cursor: pointer; }
+.il-check input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+.il-check span { display: block; width: 26px; height: 26px; border-radius: 8px; border: 2px solid var(--ink-3); background: #fff; }
+.il-check input:checked + span { background: #2FBF71; border-color: #2FBF71; }
+.il-check input:checked + span::after { content: ""; display: block; width: 7px; height: 13px; margin: 3px auto 0; border: solid #fff; border-width: 0 3px 3px 0; transform: rotate(45deg); }
+.il-check input:focus-visible + span { outline: 3px solid var(--gold); outline-offset: 2px; }
+.il-x { border: 0; background: none; color: var(--ink-3); font-size: 1.4rem; line-height: 1; width: 36px; height: 36px; border-radius: 50%; cursor: pointer; }
+.il-x:hover { background: #F3F1EC; color: #B42318; }
+.il-link { border: 0; background: none; padding: 0; color: #8A6A1F; text-decoration: underline; cursor: pointer; font: inherit; font-size: .85rem; }
+.il-more { margin-top: 12px; }
+.il-done { margin-top: 6px; }
+.il-empty { color: var(--ink-3); padding: 10px 0; margin: 0; }
+.il-calls { display: grid; gap: 10px; }
+.il-call { border: 1px solid var(--line); border-radius: 12px; padding: 0 16px; }
+.il-call[open] { padding-bottom: 14px; }
+.il-call summary { display: grid; grid-template-columns: auto auto 1fr; gap: 4px 12px; align-items: baseline; padding: 14px 0; cursor: pointer; list-style: none; }
+.il-call summary::-webkit-details-marker { display: none; }
+.il-call summary small { color: var(--ink-3); }
+.il-call summary span { grid-column: 1 / -1; color: var(--ink-2); line-height: 1.55; }
+.il-call h4 { margin: 12px 0 6px; font-size: .95rem; }
+.il-wants { margin: 0; padding-inline-start: 20px; line-height: 1.6; }
+.il-wants .is-done { text-decoration: line-through; color: var(--ink-3); }
+.il-call__foot { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.il-tr { white-space: pre-wrap; font: inherit; font-size: .9rem; line-height: 1.7; background: #FAF8F4; padding: 12px; border-radius: 10px; margin: 10px 0 0; max-height: 420px; overflow: auto; }
+@media (max-width: 600px) {
+  .il-card { padding: 16px 14px; }
+  .il-add .input[type=date] { flex: 1 1 140px; }
+}

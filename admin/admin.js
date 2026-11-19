@@ -11,6 +11,7 @@ const DIR = { he: 'rtl', fr: 'ltr', en: 'ltr' };
 const E = window.LBVEdit;
 import { QUOTE_DEFAULTS } from "../quote/defaults.js";
 import { hotelsPage } from "./hotels.js";
+import { ilanPage } from "./ilan.js";
 import { eventsPage, remotePage, appHome, appSite, appHolidays } from "./events.js";
 const IN_APP = document.documentElement.classList.contains("lbv-app");   // inside the LBV phone app (or the iPhone home-screen app)
 
@@ -315,6 +316,7 @@ const GROUPS = () => [
   { id: 'events', name: 'לוח אירועים', pages: [{ id: 'events', title: 'לוח אירועים', sub: 'כל האירועים של LBV במקום אחד: מתי, איפה, עם מי, ובאיזה מצב' }] },
   { id: 'screens', name: 'השלט', pages: [{ id: 'remote', title: 'השלט של המסכים', sub: 'שליטה מהטלפון במסך של האירוע' }] },
   { id: 'hotels', name: 'בדיקת מלונות', pages: [{ id: 'hotels', title: 'בדיקת מלונות', sub: 'מתקשרים למלונות, והמערכת ממלאת לבד מהשיחות: פרטים, זמינות, מחירים, מיילים וסיכום' }] },
+  { id: 'ilan', name: 'מטלות מאילן', pages: [{ id: 'ilan', title: 'מטלות מאילן', sub: 'מה אילן ביקש בשיחות איתו, ורשימה של מה לעשות. רק אתם רואים את זה' }] },
   { id: 'site', name: 'עמודי האתר', pages: windows() },
   { id: 'people', name: 'צוות', pages: [{ id: 'team', title: 'צוות ודבר המנכ״ל', sub: 'תמונות, שמות ותפקידים, והמכתב של אילן', lang: true }] },
   { id: 'settings', name: 'הגדרות', pages: [
@@ -337,6 +339,7 @@ function pageAllowed(id) {
   if (id === 'appholidays') return canDo('content') && has('site');
   if (id === 'events') return has('events');
   if (id === 'hotels') return has('hotels');   // each sees only their own surveys and those shared with them
+  if (id === 'ilan') return !me || me.role === 'owner';   // the owner's own calls with Ilan
   if (id === 'remote') return has('remote');
   if (['guide', 'support', 'stats', 'account'].includes(id)) return true;
   return canDo('content') && has('site');
@@ -347,6 +350,7 @@ function appTiles() {
   return [
     { id: 'events', title: 'לוח אירועים', sub: 'מה, מתי ואיפה', icon: ICON.events },
     { id: 'hotels', title: 'בדיקת מלונות', sub: 'שיחות, מחירים, זמינות', icon: ICON.hotels },
+    { id: 'ilan', title: 'מטלות מאילן', sub: 'מה הוא ביקש בשיחות', icon: 'M9 6h11M9 12h11M9 18h11M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2' },
     { id: 'remote', title: 'השלט', sub: 'המסך של האירוע', icon: ICON.screens },
     { id: 'appholidays', title: 'חגים', sub: 'סוכות, פסח וכל הנופשים', icon: 'M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.4 6.8 19.1l1-5.8L3.5 9.2l5.9-.9z' },
     { id: 'appsite', title: 'עריכת האתר', sub: 'טקסטים, תמונות, סרטונים', icon: ICON.pencil, need: 'w-home' },
@@ -419,6 +423,7 @@ function render() {
     return appHolidays(pg, actx, state.trips || [], asks);
   }
   if (page === 'appsite') return appSite(pg, actx, allPages().filter(p => p.group === 'site' || p.group === 'people' || ['contact', 'banners'].includes(p.id)));
+  if (page === 'ilan') return ilanPage(pg, { toast, showLogin, rerender: () => page === 'ilan' && render() });
   if (page === 'hotels') return hotelsPage(pg, { toast, showLogin, rerender: () => page === 'hotels' && render(), upload: hotelPhoto });
   ({ dashboard, inbox, mail, quotes, team, contact, banners, stats, guide, support, users, account })[page](pg);
 }

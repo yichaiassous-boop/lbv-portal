@@ -123,6 +123,14 @@ function recordings(st) {
   for (const f of files) {
     if (done >= MAX_PER_RUN) return;   // the rest next run (SINCE stays at the last one handled)
     const at = recordedAt(f);
+    // owner 19.11: a call with Ilan → what he asks for + tasks (never a hotel)
+    if (ilanFor(st, f, at)) {
+      const result = listenIlan(f, at);
+      site('post', 'ilan', { at: at.toISOString(), file: { id: f.getId(), name: f.getName(), url: f.getUrl() }, result: result });
+      done++;
+      props().setProperty('SINCE', f.getDateCreated().toISOString());
+      continue;
+    }
     const w = windowFor(st, at) || watchFor(st, f, at);
     if (w) {
       const sv = (st.surveys || []).find(s => s.id === w.surveyId);
@@ -238,6 +246,36 @@ function listen(file, sv, at, question) {
     }
   } catch (e) { console.error('places pass', e); }
   return res;
+}
+
+/** A call with one of Ilan's numbers (the owner saved them in the "אילן" tab), made after they were saved (less a week). */
+function ilanFor(st, f, at) {
+  const il = st.ilan || {};
+  if (!(il.phones || []).length) return false;
+  const d = String(phoneOf(f) || '').replace(/\D/g, '').replace(/^972/, '0').slice(-9);
+  return d.length >= 8 && il.phones.indexOf(d) >= 0 && (!il.since || at.getTime() >= Date.parse(il.since));
+}
+function listenIlan(file, at) {
+  const blob = file.getBlob();
+  let mime = blob.getContentType() || 'audio/mp4';
+  if (/octet/.test(mime)) mime = /\.amr$/i.test(file.getName()) ? 'audio/amr' : /\.mp3$/i.test(file.getName()) ? 'audio/mpeg' : /\.wav$/i.test(file.getName()) ? 'audio/wav' : 'audio/mp4';
+  const part = blob.getBytes().length < 14 * 1024 * 1024 ? { inline_data: { mime_type: mime, data: Utilities.base64Encode(blob.getBytes()) } } : { file_data: { mime_type: mime, file_uri: uploadToGemini(blob, mime, file.getName()) } };
+  const Q = { type: 'OBJECT', properties: { time: { type: 'STRING' }, speaker: { type: 'STRING' }, text: { type: 'STRING' } } };
+  return gemini(part, [
+    'This is a recording of a phone call between the owner of the work phone of La Belle Vie (in Hebrew: לה בל וי), an Israeli events company, and Ilan (אילן).',
+    'The owner wants to know exactly what Ilan wants and never forget anything he asked for.',
+    'The call was recorded on ' + Utilities.formatDate(at || new Date(), 'Asia/Jerusalem', 'EEEE yyyy-MM-dd HH:mm') + ' (Israel time). Turn relative days ("מחר", "ביום ראשון", "עד סוף השבוע") into a date.',
+    'Answer in JSON only, in Hebrew, in plain everyday words.',
+    'summary: what the call was about, in 2-4 short sentences.',
+    'wants: what Ilan wants, one short line each (his goals and wishes, also ones that are not a concrete task).',
+    'tasks: every concrete thing Ilan asked the owner to do, and every thing the owner promised him to do in this call. One task each, starting with a verb ("לשלוח ל...", "לבדוק...", "להתקשר ל..."), with every detail that was said (names, numbers, places, amounts). due: YYYY-MM-DD only if a day was said or clearly meant, otherwise empty. when: the deadline as it was said, if any. quote: the exact words in the recording where it was asked.',
+    'Do not invent tasks. Only what was really said. If a word or number is not clear, write (לא ברור).',
+    'keyQuotes: the sentences that matter most, the exact words, with the time (mm:ss) and who said it (אילן / אני).',
+    'transcript: the whole conversation, each turn on its own line, "mm:ss אילן:" / "mm:ss אני:". duration: mm:ss.',
+  ].join('\n'), { type: 'OBJECT', properties: {
+    summary: { type: 'STRING' }, wants: { type: 'ARRAY', items: { type: 'STRING' } },
+    tasks: { type: 'ARRAY', items: { type: 'OBJECT', properties: { text: { type: 'STRING' }, due: { type: 'STRING' }, when: { type: 'STRING' }, quote: { type: 'STRING' } }, required: ['text'] } },
+    keyQuotes: { type: 'ARRAY', items: Q }, transcript: { type: 'STRING' }, duration: { type: 'STRING' } }, required: ['summary', 'tasks'] });
 }
 
 /** "לקרוא את השיחה מחדש": the hotel's calls read again with today's rules; the answer replaces the old reading. */
