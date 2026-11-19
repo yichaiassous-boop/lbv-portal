@@ -286,25 +286,33 @@ function mailScans(st) {
   }
 }
 /** A new hotel: find it on the web (Google Search through Gemini) - official site, city, phone, e-mail - and take photos from its site. */
+/** Gemini with a fallback: busy (503) or no quota (429) on one model -> the next one. Returns {code, body}. */
+const WEB_MODELS = [MODEL, 'gemini-3.8-flash', 'gemini-3.6-flash'];
+function genWeb(payload) {
+  let code = 0, body = '';
+  for (const m of WEB_MODELS.filter((x, i, a) => a.indexOf(x) === i)) {
+    const r = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + m + ':generateContent', {
+      method: 'post', contentType: 'application/json', muteHttpExceptions: true, headers: { 'x-goog-api-key': P('GEMINI_KEY') }, payload: JSON.stringify(payload),
+    });
+    code = r.getResponseCode(); body = r.getContentText();
+    if (code < 300 || (code !== 429 && code !== 503 && code !== 404)) break;
+    console.log('webLook: ' + m + ' ' + code + (payload.tools ? ' (search)' : ''));
+  }
+  return { code: code, body: body };
+}
 function webLooks(st) {
   for (const w of (st.webLook || []).slice(0, 2)) {
     let found = false, hotel = {}, photos = [], grounded = true, answered = false;
     try {
       const prompt = 'Find the hotel / venue "' + w.name + '"' + (w.city ? ' in ' + w.city : '') + (w.website ? ' (website ' + w.website + ')' : '') + ' on the web. Answer ONLY one JSON object, no text around it: {"found": true|false, "website": "official https site, not a booking site", "city": "", "phone": "", "email": "", "about": "one short line in Hebrew: what kind of place, stars, area", "rating": the Google Maps rating as a number (or null), "reviews": how many Google reviews (number or null), "reviewsSummary": "in Hebrew, 2-3 short sentences: what guests praise and what they complain about (food, cleanliness, rooms, service, Shabbat), from real reviews only", "reviewsUrl": "https link to the reviews (Google Maps / TripAdvisor / Booking) or empty"}. found=false if you are not sure it is this place. Never guess a phone or e-mail: leave it empty if it is not written on an official page.';
-      const r = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + MODEL + ':generateContent', {
-        method: 'post', contentType: 'application/json', muteHttpExceptions: true, headers: { 'x-goog-api-key': P('GEMINI_KEY') },
-        payload: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], tools: [{ google_search: {} }], generationConfig: { temperature: 0.1 } }),
-      });
-      let code = r.getResponseCode(), body = r.getContentText();
+      const r = genWeb({ contents: [{ role: 'user', parts: [{ text: prompt }] }], tools: [{ google_search: {} }], generationConfig: { temperature: 0.1 } });
+      let code = r.code, body = r.body;
       if (code >= 300) {
         // search blocked (quota) -> Gemini on its own knowledge: website / city / about only, never ratings, phone or e-mail
         console.log('webLook: search ' + code + ', trying without search');
         grounded = false;
-        const r2 = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + MODEL + ':generateContent', {
-          method: 'post', contentType: 'application/json', muteHttpExceptions: true, headers: { 'x-goog-api-key': P('GEMINI_KEY') },
-          payload: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: 'The hotel / venue "' + w.name + '"' + (w.city ? ' in ' + w.city : '') + ' (Israel or abroad). Answer ONLY one JSON object: {"found": true|false, "website": "its official https site, not a booking site", "city": "", "about": "one short line in Hebrew: what kind of place and area"}. found=true only if you know this exact place for sure; otherwise found=false and empty fields.' }] }], generationConfig: { temperature: 0 } }),
-        });
-        code = r2.getResponseCode(); body = r2.getContentText();
+        const r2 = genWeb({ contents: [{ role: 'user', parts: [{ text: 'The hotel / venue "' + w.name + '"' + (w.city ? ' in ' + w.city : '') + ' (Israel or abroad). Answer ONLY one JSON object: {"found": true|false, "website": "its official https site, not a booking site", "city": "", "about": "one short line in Hebrew: what kind of place and area"}. found=true only if you know this exact place for sure; otherwise found=false and empty fields.' }] }], generationConfig: { temperature: 0 } });
+        code = r2.code; body = r2.body;
       }
       if (code < 300) {
         answered = true;
