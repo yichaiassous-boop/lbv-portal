@@ -500,6 +500,12 @@ export default async function hotelsHandler(req, res) {
     if (req.method !== 'POST') return send(res, 405, { error: 'method' });
     const op = body.op;
 
+    // owner 19.11: a hotel call read on the computer (when Gemini is out of quota) goes in the same way as the robot's
+    if (op === 'importCall') {
+      if (!isOwner(s)) return send(res, 403, { error: 'owner' });
+      return script(req, res, 'call', 'owner', body);
+    }
+
     if (op === 'survey') {
       const old = body.id ? await getJ(K.surveys, body.id) : null;
       if (body.id && !canManage(s, old)) return send(res, 403, { error: 'forbidden' });
