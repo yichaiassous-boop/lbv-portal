@@ -69,6 +69,7 @@ function tick() {
     try { site('post', 'app', { url: P('APP_URL') || ScriptApp.getService().getUrl() || '', secret: P('APP_SECRET'), last: P('APP_LAST') }); } catch (e) { console.error('app', e); }
     const st = site('get', 'status');
     try { recordings(st); } catch (e) { console.error('recordings', e); }
+    try { ilanOld(st); } catch (e) { console.error('ilanOld', e); }
     try { relistens(st); } catch (e) { console.error('relistens', e); }   // early: it needs minutes
     try { indexCalls(); } catch (e) { console.error('index', e); }
     try { answerAsks(st); } catch (e) { console.error('asks', e); }
@@ -254,6 +255,17 @@ function ilanFor(st, f, at) {
   if (!(il.phones || []).length) return false;
   const d = String(phoneOf(f) || '').replace(/\D/g, '').replace(/^972/, '0').slice(-9);
   return d.length >= 8 && il.phones.indexOf(d) >= 0 && (!il.since || at.getTime() >= Date.parse(il.since));
+}
+/** Calls with Ilan that were already in the folder before his number was saved (the site lists them): read them too. */
+function ilanOld(st) {
+  for (const x of ((st.ilan || {}).files || [])) {
+    if (elapsed() > 120) return;
+    try {
+      const f = DriveApp.getFileById(x.id);
+      const at = recordedAt(f);
+      site('post', 'ilan', { at: at.toISOString(), file: { id: f.getId(), name: f.getName(), url: f.getUrl() }, result: listenIlan(f, at) });
+    } catch (e) { console.error('ilanOld ' + x.id, e); }
+  }
 }
 function listenIlan(file, at) {
   const blob = file.getBlob();
