@@ -63,3 +63,4 @@
   .ar-net span { display: none; }
   .ar-fs { grid-template-columns: 1fr; }
 }
+.ar .ev-row__main b { white-space: normal; }
