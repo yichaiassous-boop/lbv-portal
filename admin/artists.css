@@ -64,3 +64,7 @@
   .ar-fs { grid-template-columns: 1fr; }
 }
 .ar .ev-row__main b { white-space: normal; }
+.ar-lang { display: inline-flex; padding: 3px; border-radius: 999px; background: #fff; border: 1px solid var(--line); margin-inline-start: auto; }
+.ar-lang button { min-height: 32px; padding: 0 12px; border: 0; border-radius: 999px; background: transparent; font: 700 .85rem inherit; font-family: inherit; color: var(--ink-2); cursor: pointer; }
+.ar-lang button[aria-pressed="true"] { background: var(--night); color: #fff; }
+.ar-pick { align-items: center; }

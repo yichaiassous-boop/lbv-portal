@@ -29,7 +29,8 @@
 </head>
 <body>
 <div class="av-wrap">
-  <div class="av-top"><img src="/media/logo-letters.png" alt="La Belle Vie" width="49" height="34"><span>הדף שלך אצלנו. רק אתה רואה אותו.</span></div>
+  <div class="av-top"><img src="/media/logo-letters.png" alt="La Belle Vie" width="49" height="34"><span id="note">הדף שלך אצלנו. רק אתה רואה אותו.</span>
+    <span class="ar-lang" role="group" aria-label="שפה / Langue"><button type="button" data-lang="he">עברית</button><button type="button" data-lang="fr" lang="fr">Français</button></span></div>
   <main id="root" class="ar" aria-live="polite"><p class="av-msg">טוען…</p></main>
 </div>
 <script type="module">
@@ -37,15 +38,24 @@
   const root = document.getElementById('root');
   // the link is /artist/#<id>.<token> (after the #, so it never reaches server logs)
   const [id, t] = location.hash.slice(1).split('.');
-  const demo = new URLSearchParams(location.search).has('demo');
+  const qs = new URLSearchParams(location.search), demo = qs.has('demo');
+  let lang = qs.get('lang') === 'fr' ? 'fr' : 'he', artist = null;
+  const FR_ERR = 'Ce lien n’est pas valide ou a expiré. Demandez un nouveau lien à La Belle Vie.';
+  function paint() {
+    document.documentElement.lang = lang; document.documentElement.dir = lang === 'fr' ? 'ltr' : 'rtl';
+    document.getElementById('note').textContent = lang === 'fr' ? 'Votre page chez nous. Vous seul la voyez.' : 'הדף שלך אצלנו. רק אתה רואה אותו.';
+    document.querySelectorAll('[data-lang]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.lang === lang)));
+    if (artist) { document.title = (lang === 'fr' && artist.nameFr ? artist.nameFr : artist.name) + ' – La Belle Vie'; drawArtist(root, artist, { sample: demo, lang }); }
+  }
+  document.querySelectorAll('[data-lang]').forEach(b => b.addEventListener('click', () => { lang = b.dataset.lang; qs.set('lang', lang); history.replaceState(null, '', '?' + qs + location.hash); paint(); }));
+  paint();
   try {
     const r = await fetch(`/api/artists?view=${encodeURIComponent(id || '')}&t=${encodeURIComponent(t || '')}`, { cache: 'no-store' });
     if (!r.ok) throw new Error(r.status);
-    const { artist } = await r.json();
-    document.title = artist.name + ' – La Belle Vie';
-    drawArtist(root, artist, { sample: demo });
+    artist = (await r.json()).artist;
+    paint();
   } catch (e) {
-    root.innerHTML = '<p class="av-msg">הקישור לא תקין או שפג תוקפו. בקשו מ-La Belle Vie קישור חדש.</p>';
+    root.innerHTML = '<p class="av-msg"></p>'; root.firstChild.textContent = lang === 'fr' ? FR_ERR : 'הקישור לא תקין או שפג תוקפו. בקשו מ-La Belle Vie קישור חדש.';
   }
 </script>
 </body>

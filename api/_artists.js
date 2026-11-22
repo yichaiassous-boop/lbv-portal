@@ -35,6 +35,7 @@ function cleanArtist(b, old = {}) {
   return {
     id: old.id || 'a' + crypto.randomBytes(6).toString('hex'),
     name: str(b.name, 80) || old.name || '',
+    nameFr: b.nameFr != null ? str(b.nameFr, 80) : old.nameFr || '',   // the name in Latin letters, for the page in French
     title: b.title != null ? str(b.title, 80) : old.title || '',
     color: color(b.color) || old.color || '#7a2e4d',
     nets, contacts,
