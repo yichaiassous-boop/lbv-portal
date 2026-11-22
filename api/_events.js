@@ -22,7 +22,7 @@ import { screensState, screensChange, openTicket } from './_screens.js';
 import { areasOf } from './_areas.js';
 
 const K = { events: 'ev:all' };
-const KINDS = ['wedding', 'barmitzvah', 'batmitzvah', 'shabbat', 'gala', 'holiday', 'other'];
+const KINDS = ['wedding', 'barmitzvah', 'batmitzvah', 'shabbat', 'gala', 'holiday', 'show', 'other'];
 const STATUS = ['option', 'confirmed', 'done', 'cancelled'];
 const ROLES_EDIT = ['owner', 'admin', 'sales'], ROLES_DEL = ['owner', 'admin'];
 
@@ -45,6 +45,7 @@ function cleanEvent(b, old = {}) {
     time: hhmm(b.time), place: str(b.place, 160), client: str(b.client, 120),
     phone: str(b.phone, 40).replace(/[^\d+\-() ]/g, ''), guests: Math.max(0, Math.min(5000, Math.round(Number(b.guests) || 0))) || '',
     staff: str(b.staff, 300), notes: str(b.notes, 3000),
+    artist: /^a[0-9a-f]{12}$/.test(String(b.artist || '')) ? String(b.artist) : '',   // owner 22.11: an event of an artist we represent (api/_artists.js)
     createdAt: old.createdAt || now(), createdBy: old.createdBy || '', updatedAt: now(),
   };
 }

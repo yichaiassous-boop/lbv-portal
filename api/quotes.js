@@ -5,6 +5,7 @@ import { isAuthed, can, readBody } from './_lib.js';
 import { leadsToken, leadsReady } from './_leads.js';
 import hotelsHandler from './_hotels.js';
 import eventsHandler from './_events.js';
+import artistsHandler from './_artists.js';
 const sameTok = (a, b) => { const x = Buffer.from(String(a ?? '')), y = Buffer.from(String(b ?? '')); return x.length === y.length && crypto.timingSafeEqual(x, y); };
 
 // Quotes (הצעות מחיר) built in the admin, kept in the PRIVATE store next to the requests:
@@ -117,6 +118,7 @@ export default async function handler(req, res) {
   // /api/hotels is served here (see vercel.json) so the site stays within the plan's function count.
   if (new URL(req.url, 'http://x').searchParams.has('_h')) return hotelsHandler(req, res);
   if (new URL(req.url, 'http://x').searchParams.has('_e')) return eventsHandler(req, res);   // /api/events: the events calendar + app settings
+  if (new URL(req.url, 'http://x').searchParams.has('_a')) return artistsHandler(req, res);   // /api/artists: the artists we represent
   res.setHeader('Cache-Control', 'no-store');
   if (!leadsReady()) return res.status(503).json({ error: 'not-configured' });
   const url = new URL(req.url, 'http://x');

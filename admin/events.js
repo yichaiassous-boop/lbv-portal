@@ -9,7 +9,7 @@ const iso = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())
 const today = () => iso(new Date());
 const dmy = s => (s || '').split('-').reverse().join('.');
 
-export const KIND = { wedding: 'חתונה', barmitzvah: 'בר מצווה', batmitzvah: 'בת מצווה', shabbat: 'שבת חתן', gala: 'ערב גאלה', holiday: 'נופש / חג', other: 'אחר' };
+export const KIND = { wedding: 'חתונה', barmitzvah: 'בר מצווה', batmitzvah: 'בת מצווה', shabbat: 'שבת חתן', gala: 'ערב גאלה', holiday: 'נופש / חג', show: 'הופעה', other: 'אחר' };
 export const STATUS = { option: 'אופציה', confirmed: 'סגור', done: 'בוצע', cancelled: 'בוטל' };
 const MONTHS = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
 const WD = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'];
@@ -56,6 +56,7 @@ let ctx = null;            // { toast, showLogin, go, me }
 let data = null;           // GET /api/events
 let month = null;          // 'YYYY-MM' shown in the calendar
 let picked = null;         // 'YYYY-MM-DD' selected day
+let artists = [];          // owner 22.11: the artists we represent (/api/artists); their events take their color
 
 async function api(method, qs = '', body) {
   const r = await fetch('/api/events' + qs, { method, headers: body ? { 'Content-Type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined });
@@ -65,18 +66,33 @@ async function api(method, qs = '', body) {
   return j;
 }
 const fail = e => { if (e.message !== 'login') ctx.toast(e.message === 'not-configured' ? 'מסד הנתונים עוד לא מחובר לאתר' : e.message === 'forbidden' ? 'אין לך הרשאה לפעולה הזאת' : 'משהו השתבש. נסו שוב', 'err'); };
-async function load(force) { if (!data || force) data = await api('GET'); return data; }
+async function load(force) {
+  if (!data || force) {
+    data = await api('GET');
+    artists = await fetch('/api/artists').then(r => (r.ok ? r.json() : { artists: [] })).then(j => j.artists || []).catch(() => []);
+  }
+  return data;
+}
+const artistOf = e => (e.artist && artists.find(a => a.id === e.artist)) || null;
+/** An event of an artist: his color instead of the color of the status. */
+const tint = e => { const a = artistOf(e); return a ? ` style="--c:${esc(a.color)}"` : ''; };
 const evOn = d => (data?.events || []).filter(e => e.date === d || (e.end && e.date <= d && e.end >= d));
 const upcoming = (n = 6) => (data?.events || []).filter(e => (e.end || e.date) >= today() && e.status !== 'cancelled').slice(0, n);
 
 function evRow(e) {
   const multi = e.end && e.end !== e.date;
-  return `<button type="button" class="ev-row ev--${e.status}" data-ev="${esc(e.id)}">
+  return `<button type="button" class="ev-row ev--${e.status}" data-ev="${esc(e.id)}"${tint(e)}>
     <span class="ev-row__date"><b>${+e.date.slice(8)}</b><small>${MONTHS[+e.date.slice(5, 7) - 1].slice(0, 3)}</small></span>
-    <span class="ev-row__main"><b>${esc(e.title)}</b><small>${esc(KIND[e.kind] || '')}${e.time ? ' · ' + esc(e.time) : ''}${e.place ? ' · ' + esc(e.place) : ''}${multi ? ' · עד ' + dmy(e.end) : ''}</small></span>
+    <span class="ev-row__main"><b>${esc(e.title)}</b><small>${artistOf(e) ? esc(artistOf(e).name) + ' · ' : ''}${esc(KIND[e.kind] || '')}${e.time ? ' · ' + esc(e.time) : ''}${e.place ? ' · ' + esc(e.place) : ''}${multi ? ' · עד ' + dmy(e.end) : ''}</small></span>
     <span class="ev-pill ev-pill--${e.status}">${STATUS[e.status]}</span></button>`;
 }
 function bindRows(root) { $$('[data-ev]', root).forEach(b => b.addEventListener('click', () => openSheet(data.events.find(e => e.id === b.dataset.ev)))); }
+/** Owner 22.11: the artist page opens the same sheet (new event of this artist, or one of his). */
+export async function openEvent(c, id, date, artistId) {
+  ctx = c;
+  try { await load(true); } catch (e) { fail(e); return; }
+  openSheet(id ? data.events.find(e => e.id === id) : null, date, artistId);
+}
 
 /* ================= the calendar ================= */
 export async function eventsPage(pg, c) {
@@ -98,7 +114,7 @@ function draw(pg) {
     const s = `${month}-${pad(d)}`, list = evOn(s), wd = new Date(y, m - 1, d).getDay(), hol = holiday(s);
     cells.push(`<button type="button" class="cal__d${s === today() ? ' is-today' : ''}${s === picked ? ' is-picked' : ''}${wd >= 5 ? ' is-weekend' : ''}${hol ? ' is-hol' : ''}" data-day="${s}" aria-label="${dayName(s)}${hol ? ', ' + hol : ''}${list.length ? ', ' + list.length + ' אירועים' : ''}">
       <span class="cal__n">${d}</span>${hol ? `<span class="cal__hol">${holShort(hol)}</span>` : ''}
-      <span class="cal__evs">${list.slice(0, 3).map(e => `<i class="ev--${e.status}"><em>${esc(e.title)}</em></i>`).join('')}${list.length > 3 ? `<small>+${list.length - 3}</small>` : ''}</span></button>`);
+      <span class="cal__evs">${list.slice(0, 3).map(e => `<i class="ev--${e.status}"${tint(e)}><em>${esc(e.title)}</em></i>`).join('')}${list.length > 3 ? `<small>+${list.length - 3}</small>` : ''}</span></button>`);
   }
   const canEdit = data.can?.edit;
   const c = h(`<section class="card cal">
@@ -139,15 +155,16 @@ function draw(pg) {
 }
 
 /** The add / change sheet. */
-function openSheet(ev, date) {
+function openSheet(ev, date, artistId) {
   $('.ev-sheet')?.remove();
-  const canEdit = data.can?.edit, e = ev || { date: date || today(), status: 'option', kind: 'wedding' };
+  const canEdit = data.can?.edit, e = ev || { date: date || today(), status: 'option', kind: artistId ? 'show' : 'wedding', artist: artistId || '' };
   const ro = !canEdit ? 'disabled' : '';
   const opt = (map, v) => Object.entries(map).map(([k, t]) => `<option value="${k}"${k === v ? ' selected' : ''}>${t}</option>`).join('');
   const w = h(`<div class="ev-sheet" role="dialog" aria-modal="true" aria-label="${ev ? 'פרטי האירוע' : 'אירוע חדש'}">
     <form class="ev-sheet__card">
       <div class="ev-sheet__top"><h2>${ev ? esc(ev.title) : 'אירוע חדש'}</h2><button class="icon" type="button" data-x aria-label="סגירה">✕</button></div>
       <label class="f">שם האירוע<input name="title" required maxlength="120" value="${esc(e.title)}" placeholder="למשל: חתונת כהן" ${ro}></label>
+      ${artists.length ? `<label class="f">של אמן<select name="artist" ${ro}><option value="">לא, אירוע של LBV</option>${artists.map(a => `<option value="${esc(a.id)}"${a.id === e.artist ? " selected" : ""}>${esc(a.name)}</option>`).join("")}</select></label>` : ""}
       <div class="f2"><label class="f">סוג<select name="kind" ${ro}>${opt(KIND, e.kind)}</select></label>
         <label class="f">מצב<select name="status" ${ro}>${opt(STATUS, e.status)}</select></label></div>
       <div class="f2"><label class="f">תאריך<input type="date" name="date" required value="${esc(e.date)}" ${ro}></label>

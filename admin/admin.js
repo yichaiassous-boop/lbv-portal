@@ -12,6 +12,7 @@ const E = window.LBVEdit;
 import { QUOTE_DEFAULTS } from "../quote/defaults.js";
 import { hotelsPage } from "./hotels.js";
 import { ilanPage } from "./ilan.js";
+import { artistsPage } from "./artists.js";
 import { eventsPage, remotePage, appHome, appSite, appHolidays } from "./events.js";
 const IN_APP = document.documentElement.classList.contains("lbv-app");   // inside the LBV phone app (or the iPhone home-screen app)
 
@@ -288,6 +289,7 @@ const ICON = {
   settings: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 7 19.4l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 3 13.7H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.6 7l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 10.3 3V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0 1.2 2.9H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z',
   hotels: 'M3 21V7l9-4 9 4v14M3 21h18M8 10h.01M12 10h.01M16 10h.01M8 14h.01M12 14h.01M16 14h.01M10 21v-3h4v3',
   events: 'M4 5h16v16H4zM4 9h16M8 3v4M16 3v4M8 13h3M8 17h3M14 13h2',
+  artists: 'M12 3a3 3 0 0 0-3 3v5a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3zM6 11a6 6 0 0 0 12 0M12 17v4M9 21h6',
   app: 'M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z',
   screens: 'M7 2h10a3 3 0 0 1 3 3v14a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V5a3 3 0 0 1 3-3zM12 6.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3zM9.5 13h5M9.5 16.5h5',
   pencil: 'M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4',
@@ -314,6 +316,7 @@ const GROUPS = () => [
     { id: 'mail', title: 'מייל לנרשמים', sub: 'עדכון לכל מי שנרשם, מהמייל של החברה' }] },
   ...(IN_APP ? [{ id: 'app', name: 'בית', pages: [{ id: 'apphome', title: 'בית', sub: '' }, { id: 'appholidays', title: 'חגים', sub: '' }, { id: 'appsite', title: 'עריכת האתר', sub: '' }] }] : []),
   { id: 'events', name: 'לוח אירועים', pages: [{ id: 'events', title: 'לוח אירועים', sub: 'כל האירועים של LBV במקום אחד: מתי, איפה, עם מי, ובאיזה מצב' }] },
+  { id: 'artists', name: 'אמנים', pages: [{ id: 'artists', title: 'אמנים', sub: 'האמנים שאנחנו מייצגים: לוח שנה בצבע של כל אחד, הלקוחות, הרשתות והשיחות עליו' }] },
   { id: 'screens', name: 'השלט', pages: [{ id: 'remote', title: 'השלט של המסכים', sub: 'שליטה מהטלפון במסך של האירוע' }] },
   { id: 'hotels', name: 'בדיקת מלונות', pages: [{ id: 'hotels', title: 'בדיקת מלונות', sub: 'מתקשרים למלונות, והמערכת ממלאת לבד מהשיחות: פרטים, זמינות, מחירים, מיילים וסיכום' }] },
   { id: 'ilan', name: 'מטלות מאילן', pages: [{ id: 'ilan', title: 'מטלות מאילן', sub: 'מה אילן ביקש בשיחות איתו, ורשימה של מה לעשות. רק הבעלים ומעיין רואים את זה' }] },
@@ -338,6 +341,7 @@ function pageAllowed(id) {
   if (id === 'apphome') return true;
   if (id === 'appholidays') return canDo('content') && has('site');
   if (id === 'events') return has('events');
+  if (id === 'artists') return has('events');   // owner 22.11: the artists we represent (api/_artists.js)
   if (id === 'hotels') return has('hotels');   // each sees only their own surveys and those shared with them
   if (id === 'ilan') return !!me && (me.role === 'owner' || me.id === 'cad5d8ff-c32d-4df9-918e-38cfd1d315d8');   // only the owner and מעיין (owner 19.11: Ilan must never see it, not even for a moment)
   if (id === 'remote') return has('remote');
@@ -349,6 +353,7 @@ function appTiles() {
   const open = leads.filter(l => !l.handled).length;
   return [
     { id: 'events', title: 'לוח אירועים', sub: 'מה, מתי ואיפה', icon: ICON.events },
+    { id: 'artists', title: 'אמנים', sub: 'אהרון מאיר והאמנים שלנו', icon: ICON.artists },
     { id: 'hotels', title: 'בדיקת מלונות', sub: 'שיחות, מחירים, זמינות', icon: ICON.hotels },
     { id: 'ilan', title: 'מטלות מאילן', sub: 'מה הוא ביקש בשיחות', icon: 'M9 6h11M9 12h11M9 18h11M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2' },
     { id: 'remote', title: 'השלט', sub: 'המסך של האירוע', icon: ICON.screens },
@@ -415,6 +420,7 @@ function render() {
   if (page.startsWith('w-') || page.startsWith('trip-')) return windowPage(pg, page);
   const actx = { toast, showLogin, go, me, rerender: () => render() };
   if (page === 'events') return eventsPage(pg, actx);
+  if (page === 'artists') return artistsPage(pg, actx);
   if (page === 'remote') return remotePage(pg, actx);
   if (page === 'apphome') return appHome(pg, actx, appTiles());
   if (page === 'appholidays') {

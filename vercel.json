@@ -1,7 +1,8 @@
 {
   "rewrites": [
     { "source": "/api/hotels", "destination": "/api/quotes?_h=1" },
-    { "source": "/api/events", "destination": "/api/quotes?_e=1" }
+    { "source": "/api/events", "destination": "/api/quotes?_e=1" },
+    { "source": "/api/artists", "destination": "/api/quotes?_a=1" }
   ],
   "headers": [
     { "source": "/app/(.*)\\.apk", "headers": [
