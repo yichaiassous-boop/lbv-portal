@@ -1432,8 +1432,8 @@ function fromCall(x) {
   const g = t.match(/(\d{2,4})\s*(אורחים|איש|אנשים|משתתפים|מוזמנים)/);
   const d = t.match(/\b(\d{1,2})[./](\d{1,2})(?:[./](\d{2,4}))?\b/);
   // an unknown number: the contact's name as the phone saved it in the file name ("שיחה Yoni Assous_261119_163751.m4a")
-  const fileName = String(x.name || '').replace(/\.[a-z0-9]+$/i, '').replace(/_\d{6}_\d{6}$/, '').replace(/^(הקלטת שיחה|שיחה)\s*/, '').trim();
-  return { name: x.who && x.cat !== 'other' ? x.who : /\d{6}/.test(fileName) ? '' : fileName, phone: x.phone || '', service: type, guests: g ? g[1] : '', date: d ? d[0] : '', call: { who: x.who || x.name || '', phone: x.phone || '', at: x.at, summary: t, artist: x.artist || (x.cat === 'artist' ? x.who : '') } };
+  const fileName = String(x.name || '').split(' · ')[0].replace(/\.[a-z0-9]+$/i, '').replace(/_\d{6}_\d{6}$/, '').replace(/^(הקלטת שיחה|שיחה)\s*/, '').trim();
+  return { name: x.who && x.cat !== 'other' ? x.who : /\d{6}/.test(fileName) ? '' : fileName, phone: x.phone || '', service: type, guests: g ? g[1] : '', date: d ? d[0] : '', call: { who: x.who || (/\d{6}/.test(fileName) ? '' : fileName) || 'מספר לא ידוע', phone: x.phone || '', at: x.at, summary: t, artist: x.artist || (x.cat === 'artist' ? x.who : '') } };
 }
 async function startQuote(lead) {
   await loadQuoteCatalog();
