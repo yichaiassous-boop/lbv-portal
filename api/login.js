@@ -4,6 +4,7 @@ import { loadUsers, saveUsers, loadOwner, saveOwner } from './_users.js';
 import crypto from 'node:crypto';
 import { redis, redisReady } from './_redis.js';
 import { areasOf } from './_areas.js';
+import { artistLogin, artistCookie, artistClear } from './_artists.js';
 
 // Too many wrong passwords from one place → wait 15 minutes. Only a hash of the address is kept, for 15 minutes.
 const TRIES = 8, WINDOW = 15 * 60;
@@ -18,7 +19,7 @@ async function cleared(req) { if (!redisReady()) return; try { await redis([['DE
 // (An empty username with the main password still works, as a backup for the owner.)
 export default async function handler(req, res) {
   if (req.method === 'DELETE') {
-    res.setHeader('Set-Cookie', clearCookie);
+    res.setHeader('Set-Cookie', [clearCookie, artistClear]);
     return res.status(204).end();
   }
   if (req.method !== 'POST') return res.status(405).json({ error: 'method' });
@@ -43,12 +44,17 @@ export default async function handler(req, res) {
       saveUsers(list).catch(() => {});
     }
   }
+  // owner 22.11: an artist we represent logs in on the same page and goes to his own page only
+  if (!user && name) {
+    const aid = await artistLogin(name, password).catch(() => null);
+    if (aid) { await cleared(req); res.setHeader('Set-Cookie', [clearCookie, artistCookie(aid)]); return res.status(200).json({ ok: true, artist: true, go: '/artist/' }); }
+  }
   if (!user) {
     await failed(req);
     await new Promise(r => setTimeout(r, 800)); // slow down guessing
     return res.status(401).json({ error: 'wrong-password' });
   }
   await cleared(req);
-  res.setHeader('Set-Cookie', sessionCookie(user));
+  res.setHeader('Set-Cookie', [sessionCookie(user), artistClear]);
   return res.status(200).json({ ok: true, storage: storageReady() ? 'blob' : 'none', user: { id: user.id || '', name: user.n, role: user.r, areas: await areasOf(user) } });
 }

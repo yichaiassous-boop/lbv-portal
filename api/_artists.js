@@ -8,7 +8,8 @@
 //   DELETE ?id=<id>           (owner)                           → remove an artist (his events stay in the calendar)
 //   GET ?view=<id>&t=<token>  (no login: the artist's own link) → only his page: details, networks, events, calls (no recordings)
 import crypto from 'node:crypto';
-import { isAuthed, readBody } from './_lib.js';
+import { isAuthed, readBody, hashPassword, checkPassword } from './_lib.js';
+import { loadUsers, loadOwner } from './_users.js';
 import { hotelsReady, kv, getJ, setJ, allJ } from './_hotels.js';
 import { areasOf } from './_areas.js';
 
@@ -25,6 +26,27 @@ const secret = () => process.env.ADMIN_SECRET || process.env.ADMIN_PASSWORD || '
 export const artistToken = id => crypto.createHmac('sha256', secret()).update('artist:' + id).digest('base64url').slice(0, 22);
 const same = (a, b) => { const x = Buffer.from(String(a ?? '')), y = Buffer.from(String(b ?? '')); return x.length === y.length && crypto.timingSafeEqual(x, y); };
 
+/* ----- owner 22.11: the artist logs in to the app with his own username + password and sees only his page.
+   His session is a separate cookie (lbv_artist): the admin never accepts it (isAuthed knows only the managers' roles). ----- */
+const AC = 'lbv_artist', AC_DAYS = 90;
+const sign = p => crypto.createHmac('sha256', secret()).update('artist-session:' + p).digest('base64url');
+export const artistCookie = id => { const p = Buffer.from(JSON.stringify({ a: id, exp: Date.now() + AC_DAYS * 864e5 })).toString('base64url'); return `${AC}=${p}.${sign(p)}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${AC_DAYS * 86400}`; };
+export const artistClear = `${AC}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`;
+function artistSession(req) {
+  const raw = (req.headers.cookie || '').split(/;s*/).find(c => c.startsWith(AC + '='));
+  if (!raw) return null;
+  const [p, mac] = raw.slice(AC.length + 1).split('.');
+  if (!p || !mac || !same(mac, sign(p))) return null;
+  try { const s = JSON.parse(Buffer.from(p, 'base64url').toString('utf8')); return s && s.exp > Date.now() && /^a[0-9a-f]{12}$/.test(s.a) ? s.a : null; } catch (e) { return null; }
+}
+/** Login from the app's login page: an artist's username + password → his id (or null). */
+export async function artistLogin(name, password) {
+  if (!hotelsReady() || !name) return null;
+  const a = (await allJ(K.artists)).find(x => x.login?.username === name);
+  return a && checkPassword(password, a.login.hash) ? a.id : null;
+}
+const uname = v => String(v || '').trim().toLowerCase().replace(/[^a-z0-9._-]/g, '').slice(0, 40);
+
 const NETS = ['instagram', 'tiktok', 'youtube', 'facebook', 'spotify'];
 function cleanArtist(b, old = {}) {
   const nets = {};
@@ -40,6 +62,7 @@ function cleanArtist(b, old = {}) {
     color: color(b.color) || old.color || '#7a2e4d',
     nets, contacts,
     notes: b.notes != null ? str(b.notes, 3000) : old.notes || '',
+    login: old.login || null,
     createdAt: old.createdAt || now(), updatedAt: now(),
   };
 }
@@ -69,7 +92,18 @@ export default async function artistsHandler(req, res) {
       const a = await getJ(K.artists, String(q('view')));
       if (!a || !same(q('t'), artistToken(a.id))) return send(res, 404, { error: 'not-found' });
       const full = await withData(a, { forArtist: true });
-      const { contacts, notes, ...pub } = full;
+      const { contacts, notes, login, ...pub } = full;
+      return send(res, 200, { artist: pub });
+    }
+
+    /* ----- the artist himself, logged in to the app ----- */
+    if (q('me')) {
+      if (req.method === 'DELETE') { res.setHeader('Set-Cookie', artistClear); return send(res, 200, { ok: true }); }
+      const id = artistSession(req);
+      const a = id ? await getJ(K.artists, id) : null;
+      if (!a) return send(res, 401, { error: 'login' });
+      const full = await withData(a, { forArtist: true });
+      const { contacts, notes, login, ...pub } = full;
       return send(res, 200, { artist: pub });
     }
 
@@ -82,7 +116,7 @@ export default async function artistsHandler(req, res) {
 
     if (req.method === 'GET') {
       const list = (await allJ(K.artists)).sort((x, y) => String(x.createdAt).localeCompare(String(y.createdAt)));
-      const artists = await Promise.all(list.map(async a => ({ ...(await withData(a)), link: can.edit ? `/artist/#${a.id}.${artistToken(a.id)}` : '' })));
+      const artists = await Promise.all(list.map(async a => { const { login, ...x } = await withData(a); return { ...x, username: s.r === 'owner' ? login?.username || '' : undefined, link: can.edit ? `/artist/#${a.id}.${artistToken(a.id)}` : '' }; }));
       return send(res, 200, { can, artists });
     }
     if (req.method === 'POST' && body.op === 'artist') {
@@ -92,7 +126,24 @@ export default async function artistsHandler(req, res) {
       const a = cleanArtist(body, old || {});
       if (!a.name) return send(res, 400, { error: 'missing' });
       await setJ(K.artists, a.id, a);
-      return send(res, 200, { artist: a });
+      const { login, ...out } = a;
+      return send(res, 200, { artist: out });
+    }
+    // owner: the artist's username + password for the app (only the owner gives access)
+    if (req.method === 'POST' && body.op === 'access') {
+      if (s.r !== 'owner') return send(res, 403, { error: 'forbidden' });
+      const a = await getJ(K.artists, String(body.id || ''));
+      if (!a) return send(res, 404, { error: 'not-found' });
+      if (body.off) { a.login = null; await setJ(K.artists, a.id, a); return send(res, 200, { ok: true }); }
+      const name = uname(body.username), pw = String(body.password || '');
+      if (name.length < 3) return send(res, 400, { error: 'username' });
+      if (pw.length < 8) return send(res, 400, { error: 'password' });
+      const owner = await loadOwner().catch(() => ({ username: 'owner' }));
+      const taken = name === (owner.username || 'owner') || (await loadUsers().catch(() => [])).some(u => u.username === name) || (await allJ(K.artists)).some(x => x.id !== a.id && x.login?.username === name);
+      if (taken) return send(res, 409, { error: 'taken' });
+      a.login = { username: name, hash: hashPassword(pw), at: now() };
+      await setJ(K.artists, a.id, a);
+      return send(res, 200, { ok: true, username: name });
     }
     if (req.method === 'DELETE') {
       if (!can.del) return send(res, 403, { error: 'forbidden' });

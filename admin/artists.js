@@ -229,6 +229,12 @@ function editSheet(a) {
       <label class="f">מי מתקשר עליו <small>(שורה לכל אחד: שם, טלפון, תפקיד. כשאחד מהם מתקשר לטלפון של LBV, השיחה נכנסת לדף שלו)</small>
         <textarea name="contacts" rows="4" dir="auto" placeholder="שם, 050-0000000, מפיק">${esc((x.contacts || []).map(c => [c.name, c.phone, c.role].filter(Boolean).join(', ')).join('\n'))}</textarea></label>
       <label class="f">הערות פנימיות<textarea name="notes" rows="3" maxlength="3000">${esc(x.notes)}</textarea></label>
+      ${a && a.username !== undefined ? `<fieldset class="ar-fs ar-access"><legend>כניסה לאפליקציה <small>(הוא נכנס ב-lbv-portal-phi.vercel.app/admin ורואה רק את הדף שלו)</small></legend>
+        <p class="hint" data-acc-state>${a.username ? `יש לו כניסה. שם המשתמש: <b dir="ltr">${esc(a.username)}</b>` : 'עוד אין לו כניסה.'}</p>
+        <div class="f2"><label class="f">שם משתמש <small>(אותיות באנגלית)</small><input data-acc-user dir="ltr" autocomplete="off" maxlength="40" value="${esc(a.username || '')}" placeholder="aaron"></label>
+          <label class="f">סיסמה <small>(8 תווים לפחות)</small><input data-acc-pw type="password" dir="ltr" autocomplete="new-password" maxlength="100"></label></div>
+        <div class="ev-sheet__acts"><button class="btn" type="button" data-acc-save>${a.username ? 'עדכון הכניסה' : 'פתיחת כניסה'}</button>${a.username ? '<button class="btn btn--danger" type="button" data-acc-off>ביטול הכניסה</button>' : ''}</div>
+      </fieldset>` : ''}
       <div class="ev-sheet__acts"><button class="btn btn--gold" type="submit">${a ? 'שמירה' : 'הוספה'}</button>
         ${a && data.can?.del ? '<button class="btn btn--danger" type="button" data-del>הסרת האמן</button>' : ''}</div>
     </form></div>`);
@@ -245,6 +251,17 @@ function editSheet(a) {
       const j = await api('POST', '', { op: 'artist', id: a?.id, name: f.name, nameFr: f.nameFr, title: f.title, color: f.color, nets, contacts, notes: f.notes });
       cur = j.artist.id; close(); ctx.toast(a ? 'נשמר' : 'האמן נוסף'); ctx.rerender();
     } catch (e2) { fail(e2); }
+  });
+  const accErr = { username: 'שם המשתמש קצר מדי (3 אותיות לפחות)', password: 'הסיסמה צריכה 8 תווים לפחות', taken: 'שם המשתמש הזה כבר תפוס' };
+  $('[data-acc-save]', w)?.addEventListener('click', async () => {
+    try {
+      const j = await api('POST', '', { op: 'access', id: a.id, username: $('[data-acc-user]', w).value, password: $('[data-acc-pw]', w).value });
+      close(); ctx.toast(`נפתחה כניסה. שם המשתמש: ${j.username}`); ctx.rerender();
+    } catch (e2) { if (accErr[e2.message]) ctx.toast(accErr[e2.message], 'err'); else fail(e2); }
+  });
+  $('[data-acc-off]', w)?.addEventListener('click', async () => {
+    if (!confirm(`לבטל את הכניסה של ${a.name}? הקישור הפרטי שלו ממשיך לעבוד.`)) return;
+    try { await api('POST', '', { op: 'access', id: a.id, off: true }); close(); ctx.toast('הכניסה בוטלה'); ctx.rerender(); } catch (e2) { fail(e2); }
   });
   $('[data-del]', w)?.addEventListener('click', async () => {
     if (!confirm(`להסיר את ${a.name}? האירועים שלו נשארים בלוח.`)) return;

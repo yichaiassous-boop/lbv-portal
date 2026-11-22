@@ -1836,6 +1836,7 @@ $('#loginForm').addEventListener('submit', async e => {
   const r = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: e.target.username.value.trim(), password: e.target.password.value }) });
   if (!r.ok) { err.textContent = r.status === 503 ? 'עוד לא הוגדרה סיסמה לניהול.' : r.status === 429 ? 'יותר מדי ניסיונות. נסו שוב בעוד 15 דקות.' : 'הסיסמה לא נכונה. נסו שוב.'; err.hidden = false; return; }
   const j = await r.json().catch(() => ({}));
+  if (j.artist) { location.href = j.go || '/artist/'; return; }   // owner 22.11: an artist sees only his page
   me = j.user || null;
   e.target.reset();
   openApp().catch(() => toast('לא הצלחנו לטעון את התוכן', 'err'));
@@ -1851,6 +1852,8 @@ addEventListener('beforeunload', e => { if (state && changed()) { e.preventDefau
     const cfg = await (await fetch('/api/config', { cache: 'no-store' })).json();
     storage = cfg.storage;
     me = cfg.user || null;
-    if (cfg.authed) await openApp(); else showLogin();
+    if (cfg.authed) await openApp();
+    else if ((await fetch('/api/artists?me=1', { cache: 'no-store' })).ok) location.replace('/artist/');   // an artist logged in earlier
+    else showLogin();
   } catch (e) { console.error(e); showLogin(); }
 })();

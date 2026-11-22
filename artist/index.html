@@ -24,13 +24,19 @@
   .card__head { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
   .card__head h2 { font-size: 1.25rem; }
   .card__head p { margin: 2px 0 0; color: var(--ink-2); font-size: .88rem; }
+  .av-login { max-width: 380px; margin: 30px auto; display: grid; gap: 12px; }
+  .av-login h1 { font-size: 1.4rem; margin: 0; }
+  .av-login input { width: 100%; }
+  .av-login .err { color: #b42318; min-height: 1.2em; margin: 0; font-size: .9rem; }
+  .av-out { border: 1px solid var(--line); background: #fff; border-radius: 10px; padding: 6px 12px; font: inherit; cursor: pointer; color: var(--ink); }
   .icon { display: inline-grid; place-items: center; width: 38px; height: 38px; border: 1px solid var(--line); border-radius: 10px; background: #fff; cursor: pointer; font: inherit; color: var(--ink); }
 </style>
 </head>
 <body>
 <div class="av-wrap">
   <div class="av-top"><img src="/media/logo-letters.png" alt="La Belle Vie" width="49" height="34"><span id="note">הדף שלך אצלנו. רק אתה רואה אותו.</span>
-    <span class="ar-lang" role="group" aria-label="שפה / Langue"><button type="button" data-lang="he">עברית</button><button type="button" data-lang="fr" lang="fr">Français</button></span></div>
+    <span class="ar-lang" role="group" aria-label="שפה / Langue"><button type="button" data-lang="he">עברית</button><button type="button" data-lang="fr" lang="fr">Français</button></span>
+    <button type="button" class="av-out" id="out" hidden>יציאה</button></div>
   <main id="root" class="ar" aria-live="polite"><p class="av-msg">טוען…</p></main>
 </div>
 <script type="module">
@@ -49,15 +55,42 @@
     if (artist) { document.title = (lang === 'fr' && artist.nameFr ? artist.nameFr : artist.name) + ' – La Belle Vie'; drawArtist(root, artist, { sample: demo, lang }); }
   }
   document.querySelectorAll('[data-lang]').forEach(b => b.addEventListener('click', () => { lang = b.dataset.lang; qs.set('lang', lang); history.replaceState(null, '', '?' + qs + location.hash); paint(); }));
-  paint();
-  try {
-    const r = await fetch(`/api/artists?view=${encodeURIComponent(id || '')}&t=${encodeURIComponent(t || '')}`, { cache: 'no-store' });
-    if (!r.ok) throw new Error(r.status);
-    artist = (await r.json()).artist;
-    paint();
-  } catch (e) {
-    root.innerHTML = '<p class="av-msg"></p>'; root.firstChild.textContent = lang === 'fr' ? FR_ERR : 'הקישור לא תקין או שפג תוקפו. בקשו מ-La Belle Vie קישור חדש.';
+  // with a private link (#id.token) → that page; without → the artist's own login (cookie from /api/login)
+  const byLink = !!(id && t), out = document.getElementById('out');
+  const L = () => lang === 'fr'
+    ? { h: 'Connexion', u: 'Nom d’utilisateur', p: 'Mot de passe', b: 'Se connecter', e: 'Nom d’utilisateur ou mot de passe incorrect.', many: 'Trop d’essais. Réessayez dans 15 minutes.', out: 'Déconnexion' }
+    : { h: 'כניסה לדף שלך', u: 'שם משתמש', p: 'סיסמה', b: 'כניסה', e: 'שם המשתמש או הסיסמה לא נכונים.', many: 'יותר מדי ניסיונות. נסו שוב בעוד 15 דקות.', out: 'יציאה' };
+  function loginForm() {
+    const l = L();
+    root.innerHTML = `<form class="card av-login"><h1>${l.h}</h1>
+      <label class="f">${l.u}<input name="username" dir="ltr" autocomplete="username" required></label>
+      <label class="f">${l.p}<input name="password" type="password" dir="ltr" autocomplete="current-password" required></label>
+      <p class="err" role="alert"></p><button class="btn btn--gold" type="submit">${l.b}</button></form>`;
+    root.querySelector('form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const f = e.target, err = f.querySelector('.err'); err.textContent = '';
+      const r = await fetch('/api/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: f.username.value.trim(), password: f.password.value }) });
+      const j = await r.json().catch(() => ({}));
+      if (r.ok && j.artist) return load();
+      if (r.ok && j.user) { location.href = '/admin/'; return; }   // a manager logged in here by mistake
+      err.textContent = r.status === 429 ? L().many : L().e;
+    });
   }
+  async function load() {
+    const r = await fetch(byLink ? `/api/artists?view=${encodeURIComponent(id)}&t=${encodeURIComponent(t)}` : '/api/artists?me=1', { cache: 'no-store' });
+    if (!r.ok) {
+      if (!byLink && r.status === 401) { artist = null; out.hidden = true; return loginForm(); }
+      root.innerHTML = '<p class="av-msg"></p>'; root.firstChild.textContent = lang === 'fr' ? FR_ERR : 'הקישור לא תקין או שפג תוקפו. בקשו מ-La Belle Vie קישור חדש.';
+      return;
+    }
+    artist = (await r.json()).artist;
+    out.hidden = byLink; out.textContent = L().out;
+    paint();
+  }
+  out.addEventListener('click', async () => { await fetch('/api/artists?me=1', { method: 'DELETE' }); artist = null; out.hidden = true; loginForm(); });
+  document.querySelectorAll('[data-lang]').forEach(b => b.addEventListener('click', () => { out.textContent = L().out; if (!artist && root.querySelector('.av-login')) loginForm(); }));
+  paint();
+  load().catch(() => { root.innerHTML = '<p class="av-msg"></p>'; root.firstChild.textContent = lang === 'fr' ? 'Erreur de connexion. Réessayez.' : 'בעיית חיבור. נסו שוב.'; });
 </script>
 </body>
 </html>
