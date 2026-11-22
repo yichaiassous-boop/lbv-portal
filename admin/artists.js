@@ -42,6 +42,7 @@ let month = null, picked = null;
 /* ---------- owner 22.11: the artist page in French too (the artist's own link and the admin) ---------- */
 const FR = {
   months: ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'],
+  short: ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'],
   wd: ['D', 'L', 'M', 'M', 'J', 'V', 'S'],
   kind: { wedding: 'Mariage', barmitzvah: 'Bar-mitsva', batmitzvah: 'Bat-mitsva', shabbat: 'Chabbat \u2019hatan', gala: 'Soirée de gala', holiday: 'Séjour', show: 'Concert', other: 'Autre' },
   status: { option: 'Option', confirmed: 'Confirmé', done: 'Réalisé', cancelled: 'Annulé' },
@@ -134,7 +135,7 @@ export function drawArtist(root, a, opts = {}) {
   }));
 
   const row = e => `<button type="button" class="ev-row ev--${e.status}${e.sample ? ' is-sample' : ''}" style="--c:var(--ac)" ${e.sample ? 'disabled' : `data-ev="${esc(e.id)}"`}>
-    <span class="ev-row__date"><b>${+e.date.slice(8)}</b><small>${MO[+e.date.slice(5, 7) - 1].slice(0, fr ? 4 : 3)}</small></span>
+    <span class="ev-row__date"><b>${+e.date.slice(8)}</b><small>${fr ? FR.short[+e.date.slice(5, 7) - 1] : MO[+e.date.slice(5, 7) - 1].slice(0, 3)}</small></span>
     <span class="ev-row__main"><b>${esc(e.title)}${e.sample ? ` <em class="ar-tag">${T.tag}</em>` : ''}</b><small>${esc(KI[e.kind] || '')}${e.time ? ' · ' + esc(e.time) : ''}${e.place ? ' · ' + esc(e.place) : ''}${e.client ? ' · ' + esc(e.client) : ''}</small></span>
     <span class="ev-pill ev-pill--${e.status}">${ST[e.status]}</span></button>`;
   const dayList = picked ? on(picked) : [];
