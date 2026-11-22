@@ -338,7 +338,8 @@ mark { background: #FCE7A8; color: inherit; padding: 0 2px; border-radius: 3px; 
 .sm-q { flex: 1 1 220px; }
 .sm-bar--cat > .input { flex: 1 1 240px; }
 .sm-max { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); }
-.sm-max .input { width: 110px; }
+.sm-max .input { width: 110px; flex: none; }
+.sm-max, .sm-check { white-space: nowrap; flex: none; }
 .sm-check { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); cursor: pointer; }
 .sm-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .sm-chips button, .sm-chips label { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line); background: #fff; color: var(--ink); font: inherit; font-size: .9rem; cursor: pointer; }

@@ -349,13 +349,14 @@ export default async function hotelsHandler(req, res) {
         const a = e.artist && artists.find(x => x.id === e.artist);
         put(digits(e.phone), { cat: 'client', who: e.client || e.title || '', sub: [e.title, e.date].filter(Boolean).join(', '), eventId: e.id, artistId: a?.id, artist: a?.name, color: a?.color });
       }
+      const ilanSum = Object.fromEntries((await allJ(K.ilanCalls)).map(c => [c.id, c.summary || '']));
       const callDigits = c => digits(c.phone) || digits((String(c.name || '').match(/(\+?972|0)\d[\d\- ]{7,12}/) || [''])[0]);
       const list = (await allJ(K.calls)).sort((a2, b2) => String(b2.at || '').localeCompare(String(a2.at || ''))).slice(0, 300).map(c => {
         const d = callDigits(c), f = files[c.id];
         let k = book[d] ? { cat: book[d].cat, who: book[d].name, byHand: true } : byPhone.get(d);
         if (!k && f === 'ilan') k = { cat: 'ilan', who: 'אילן' };
         if (!k && f && f !== 'skip' && byHotelId.has(f)) k = byHotelId.get(f);
-        return { id: c.id, at: c.at, name: c.name, phone: d ? '0' + d.replace(/^0/, '') : '', url: c.url, summary: c.sum && !c.sum.error ? str(c.sum.summary || c.sum.answer || '', 600) : '', ...(k || { cat: 'other', who: '' }) };
+        return { id: c.id, at: c.at, name: c.name, phone: d ? '0' + d.replace(/^0/, '') : '', url: c.url, summary: c.sum && !c.sum.error ? str(c.sum.summary || c.sum.answer || '', 600) : str(ilanSum[c.id] || '', 600), ...(k || { cat: 'other', who: '' }) };
       });
       const counts = {};
       for (const c of list) counts[c.cat] = (counts[c.cat] || 0) + 1;
@@ -373,7 +374,8 @@ export default async function hotelsHandler(req, res) {
           const key = d.length >= 8 ? 'p' + d : 'n' + norm(ho.name) + '|' + norm(ho.city);
           const last = (ho.log || []).map(l => l.at).filter(Boolean).sort().pop() || ho.updatedAt || ho.createdAt || '';
           const calls = (ho.log || []).filter(l => l.t === 'call').length;
-          const mp = (ho.prices || []).filter(p => p.price > 0).sort((a2, b2) => a2.price - b2.price)[0] || null;
+          const kid = p => /ילד|ילדה|ילדים|תינוק|child|kid|enfant|bébé|baby/i.test([p.per, p.level, p.note].join(' '));   // a child's price is not the hotel's price
+          const mp = (ho.prices || []).filter(p => p.price > 0 && !kid(p)).sort((a2, b2) => a2.price - b2.price)[0] || null;
           const row = { key, name: ho.name, city: ho.city || '', area: sv.area || '', phone: ho.phone || '', contact: ho.contact || '', website: ho.website || '', rating: ho.rating || null,
             photo: (ho.myPhotos || [])[0] || (ho.photos || [])[0] || '', avail: ho.avail || 'unknown', availText: ho.availText || '', status: ho.status || 'new',
             min: mp ? { price: mp.price, per: mp.per || '', currency: mp.currency || 'ILS', what: [mp.level, mp.board].filter(Boolean).join(', ') } : null,
