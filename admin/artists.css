@@ -68,3 +68,17 @@
 .ar-lang button { min-height: 32px; padding: 0 12px; border: 0; border-radius: 999px; background: transparent; font: 700 .85rem inherit; font-family: inherit; color: var(--ink-2); cursor: pointer; }
 .ar-lang button[aria-pressed="true"] { background: var(--night); color: #fff; }
 .ar-pick { align-items: center; }
+
+/* the networks' numbers (owner 22.11) */
+.ar-nets { margin-top: 16px; border-top: 4px solid var(--ac, var(--ink)); }
+.ar-nets__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+.ar-net { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; display: grid; gap: 8px; align-content: start; }
+.ar-net__top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ar-net__top svg { width: 20px; height: 20px; color: var(--ac, var(--ink)); }
+.ar-net__top a { margin-inline-start: auto; color: var(--ink-2); font-size: .85rem; text-decoration: none; }
+.ar-net__top a:hover { text-decoration: underline; }
+.ar-net__nums { display: flex; gap: 18px; flex-wrap: wrap; }
+.ar-net__nums span { display: grid; }
+.ar-net__nums b { font-size: 1.45rem; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.ar-net__nums small, .ar-net__at, .ar-net__none { color: var(--ink-3); font-size: .82rem; margin: 0; }
+.ar-net .btn { justify-self: start; }

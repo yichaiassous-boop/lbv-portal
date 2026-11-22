@@ -162,3 +162,45 @@ function hotelCard(x, best) {
   el.querySelector('[data-open]').addEventListener('click', () => ctx.openHotel?.(x.surveys[x.surveys.length - 1]));
   return el;
 }
+
+/* ---------------- הרשתות (owner 22.11) ----------------
+   The numbers of Instagram / TikTok / YouTube of La Belle Vie and of every artist. YouTube updates by itself
+   (when the server has a YouTube key); the others are typed in with "עדכון מספרים" until the accounts are connected. */
+import { netsBlock, NET_FIELDS, NUM } from './artists.js';
+export async function netsPage(pg, c) {
+  ctx = c;
+  pg.append(h('<p class="hint">טוען…</p>'));
+  let d;
+  try { d = await (async () => { const r = await fetch('/api/nets', { cache: 'no-store' }); if (r.status === 401) { ctx.showLogin(); throw new Error('login'); } const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.error || r.status); return j; })(); }
+  catch (e) { pg.innerHTML = ''; fail(e); return; }
+  pg.innerHTML = '';
+  pg.append(h(`<p class="hint sm-note">${d.ytAuto ? 'יוטיוב מתעדכן לבד.' : 'יוטיוב יתעדכן לבד אחרי שנוסיף מפתח של יוטיוב.'} אינסטגרם וטיקטוק מתעדכנים בכפתור "עדכון מספרים", עד שנחבר את החשבונות.</p>`));
+  for (const ac of d.accounts || []) {
+    const el = netsBlock(ac.handles || {}, ac.stats || {}, 'he', { title: ac.name, onEdit: d.edit ? net => statSheet(ac, net) : null });
+    el.style.setProperty('--ac', ac.color || '#16203A');
+    pg.append(el);
+  }
+}
+function statSheet(ac, net) {
+  document.querySelector('.ev-sheet')?.remove();
+  const st = (ac.stats || {})[net] || {};
+  const name = { instagram: 'אינסטגרם', tiktok: 'טיקטוק', youtube: 'יוטיוב' }[net];
+  const w = h(`<div class="ev-sheet" role="dialog" aria-modal="true" aria-label="עדכון מספרים">
+    <form class="ev-sheet__card">
+      <div class="ev-sheet__top"><h2>${esc(ac.name)}: ${name}</h2><button class="icon" type="button" data-x aria-label="סגירה">✕</button></div>
+      <p class="hint">מעתיקים את המספרים מהפרופיל ${ac.handles?.[net] ? `(<a href="${net === 'instagram' ? 'https://www.instagram.com/' + esc(ac.handles[net]) + '/' : net === 'tiktok' ? 'https://www.tiktok.com/@' + esc(ac.handles[net]) : 'https://www.youtube.com/@' + esc(ac.handles[net])}" target="_blank" rel="noopener">לפתוח את הפרופיל</a>)` : ''}. מספר מלא, בלי K או M.</p>
+      <div class="f2">${NET_FIELDS[net].map(f => `<label class="f">${NUM[f][0]}<input name="${f}" inputmode="numeric" dir="ltr" value="${st[f] ?? ''}"></label>`).join('')}</div>
+      <div class="ev-sheet__acts"><button class="btn btn--gold" type="submit">לשמור</button></div>
+    </form></div>`);
+  const close = () => w.remove();
+  w.addEventListener('click', e => { if (e.target === w) close(); });
+  w.querySelector('[data-x]').addEventListener('click', close);
+  w.querySelector('form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const f = Object.fromEntries(new FormData(e.target));
+    const r = await fetch('/api/nets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key: ac.key, net, ...f }) });
+    if (r.ok) { close(); ctx.toast('נשמר'); ctx.rerender(); } else ctx.toast(r.status === 403 ? 'אין לך הרשאה לעדכן' : 'משהו השתבש. נסו שוב', 'err');
+  });
+  document.body.append(w);
+  w.querySelector('input').focus();
+}

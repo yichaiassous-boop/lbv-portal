@@ -12,6 +12,7 @@ import { isAuthed, readBody, hashPassword, checkPassword } from './_lib.js';
 import { loadUsers, loadOwner } from './_users.js';
 import { hotelsReady, kv, getJ, setJ, allJ } from './_hotels.js';
 import { areasOf } from './_areas.js';
+import { netStats } from './_nets.js';
 
 const K = { artists: 'ar:all', events: 'ev:all', calls: 'hs:calls' };
 const ROLES_EDIT = ['owner', 'admin'];
@@ -114,6 +115,7 @@ export default async function artistsHandler(req, res) {
       }
       const full = await withData(a, { forArtist: true });
       const { contacts, notes, login, ...pub } = full;
+      pub.netStats = await netStats(a.id, a.nets || {}).catch(() => ({}));   // his own numbers only
       return send(res, 200, { artist: pub, must: !!a.login?.must });
     }
 
@@ -126,7 +128,8 @@ export default async function artistsHandler(req, res) {
 
     if (req.method === 'GET') {
       const list = (await allJ(K.artists)).sort((x, y) => String(x.createdAt).localeCompare(String(y.createdAt)));
-      const artists = await Promise.all(list.map(async a => { const { login, ...x } = await withData(a); return { ...x, username: s.r === 'owner' ? login?.username || '' : undefined, link: can.edit ? `/artist/#${a.id}.${artistToken(a.id)}` : '' }; }));
+      const seeNets = (await areasOf(s)).includes('nets');   // owner 22.11: the owner chooses per manager who sees the numbers
+      const artists = await Promise.all(list.map(async a => { const { login, ...x } = await withData(a); if (seeNets) x.netStats = await netStats(a.id, a.nets || {}).catch(() => ({})); return { ...x, username: s.r === 'owner' ? login?.username || '' : undefined, link: can.edit ? `/artist/#${a.id}.${artistToken(a.id)}` : '' }; }));
       return send(res, 200, { can, artists });
     }
     if (req.method === 'POST' && body.op === 'artist') {

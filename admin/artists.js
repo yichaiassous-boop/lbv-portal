@@ -23,6 +23,33 @@ export const NETS = {
   spotify: { t: 'ספוטיפיי', url: x => `https://open.spotify.com/artist/${x}`, ic: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM7.5 9.5c3-1 6.5-.7 9 .8M8 12.5c2.5-.7 5.3-.4 7.4.8M8.6 15.4c2-.5 4-.3 5.6.6' },
 };
 
+/** The numbers of the networks (owner 22.11): followers / views / videos per network, with the date they are from. */
+const NUM = { followers: ['עוקבים', 'abonnés'], posts: ['פוסטים', 'publications'], likes: ['לייקים', 'j’aime'], videos: ['סרטונים', 'vidéos'], subs: ['מנויים', 'abonnés'], views: ['צפיות', 'vues'] };
+const NET_FIELDS = { instagram: ['followers', 'posts'], tiktok: ['followers', 'likes', 'videos'], youtube: ['subs', 'views', 'videos'] };
+const NET_FR = { instagram: 'Instagram', tiktok: 'TikTok', youtube: 'YouTube' };
+const big = (x, fr) => x == null ? '' : x >= 1e6 ? (x / 1e6).toFixed(x >= 1e7 ? 0 : 1).replace('.0', '') + 'M' : x >= 1e4 ? Math.round(x / 1e3) + 'K' : x.toLocaleString(fr ? 'fr-FR' : 'he-IL');
+export function netsBlock(handles, stats, lang = 'he', opts = {}) {
+  const fr = lang === 'fr', L = i => (fr ? i[1] : i[0]);
+  const nets = Object.keys(NET_FIELDS).filter(k => handles[k] || stats[k]);
+  const card = k => {
+    const st = stats[k] || {}, has = NET_FIELDS[k].some(f => st[f] != null);
+    const nums = has ? `<div class="ar-net__nums">${NET_FIELDS[k].filter(f => st[f] != null).map(f => `<span><b>${big(st[f], fr)}</b><small>${L(NUM[f])}</small></span>`).join('')}</div>
+      <small class="ar-net__at">${st.auto ? (fr ? 'Mis à jour automatiquement, ' : 'מתעדכן לבד, ') : (fr ? 'Chiffres du ' : 'נכון ל-')}${new Date(st.at).toLocaleDateString(fr ? 'fr-FR' : 'he-IL')}</small>`
+      : `<p class="ar-net__none">${fr ? 'Pas encore de chiffres' : 'עוד אין מספרים'}</p>`;
+    return `<div class="ar-net">
+      <div class="ar-net__top">${svg(NETS[k].ic)}<b>${fr ? NET_FR[k] : NETS[k].t}</b>${handles[k] ? `<a href="${esc(NETS[k].url(handles[k]))}" target="_blank" rel="noopener" dir="ltr">@${esc(handles[k])}</a>` : ''}</div>
+      ${nums}
+      ${opts.onEdit ? `<button type="button" class="btn btn--line btn--sm" data-net="${k}">עדכון מספרים</button>` : ''}
+    </div>`;
+  };
+  const el = h(`<section class="card ar-nets"><div class="card__head"><div><h2>${opts.title ? esc(opts.title) : fr ? 'Réseaux sociaux' : 'הרשתות'}</h2><p>${fr ? 'Les chiffres de chaque réseau' : 'המספרים של כל רשת'}</p></div></div>
+    ${nets.length ? `<div class="ar-nets__grid">${nets.map(card).join('')}</div>` : `<p class="hint">${fr ? 'Aucun réseau enregistré.' : 'עוד לא נשמרו רשתות. מוסיפים אותן ב"פרטים".'}</p>`}
+  </section>`);
+  $$('[data-net]', el).forEach(b => b.addEventListener('click', () => opts.onEdit(b.dataset.net)));
+  return el;
+}
+export { NET_FIELDS, NUM };
+
 /** Clearly marked example content, only on screen (nothing is saved): to show the page before real events are in. */
 function sample(a, fr) {
   const d = n => { const x = new Date(); x.setDate(x.getDate() + n); return iso(x); };
@@ -158,6 +185,7 @@ export function drawArtist(root, a, opts = {}) {
   const two = h('<div class="ar-two"></div>');
   two.append(cliCard, callCard);
   root.append(two);
+  if (a.netStats && !demo) root.append(netsBlock(a.nets || {}, a.netStats, lang));
 
   $$('[data-ev]', root).forEach(b => b.addEventListener('click', () => opts.onOpen?.(b.dataset.ev)));
   $('[data-new]', root)?.addEventListener('click', () => opts.onNew?.(picked || today()));
