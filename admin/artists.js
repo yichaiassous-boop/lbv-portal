@@ -89,9 +89,9 @@ export function drawArtist(root, a, opts = {}) {
       ${nets.length ? `<div class="ar-nets">${nets.map(([k, v]) => `<a class="ar-net" href="${esc(NETS[k].url(v))}" target="_blank" rel="noopener">${svg(NETS[k].ic)}<span>${fr ? FR.nets[k] : NETS[k].t}</span><bdi dir="ltr">@${esc(v)}</bdi></a>`).join('')}</div>` : ''}
     </div>
     ${opts.admin ? `<div class="ar-hero__acts">
-      ${opts.can?.edit ? '<button class="btn btn--gold btn--sm" type="button" data-new>${T.newEv}</button>' : ''}
-      ${opts.can?.edit ? '<button class="btn btn--ghost btn--sm" type="button" data-link>${T.link}</button>' : ''}
-      ${opts.can?.edit ? '<button class="btn btn--ghost btn--sm" type="button" data-edit>${T.edit}</button>' : ''}
+      ${opts.can?.edit ? `<button class="btn btn--gold btn--sm" type="button" data-new>${T.newEv}</button>` : ''}
+      ${opts.can?.edit ? `<button class="btn btn--ghost btn--sm" type="button" data-link>${T.link}</button>` : ''}
+      ${opts.can?.edit ? `<button class="btn btn--ghost btn--sm" type="button" data-edit>${T.edit}</button>` : ''}
     </div>` : ''}
   </header>`));
 
