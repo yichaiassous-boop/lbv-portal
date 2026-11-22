@@ -70,7 +70,8 @@
 .ar-pick { align-items: center; }
 
 /* the networks' numbers (owner 22.11) */
-.ar-nets { margin-top: 16px; border-top: 4px solid var(--ac, var(--ink)); }
+.ar-nets { display: block; margin-top: 16px; border-top: 4px solid var(--ac, var(--ink)); }
+.page > .ar-nets { margin-top: 0; }
 .ar-nets__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
 .ar-net { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; display: grid; gap: 8px; align-content: start; }
 .ar-net__top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
