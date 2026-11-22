@@ -442,7 +442,7 @@ function render() {
   if (page === 'ilan') return ilanPage(pg, { toast, showLogin, rerender: () => page === 'ilan' && render() });
   if (page === 'catalog') return catalogPage(pg, { toast, showLogin, rerender: () => page === 'catalog' && render(), openHotel: s => { if (!s) return; showHotel(s.surveyId, s.hotelId); go('hotels'); } });
   if (page === 'nets') return netsPage(pg, { toast, showLogin, rerender: () => page === 'nets' && render() });
-  if (page === 'calls') return callsPage(pg, { toast, showLogin, rerender: () => page === 'calls' && render() });
+  if (page === 'calls') return callsPage(pg, { toast, showLogin, rerender: () => page === 'calls' && render(), quote: pageAllowed('quotes') ? x => startQuote(fromCall(x)) : null });
   if (page === 'hotels') return hotelsPage(pg, { toast, showLogin, rerender: () => page === 'hotels' && render(), upload: hotelPhoto });
   ({ dashboard, inbox, mail, quotes, team, contact, banners, stats, guide, support, users, account })[page](pg);
 }
@@ -1369,6 +1369,7 @@ function account(pg) {
 
 /* ---------- 14. quotes: build a branded quote, send it, see when the client approves ---------- */
 let quotesList = null, quoteCat = null, qEdit = null, qDirty = false, qCatLang = 'he';
+let qCall = null;   // owner 22.11: the call this draft came from { who, phone, at, summary } (shown above the editor, not saved in the quote)
 const qOpen = new Set();   // services whose details are open in the editor
 const Q_STATUS = { draft: ['טיוטה', 'tag--muted'], sent: ['נשלחה', 'tag--blue'], accepted: ['אושרה', 'tag--ok'] };
 const Q_TYPES = { he: ['ערב דינר / התרמה', 'חתונה', 'בר מצווה', 'בת מצווה', 'נופש סוכות', 'נופש פסח', 'אירוע חברה', 'ניהול רשתות חברתיות'], fr: ['Gala / dîner de bienfaisance', 'Mariage', 'Bar-mitsva', 'Bat-mitsva', 'Séjour Souccot', 'Séjour Pessah', 'Événement d’entreprise', 'Réseaux sociaux'] };
@@ -1423,8 +1424,18 @@ function newQuote(lead) {
     closing: D.closing, tagline: D.tagline, leadId: lead?.id || '',
   };
 }
+/** What a call tells about the event: type, date, guests (plain reading of the summary; anything not found stays empty). */
+function fromCall(x) {
+  const t = String(x.summary || '');
+  const TYPES = [['בר מצווה', 'בר מצווה'], ['בר-מצווה', 'בר מצווה'], ['בת מצווה', 'בת מצווה'], ['בת-מצווה', 'בת מצווה'], ['חתונה', 'חתונה'], ['שבת חתן', 'שבת חתן'], ['גאלה', 'ערב דינר / התרמה'], ['התרמה', 'ערב דינר / התרמה'], ['סוכות', 'נופש סוכות'], ['פסח', 'נופש פסח'], ['אירוע חברה', 'אירוע חברה'], ['הופעה', 'הופעה']];
+  const type = (TYPES.find(([k]) => t.includes(k)) || [])[1] || '';
+  const g = t.match(/(\d{2,4})\s*(אורחים|איש|אנשים|משתתפים|מוזמנים)/);
+  const d = t.match(/\b(\d{1,2})[./](\d{1,2})(?:[./](\d{2,4}))?\b/);
+  return { name: x.who && x.cat !== 'other' ? x.who : '', phone: x.phone || '', service: type, guests: g ? g[1] : '', date: d ? d[0] : '', call: { who: x.who || x.name || '', phone: x.phone || '', at: x.at, summary: t, artist: x.artist || (x.cat === 'artist' ? x.who : '') } };
+}
 async function startQuote(lead) {
   await loadQuoteCatalog();
+  qCall = lead?.call || null;
   qEdit = newQuote(lead); qDirty = !!lead; qOpen.clear();
   if (page === 'quotes') render(); else go('quotes');
 }
@@ -1454,7 +1465,7 @@ function quotes(pg) {
         <a class="btn btn--line btn--sm" href="${esc(qLink(q))}" target="_blank" rel="noopener">צפייה</a>
         <button type="button" class="btn btn--line btn--sm" data-copy>העתקת קישור</button>
         <button type="button" class="icon icon--del" data-del title="מחיקה">✕</button></div></article>`);
-    $('[data-edit]', row).addEventListener('click', () => { qEdit = clone(q); qDirty = false; qOpen.clear(); render(); });
+    $('[data-edit]', row).addEventListener('click', () => { qEdit = clone(q); qCall = null; qDirty = false; qOpen.clear(); render(); });
     $('[data-copy]', row).addEventListener('click', async () => { try { await navigator.clipboard.writeText(qLink(q)); toast('הקישור הועתק'); } catch (e) { prompt('הקישור להצעה:', qLink(q)); } });
     $('[data-del]', row).addEventListener('click', async () => {
       if (!confirm(`למחוק את ההצעה ${q.number}? אי אפשר לשחזר.`)) return;
@@ -1486,7 +1497,7 @@ function quoteEditor(pg) {
     $('[data-total]', head).textContent = txt;
     totalEls.forEach(f => f(t));
   };
-  $('[data-back]', head).addEventListener('click', () => { if (qDirty && !confirm('יש שינויים שלא נשמרו. לצאת בלי לשמור?')) return; qEdit = null; render(); });
+  $('[data-back]', head).addEventListener('click', () => { if (qDirty && !confirm('יש שינויים שלא נשמרו. לצאת בלי לשמור?')) return; qEdit = null; qCall = null; render(); });
   $('[data-save]', head).addEventListener('click', async () => { if (await saveQuote()) { toast('ההצעה נשמרה'); reDraw(); } });
   $('[data-view]', head).addEventListener('click', async () => {
     const w = window.open('', '_blank');
@@ -1774,6 +1785,9 @@ function quoteEditor(pg) {
     field('פסקת סיום', q.closing, v => { q.closing = v; dirty(); }, { multi: true, rows: 3 }),
     field('שורת הסיום (מתחת לשם La Belle Vie)', q.tagline, v => { q.tagline = v; dirty(); }));
   c3.append(det);
+  if (qCall) pg.append(html(`<section class="card qcall"><h3>מה הלקוח ביקש בשיחה${qCall.artist ? ` (על ${esc(qCall.artist)})` : ''}</h3>
+    <p class="hint">${esc(qCall.who)}${qCall.phone ? ` · <span dir="ltr">${esc(qCall.phone)}</span>` : ''}${qCall.at ? ' · ' + new Date(qCall.at).toLocaleString('he-IL', { day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}. רק אתם רואים את זה, זה לא נכנס להצעה.</p>
+    <p>${qCall.summary ? esc(qCall.summary) : 'לשיחה הזאת עוד אין סיכום. ממלאים את הפרטים לפי מה שזוכרים מהשיחה.'}</p></section>`));
   pg.append(head, c1, c2, c4);
   drawTotal();
 }

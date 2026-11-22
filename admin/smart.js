@@ -73,10 +73,12 @@ function callRow(x) {
     </div>
     <div class="sm-call__acts">
       ${url ? `<a class="btn btn--line" href="${esc(url)}" target="_blank" rel="noopener">להקשיב</a>` : ''}
+      ${ctx.quote && !['ilan', 'hotel', 'supplier', 'team', 'private'].includes(x.cat) ? '<button type="button" class="btn btn--gold" data-q>הצעת מחיר</button>' : ''}
       ${x.phone ? `<button type="button" class="btn btn--line" data-tag>${x.cat === 'other' ? 'מי זה?' : 'לשנות'}</button>` : ''}
     </div>
   </article>`);
   el.querySelector('[data-tag]')?.addEventListener('click', () => tagSheet(x));
+  el.querySelector('[data-q]')?.addEventListener('click', () => ctx.quote(x));
   return el;
 }
 
