@@ -42,7 +42,7 @@ export function netsBlock(handles, stats, lang = 'he', opts = {}) {
       ${opts.onEdit ? `<button type="button" class="btn btn--line btn--sm" data-net="${k}">עדכון מספרים</button>` : ''}
     </div>`;
   };
-  const el = h(`<section class="card ar-nets"><div class="card__head"><div><h2>${opts.title ? esc(opts.title) : fr ? 'Réseaux sociaux' : 'הרשתות'}</h2><p>${fr ? 'Les chiffres de chaque réseau' : 'המספרים של כל רשת'}</p></div></div>
+  const el = h(`<section class="card ar-nums"><div class="card__head"><div><h2>${opts.title ? esc(opts.title) : fr ? 'Réseaux sociaux' : 'הרשתות'}</h2><p>${fr ? 'Les chiffres de chaque réseau' : 'המספרים של כל רשת'}</p></div></div>
     ${nets.length ? `<div class="ar-nets__grid">${nets.map(card).join('')}</div>` : `<p class="hint">${fr ? 'Aucun réseau enregistré.' : 'עוד לא נשמרו רשתות. מוסיפים אותן ב"פרטים".'}</p>`}
   </section>`);
   $$('[data-net]', el).forEach(b => b.addEventListener('click', () => opts.onEdit(b.dataset.net)));
