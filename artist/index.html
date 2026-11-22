@@ -18,7 +18,7 @@
   body { min-height: 100vh; }
   .av-wrap { width: min(1120px, 100%); margin: 0 auto; padding: 18px 16px 48px; }
   .av-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; color: var(--ink-2); font-size: .88rem; }
-  .av-top img { height: 34px; width: auto; }
+  .av-top img { height: 34px; width: auto; filter: brightness(0); opacity: .85; }
   .av-msg { padding: 40px 20px; text-align: center; color: var(--ink-2); }
   .card { background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 18px; box-shadow: var(--shadow); }
   .card__head { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
@@ -45,6 +45,7 @@
     document.documentElement.lang = lang; document.documentElement.dir = lang === 'fr' ? 'ltr' : 'rtl';
     document.getElementById('note').textContent = lang === 'fr' ? 'Votre page chez nous. Vous seul la voyez.' : 'הדף שלך אצלנו. רק אתה רואה אותו.';
     document.querySelectorAll('[data-lang]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.lang === lang)));
+    if (!artist && root.querySelector('.av-msg')) root.querySelector('.av-msg').textContent = lang === 'fr' ? 'Chargement…' : 'טוען…';
     if (artist) { document.title = (lang === 'fr' && artist.nameFr ? artist.nameFr : artist.name) + ' – La Belle Vie'; drawArtist(root, artist, { sample: demo, lang }); }
   }
   document.querySelectorAll('[data-lang]').forEach(b => b.addEventListener('click', () => { lang = b.dataset.lang; qs.set('lang', lang); history.replaceState(null, '', '?' + qs + location.hash); paint(); }));
