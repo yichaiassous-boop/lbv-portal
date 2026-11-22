@@ -1211,6 +1211,21 @@ async function support(pg) {
 }
 
 /** A short tour that points at each part of the screen. Shown once on the first visit, and from "הדרכה". */
+/** The first time someone opens the app: one short window, 3 lines, once. Everything else is in "עזרה" → "הדרכה". */
+function welcome() {
+  if (me?.must) return;   // a first-time password is changed first
+  try { if (localStorage.getItem('lbv-welcome') || localStorage.getItem('lbv-admin-tour')) return; localStorage.setItem('lbv-welcome', '1'); } catch (e) { return; }
+  const el = html(`<div class="tour" role="dialog" aria-modal="true" aria-label="ברוכים הבאים" style="background:rgba(10,16,35,.45)"><div class="tour__card" style="top:50%;left:50%;transform:translate(-50%,-50%)">
+    <h3>ברוכים הבאים${me && me.role !== 'owner' && me.name ? ', ' + esc(me.name) : ''}</h3>
+    <p>${IN_APP ? 'במסך הבית לוחצים על אריח כדי להיכנס: לוח אירועים, מלונות, אמנים ועוד.' : 'בשורה למעלה בוחרים תחום: לוח אירועים, מלונות, אמנים ועוד.'}<br>רואים רק את מה שפתחו לכם.<br>צריכים עזרה? "עזרה" ואז "הדרכה".</p>
+    <div class="tour__foot"><span></span><button type="button" class="btn btn--gold btn--sm" data-ok>הבנתי</button></div></div></div>`);
+  const close = () => el.remove();
+  $('[data-ok]', el).addEventListener('click', close);
+  el.addEventListener('click', e => { if (e.target === el) close(); });
+  el.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
+  document.body.append(el);
+  $('[data-ok]', el).focus();
+}
 function tour(force) {
   try { if (!force && localStorage.getItem('lbv-admin-tour')) return; localStorage.setItem('lbv-admin-tour', '1'); } catch (e) {}
   const steps = [
@@ -1813,8 +1828,8 @@ async function openApp() {
   $$('#langPick button').forEach(x => x.setAttribute('aria-selected', String(x.dataset.lang === lang)));
   const start = location.hash.slice(1);
   go(allPages().some(p => p.id === start) ? start : IN_APP ? 'apphome' : 'dashboard');
-  if (!IN_APP) setTimeout(() => tour(false), 600);
-  else appBar();
+  if (IN_APP) appBar();
+  setTimeout(welcome, 600);   // owner 22.11: one short window, once (the full tour stays in עזרה)
   $('#me').onclick = () => go('account');
   $('#me').title = 'החשבון שלי';
   $('#me').innerHTML = !me ? '' : me.role === 'owner' ? '<span>הבעלים</span><small>כל ההרשאות</small>' : `${esc(me.name)}<small>${ROLE[me.role]?.[0] || ''}</small>`;

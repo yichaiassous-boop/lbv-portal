@@ -52,7 +52,7 @@ export async function hotelsPage(pg, c) {
   pg.append(modeBar());
   if (openSurvey && cur) surveyView(pg); else { pg.append(lookupCard()); homeView(pg); }
   lastSeen = lastSeen || home.connection?.last || null; startPolling();
-  if (!wizSeen) { const st0 = stepsState(), i = st0.findIndex(x => !x.done); if (i >= 0 && !(st0[i].id === 'rec' && !phoneUA())) setTimeout(() => openWizard(i), 500); else wizSeen = true; }
+  // owner 22.11: no window pops up by itself any more; the "חיבור למערכת" card on the page opens it
 }
 const again = () => ctx.rerender();
 async function refreshHome() { home = await api('GET'); pushWindows(); }
