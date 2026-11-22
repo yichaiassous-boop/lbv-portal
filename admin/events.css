@@ -1,6 +1,6 @@
 /* ---------- לוח אירועים, השלט, and the home screen of the LBV app ---------- */
-:root { --ev-option: #C99A3A; --ev-confirmed: #15803D; --ev-done: #7A86A2; --ev-cancelled: #B91C1C; }
-.ev--option { --c: var(--ev-option); } .ev--confirmed { --c: var(--ev-confirmed); } .ev--done { --c: var(--ev-done); } .ev--cancelled { --c: var(--ev-cancelled); }
+:root { --ev-talk: #2F6DB5; --ev-quote: #7A4FB0; --ev-option: #C99A3A; --ev-confirmed: #15803D; --ev-done: #7A86A2; --ev-cancelled: #B91C1C; }
+.ev--talk { --c: var(--ev-talk); } .ev--quote { --c: var(--ev-quote); } .ev--option { --c: var(--ev-option); } .ev--confirmed { --c: var(--ev-confirmed); } .ev--done { --c: var(--ev-done); } .ev--cancelled { --c: var(--ev-cancelled); }
 
 /* the month */
 .cal { padding: 20px; }
@@ -52,7 +52,7 @@
 .ev-row__main small { color: var(--ink-2); font-size: .84rem; }
 .ev--cancelled .ev-row__main b { text-decoration: line-through; color: var(--ink-3); }
 .ev-pill { padding: 3px 10px; border-radius: 999px; font-size: .76rem; font-weight: 700; white-space: nowrap; color: var(--c); background: color-mix(in srgb, var(--c) 12%, #fff); }
-.ev-pill--option { --c: var(--ev-option); } .ev-pill--confirmed { --c: var(--ev-confirmed); } .ev-pill--done { --c: var(--ev-done); } .ev-pill--cancelled { --c: var(--ev-cancelled); }
+.ev-pill--talk { --c: var(--ev-talk); } .ev-pill--quote { --c: var(--ev-quote); } .ev-pill--option { --c: var(--ev-option); } .ev-pill--confirmed { --c: var(--ev-confirmed); } .ev-pill--done { --c: var(--ev-done); } .ev-pill--cancelled { --c: var(--ev-cancelled); }
 
 /* the add / change sheet */
 .ev-sheet { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: 16px; background: rgba(11, 20, 48, .55); }

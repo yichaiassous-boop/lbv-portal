@@ -10,7 +10,7 @@ const today = () => iso(new Date());
 const dmy = s => (s || '').split('-').reverse().join('.');
 
 export const KIND = { wedding: 'חתונה', barmitzvah: 'בר מצווה', batmitzvah: 'בת מצווה', shabbat: 'שבת חתן', gala: 'ערב גאלה', holiday: 'נופש / חג', show: 'הופעה', other: 'אחר' };
-export const STATUS = { option: 'אופציה', confirmed: 'סגור', done: 'בוצע', cancelled: 'בוטל' };
+export const STATUS = { talk: 'בשיחה', quote: 'נשלחה הצעה', option: 'אופציה', confirmed: 'סגור', done: 'בוצע', cancelled: 'בוטל' };
 const MONTHS = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
 const WD = ['א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ש׳'];
 const WD_LONG = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
@@ -157,7 +157,7 @@ function draw(pg) {
 /** The add / change sheet. */
 function openSheet(ev, date, artistId) {
   $('.ev-sheet')?.remove();
-  const canEdit = data.can?.edit, e = ev || { date: date || today(), status: 'option', kind: artistId ? 'show' : 'wedding', artist: artistId || '' };
+  const canEdit = data.can?.edit, e = ev || { date: date || today(), status: artistId ? 'talk' : 'option', kind: artistId ? 'show' : 'wedding', artist: artistId || '' };
   const ro = !canEdit ? 'disabled' : '';
   const opt = (map, v) => Object.entries(map).map(([k, t]) => `<option value="${k}"${k === v ? ' selected' : ''}>${t}</option>`).join('');
   const w = h(`<div class="ev-sheet" role="dialog" aria-modal="true" aria-label="${ev ? 'פרטי האירוע' : 'אירוע חדש'}">

@@ -55,9 +55,9 @@ function sample(a, fr) {
   const d = n => { const x = new Date(); x.setDate(x.getDate() + n); return iso(x); };
   const ev = (n, title, kind, place, client, status, time) => ({ id: 'sample' + n, sample: true, artist: a.id, title, kind, place, client, status, date: d(n), time, guests: '' });
   return {
-    events: fr ? [ev(4, 'Mariage en salle', 'wedding', 'Jérusalem', 'Client (exemple)', 'confirmed', '21:30'), ev(11, 'Bar-mitsva', 'barmitzvah', 'Tel-Aviv', 'Client (exemple)', 'option', '20:00'),
-      ev(19, 'Concert pour une soirée de gala', 'show', 'Hôtel à la mer Morte', 'Client (exemple)', 'option', '22:00')] : [ev(4, 'חתונה באולם', 'wedding', 'ירושלים', 'לקוח לדוגמה', 'confirmed', '21:30'), ev(11, 'בר מצווה', 'barmitzvah', 'תל אביב', 'לקוח לדוגמה', 'option', '20:00'),
-      ev(19, 'הופעה בערב גאלה', 'show', 'מלון בים המלח', 'לקוח לדוגמה', 'option', '22:00')],
+    events: fr ? [ev(4, 'Mariage en salle', 'wedding', 'Jérusalem', 'Client (exemple)', 'confirmed', '21:30'), ev(11, 'Bar-mitsva', 'barmitzvah', 'Tel-Aviv', 'Client (exemple)', 'quote', '20:00'), ev(26, 'Mariage', 'wedding', 'Netanya', 'Client (exemple)', 'talk', '21:00'),
+      ev(19, 'Concert pour une soirée de gala', 'show', 'Hôtel à la mer Morte', 'Client (exemple)', 'talk', '22:00')] : [ev(4, 'חתונה באולם', 'wedding', 'ירושלים', 'לקוח לדוגמה', 'confirmed', '21:30'), ev(11, 'בר מצווה', 'barmitzvah', 'תל אביב', 'לקוח לדוגמה', 'quote', '20:00'), ev(26, 'חתונה', 'wedding', 'נתניה', 'לקוח לדוגמה', 'talk', '21:00'),
+      ev(19, 'הופעה בערב גאלה', 'show', 'מלון בים המלח', 'לקוח לדוגמה', 'talk', '22:00')],
     calls: fr ? [{ id: 's1', sample: true, at: new Date(Date.now() - 2 * 36e5).toISOString(), who: { name: 'Client (exemple)', role: 'Demande une date libre' }, summary: 'Exemple\u00a0: demande un devis pour chanter à un mariage, environ 300 invités.' },
       { id: 's2', sample: true, at: new Date(Date.now() - 26 * 36e5).toISOString(), who: { name: 'Producteur (exemple)', role: 'Producteur' }, summary: '' }] : [{ id: 's1', sample: true, at: new Date(Date.now() - 2 * 36e5).toISOString(), who: { name: 'לקוח לדוגמה', role: 'שאל על תאריך פנוי' }, summary: 'דוגמה: מבקש הצעת מחיר להופעה בחתונה, כ-300 אורחים.' },
       { id: 's2', sample: true, at: new Date(Date.now() - 26 * 36e5).toISOString(), who: { name: 'מפיק לדוגמה', role: 'מפיק' }, summary: '' }],
@@ -72,18 +72,18 @@ const FR = {
   short: ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'],
   wd: ['D', 'L', 'M', 'M', 'J', 'V', 'S'],
   kind: { wedding: 'Mariage', barmitzvah: 'Bar-mitsva', batmitzvah: 'Bat-mitsva', shabbat: 'Chabbat \u2019hatan', gala: 'Soirée de gala', holiday: 'Séjour', show: 'Concert', other: 'Autre' },
-  status: { option: 'Option', confirmed: 'Confirmé', done: 'Réalisé', cancelled: 'Annulé' },
+  status: { talk: 'En discussion', quote: 'Devis envoyé', option: 'Option', confirmed: 'Confirmé', done: 'Réalisé', cancelled: 'Annulé' },
   nets: { instagram: 'Instagram', tiktok: 'TikTok', youtube: 'YouTube', facebook: 'Facebook', spotify: 'Spotify' },
   title: { 'זמר': 'Chanteur', 'זמרת': 'Chanteuse' },
 };
 const TXT = {
-  he: { up: 'אירועים קרובים', clients: 'לקוחות', calls: 'שיחות עליו', newEv: '+ אירוע שלו', link: 'הקישור שלו', edit: 'פרטים', tag: 'לדוגמה',
+  he: { talking: 'בשיחה עכשיו', quotes: 'הצעות מחיר נשלחו', closed: 'אירועים סגורים', up: 'אירועים קרובים', clients: 'לקוחות', calls: 'שיחות עליו', newEv: '+ אירוע שלו', link: 'הקישור שלו', edit: 'פרטים', tag: 'לדוגמה',
     demo: 'מוצגת דוגמה: האירועים והשיחות המסומנים "לדוגמה" לא שמורים, רק כדי להראות איך הדף נראה.', hide: 'להסתיר את הדוגמה', none: 'עוד אין אירועים שלו בלוח.', show: 'להראות דוגמה',
     today: 'היום', prev: 'החודש הקודם', next: 'החודש הבא', picked: 'ביום שבחרת', upT: 'האירועים הקרובים', from: 'מהיום והלאה', noUp: 'אין אירועים קרובים', events: 'אירועים',
     cliT: 'הלקוחות', cliS: 'מי הזמין אותו, ולאיזה אירוע', cliE: 'הלקוחות יופיעו כאן כשיתווספו אירועים', call: 'התקשרות',
     callT: 'שיחות עליו', callS: 'מהמספרים של הלקוחות ושל האנשים שלו, מהטלפון של LBV', callE: 'כשמישהו מהמספרים שלו יתקשר, השיחה תופיע כאן לבד', callMine: 'השיחות שקשורות אליך יופיעו כאן', rec: 'הקלטה',
     in: (d, m) => `${d} ב${m}` },
-  fr: { up: 'Événements à venir', clients: 'Clients', calls: 'Appels', newEv: '+ Événement', link: 'Son lien', edit: 'Fiche', tag: 'exemple',
+  fr: { talking: 'En discussion', quotes: 'Devis envoyés', closed: 'Dates confirmées', up: 'Événements à venir', clients: 'Clients', calls: 'Appels', newEv: '+ Événement', link: 'Son lien', edit: 'Fiche', tag: 'exemple',
     demo: 'Aperçu\u00a0: les événements et les appels marqués «\u00a0exemple\u00a0» ne sont pas enregistrés, ils montrent simplement à quoi ressemble la page.', hide: 'Masquer l\u2019exemple', none: 'Aucun événement dans l\u2019agenda pour le moment.', show: 'Voir un exemple',
     today: 'Aujourd\u2019hui', prev: 'Mois précédent', next: 'Mois suivant', picked: 'Le jour choisi', upT: 'Prochains événements', from: 'À partir d\u2019aujourd\u2019hui', noUp: 'Aucun événement à venir', events: 'événements',
     cliT: 'Clients', cliS: 'Qui l\u2019a engagé, et pour quel événement', cliE: 'Les clients apparaîtront ici dès qu\u2019un événement sera ajouté', call: 'Appeler',
@@ -103,6 +103,10 @@ export function drawArtist(root, a, opts = {}) {
   const events = demo ? [...(a.events || []), ...demo.events] : a.events || [];
   const calls = demo ? [...(a.calls || []), ...demo.calls] : a.calls || [];
   const up = events.filter(e => (e.end || e.date) >= today() && e.status !== 'cancelled');
+  // owner 22.11: the three squares = where the work with clients stands (in talks / quote sent / closed)
+  const talking = events.filter(e => (e.status === 'talk' || e.status === 'option') && (e.end || e.date) >= today()).length;
+  const quotes = events.filter(e => e.status === 'quote' && (e.end || e.date) >= today()).length;
+  const closed = events.filter(e => e.status === 'confirmed' || e.status === 'done').length;
   const clients = [];
   for (const e of events) if (e.client && !clients.some(c => c.name === e.client && c.ev === e.title)) clients.push({ name: e.client, phone: e.phone || '', ev: e.title, date: e.date, sample: e.sample });
   const nets = Object.entries(a.nets || {}).filter(([k, v]) => NETS[k] && v);
@@ -123,9 +127,9 @@ export function drawArtist(root, a, opts = {}) {
   </header>`));
 
   root.append(h(`<div class="ar-stats">
-    <div><b>${up.length}</b><span>${T.up}</span></div>
-    <div><b>${clients.length}</b><span>${T.clients}</span></div>
-    <div><b>${calls.length}</b><span>${T.calls}</span></div>
+    <div><b>${talking}</b><span>${T.talking}</span></div>
+    <div><b>${quotes}</b><span>${T.quotes}</span></div>
+    <div><b>${closed}</b><span>${T.closed}</span></div>
   </div>`));
   if (demo) root.append(h(`<p class="ar-demo">${svg('M12 8v5M12 16v.01M10.3 3.9 2.6 17a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z')}${T.demo}${opts.onSample ? ` <button type="button" class="ar-demo__off" data-sample>${T.hide}</button>` : ''}</p>`));
   else if (opts.onSample && !events.length) root.append(h(`<p class="ar-demo ar-demo--soft">${T.none} <button type="button" class="ar-demo__off" data-sample>${T.show}</button></p>`));

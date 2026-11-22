@@ -23,7 +23,7 @@ import { areasOf } from './_areas.js';
 
 const K = { events: 'ev:all' };
 const KINDS = ['wedding', 'barmitzvah', 'batmitzvah', 'shabbat', 'gala', 'holiday', 'show', 'other'];
-const STATUS = ['option', 'confirmed', 'done', 'cancelled'];
+const STATUS = ['talk', 'quote', 'option', 'confirmed', 'done', 'cancelled'];   // talk / quote added 22.11 (owner: the artist's page counts them)
 const ROLES_EDIT = ['owner', 'admin', 'sales'], ROLES_DEL = ['owner', 'admin'];
 
 const send = (res, code, obj) => res.status(code).json(obj);
