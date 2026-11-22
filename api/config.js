@@ -42,7 +42,7 @@ export default async function handler(req, res) {
     storage: storageReady() ? 'blob' : 'none',
     configured: Boolean(process.env.ADMIN_PASSWORD),
     authed: !!s,
-    user: s ? { id: s.id || '', name: s.n, role: s.r, areas } : null,
+    user: s ? { id: s.id || '', name: s.n, role: s.r, areas, must: s.r !== 'owner' && await loadUsers().then(l => !!(l.find(u => u.id === s.id) || {}).must).catch(() => false) } : null,
     leads: leadsReady(),
   });
 }

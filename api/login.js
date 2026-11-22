@@ -39,7 +39,7 @@ export default async function handler(req, res) {
     const list = await loadUsers();
     const u = list.find(x => x.username === name);
     if (u && checkPassword(password, u.hash)) {
-      user = { id: u.id, n: u.name, r: u.role };
+      user = { id: u.id, n: u.name, r: u.role, must: !!u.must };
       u.last = new Date().toISOString();
       saveUsers(list).catch(() => {});
     }
@@ -56,5 +56,5 @@ export default async function handler(req, res) {
   }
   await cleared(req);
   res.setHeader('Set-Cookie', [sessionCookie(user), artistClear]);
-  return res.status(200).json({ ok: true, storage: storageReady() ? 'blob' : 'none', user: { id: user.id || '', name: user.n, role: user.r, areas: await areasOf(user) } });
+  return res.status(200).json({ ok: true, storage: storageReady() ? 'blob' : 'none', user: { id: user.id || '', name: user.n, role: user.r, areas: await areasOf(user), must: !!user.must } });
 }

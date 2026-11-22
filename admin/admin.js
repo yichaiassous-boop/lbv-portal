@@ -10,7 +10,8 @@ const LNAME = { he: 'עברית', fr: 'צרפתית', en: 'אנגלית' };
 const DIR = { he: 'rtl', fr: 'ltr', en: 'ltr' };
 const E = window.LBVEdit;
 import { QUOTE_DEFAULTS } from "../quote/defaults.js";
-import { hotelsPage } from "./hotels.js";
+import { hotelsPage, showHotel } from "./hotels.js";
+import { callsPage, catalogPage } from "./smart.js";
 import { ilanPage } from "./ilan.js";
 import { artistsPage } from "./artists.js";
 import { eventsPage, remotePage, appHome, appSite, appHolidays } from "./events.js";
@@ -318,7 +319,9 @@ const GROUPS = () => [
   { id: 'events', name: 'לוח אירועים', pages: [{ id: 'events', title: 'לוח אירועים', sub: 'כל האירועים של LBV במקום אחד: מתי, איפה, עם מי, ובאיזה מצב' }] },
   { id: 'artists', name: 'אמנים', pages: [{ id: 'artists', title: 'אמנים', sub: 'האמנים שאנחנו מייצגים: לוח שנה בצבע של כל אחד, הלקוחות, הרשתות והשיחות עליו' }] },
   { id: 'screens', name: 'השלט', pages: [{ id: 'remote', title: 'השלט של המסכים', sub: 'שליטה מהטלפון במסך של האירוע' }] },
-  { id: 'hotels', name: 'בדיקת מלונות', pages: [{ id: 'hotels', title: 'בדיקת מלונות', sub: 'מתקשרים למלונות, והמערכת ממלאת לבד מהשיחות: פרטים, זמינות, מחירים, מיילים וסיכום' }] },
+  { id: 'hotels', name: 'בדיקת מלונות', pages: [{ id: 'hotels', title: 'בדיקת מלונות', sub: 'מתקשרים למלונות, והמערכת ממלאת לבד מהשיחות: פרטים, זמינות, מחירים, מיילים וסיכום' },
+    { id: 'catalog', title: 'מאגר המלונות', sub: 'כל מלון שדיברנו איתו, פעם אחת: חיפוש לפי אזור ומחיר, והאפשרויות הכי טובות קודם' }] },
+  { id: 'calls', name: 'השיחות', pages: [{ id: 'calls', title: 'השיחות', sub: 'כל שיחה בטלפון של העבודה, לפי מי התקשר: מלון, אמן, לקוח, אילן. רק הבעלים ומעיין רואים את זה' }] },
   { id: 'ilan', name: 'מטלות מאילן', pages: [{ id: 'ilan', title: 'מטלות מאילן', sub: 'מה אילן ביקש בשיחות איתו, ורשימה של מה לעשות. רק הבעלים ומעיין רואים את זה' }] },
   { id: 'site', name: 'עמודי האתר', pages: windows() },
   { id: 'people', name: 'צוות', pages: [{ id: 'team', title: 'צוות ודבר המנכ״ל', sub: 'תמונות, שמות ותפקידים, והמכתב של אילן', lang: true }] },
@@ -342,7 +345,8 @@ function pageAllowed(id) {
   if (id === 'appholidays') return canDo('content') && has('site');
   if (id === 'events') return has('events');
   if (id === 'artists') return has('events');   // owner 22.11: the artists we represent (api/_artists.js)
-  if (id === 'hotels') return has('hotels');   // each sees only their own surveys and those shared with them
+  if (id === 'hotels' || id === 'catalog') return has('hotels');
+  if (id === 'calls') return !!me && (me.role === 'owner' || me.id === 'cad5d8ff-c32d-4df9-918e-38cfd1d315d8');   // owner 22.11: includes the calls with Ilan → like the Ilan tab   // each sees only their own surveys and those shared with them
   if (id === 'ilan') return !!me && (me.role === 'owner' || me.id === 'cad5d8ff-c32d-4df9-918e-38cfd1d315d8');   // only the owner and מעיין (owner 19.11: Ilan must never see it, not even for a moment)
   if (id === 'remote') return has('remote');
   if (['guide', 'support', 'stats', 'account'].includes(id)) return true;
@@ -355,6 +359,8 @@ function appTiles() {
     { id: 'events', title: 'לוח אירועים', sub: 'מה, מתי ואיפה', icon: ICON.events },
     { id: 'artists', title: 'אמנים', sub: 'אהרון מאיר והאמנים שלנו', icon: ICON.artists },
     { id: 'hotels', title: 'בדיקת מלונות', sub: 'שיחות, מחירים, זמינות', icon: ICON.hotels },
+    { id: 'catalog', title: 'מאגר המלונות', sub: 'לפי אזור ומחיר', icon: 'M3 21V8l9-5 9 5v13M9 21v-6h6v6M8 10h.01M12 10h.01M16 10h.01' },
+    { id: 'calls', title: 'השיחות', sub: 'מי התקשר, לפי המספר', icon: 'M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2' },
     { id: 'ilan', title: 'מטלות מאילן', sub: 'מה הוא ביקש בשיחות', icon: 'M9 6h11M9 12h11M9 18h11M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2' },
     { id: 'remote', title: 'השלט', sub: 'המסך של האירוע', icon: ICON.screens },
     { id: 'appholidays', title: 'חגים', sub: 'סוכות, פסח וכל הנופשים', icon: 'M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.4 6.8 19.1l1-5.8L3.5 9.2l5.9-.9z' },
@@ -397,6 +403,7 @@ function drawNav() {
   $('#tabs [aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'center' });
 }
 function go(p, opts = {}) {
+  if (me?.must) p = 'account';   // owner 22.11: first-time password → change it before anything else
   const info = allPages().find(x => x.id === p) || allPages()[0];
   page = info.id;
   $('#pageTitle').textContent = info.title;
@@ -430,6 +437,8 @@ function render() {
   }
   if (page === 'appsite') return appSite(pg, actx, allPages().filter(p => p.group === 'site' || p.group === 'people' || ['contact', 'banners'].includes(p.id)));
   if (page === 'ilan') return ilanPage(pg, { toast, showLogin, rerender: () => page === 'ilan' && render() });
+  if (page === 'catalog') return catalogPage(pg, { toast, showLogin, rerender: () => page === 'catalog' && render(), openHotel: s => { if (!s) return; showHotel(s.surveyId, s.hotelId); go('hotels'); } });
+  if (page === 'calls') return callsPage(pg, { toast, showLogin, rerender: () => page === 'calls' && render() });
   if (page === 'hotels') return hotelsPage(pg, { toast, showLogin, rerender: () => page === 'hotels' && render(), upload: hotelPhoto });
   ({ dashboard, inbox, mail, quotes, team, contact, banners, stats, guide, support, users, account })[page](pg);
 }
@@ -1330,9 +1339,10 @@ function account(pg) {
     if (f.next !== f.again) return toast('הסיסמאות החדשות לא זהות', 'err');
     if (f.next.length < 8) return toast('הסיסמה החדשה קצרה מדי', 'err');
     const r = await fetch('/api/password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ current: f.current, next: f.next }) });
-    if (r.ok) { form.reset(); toast('הסיסמה הוחלפה. בפעם הבאה נכנסים עם הסיסמה החדשה'); }
+    if (r.ok) { form.reset(); toast('הסיסמה הוחלפה. בפעם הבאה נכנסים עם הסיסמה החדשה'); if (me?.must) { me.must = false; go(IN_APP ? 'apphome' : 'dashboard'); } }
     else toast(r.status === 403 ? 'הסיסמה הנוכחית לא נכונה' : 'לא הצלחנו להחליף. נסו שוב', 'err');
   });
+  if (me?.must) c.append(html('<p class="hint" style="margin-bottom:14px;font-weight:700">זו כניסה ראשונה עם סיסמה זמנית. בחרו סיסמה משלכם, ואז נפתח לכם כל השאר.</p>'));
   c.append(form);
   if (me?.role === 'owner') c.append(html('<p class="hint" style="margin-top:14px">הסיסמה הראשית שמוגדרת בחשבון האחסון ממשיכה לעבוד כגיבוי, למקרה ששכחתם את החדשה.</p>'));
   pg.append(c);

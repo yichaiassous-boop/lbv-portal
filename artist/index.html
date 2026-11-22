@@ -36,7 +36,7 @@
 <div class="av-wrap">
   <div class="av-top"><img src="/media/logo-letters.png" alt="La Belle Vie" width="49" height="34"><span id="note">הדף שלך אצלנו. רק אתה רואה אותו.</span>
     <span class="ar-lang" role="group" aria-label="שפה / Langue"><button type="button" data-lang="he">עברית</button><button type="button" data-lang="fr" lang="fr">Français</button></span>
-    <button type="button" class="av-out" id="out" hidden>יציאה</button></div>
+    <span><button type="button" class="av-out" id="pw" hidden>החלפת סיסמה</button> <button type="button" class="av-out" id="out" hidden>יציאה</button></span></div>
   <main id="root" class="ar" aria-live="polite"><p class="av-msg">טוען…</p></main>
 </div>
 <script type="module">
@@ -58,8 +58,31 @@
   // with a private link (#id.token) → that page; without → the artist's own login (cookie from /api/login)
   const byLink = !!(id && t), out = document.getElementById('out');
   const L = () => lang === 'fr'
-    ? { h: 'Connexion', u: 'Nom d’utilisateur', p: 'Mot de passe', b: 'Se connecter', e: 'Nom d’utilisateur ou mot de passe incorrect.', many: 'Trop d’essais. Réessayez dans 15 minutes.', out: 'Déconnexion' }
-    : { h: 'כניסה לדף שלך', u: 'שם משתמש', p: 'סיסמה', b: 'כניסה', e: 'שם המשתמש או הסיסמה לא נכונים.', many: 'יותר מדי ניסיונות. נסו שוב בעוד 15 דקות.', out: 'יציאה' };
+    ? { h: 'Connexion', u: 'Nom d’utilisateur', p: 'Mot de passe', b: 'Se connecter', e: 'Nom d’utilisateur ou mot de passe incorrect.', many: 'Trop d’essais. Réessayez dans 15 minutes.', out: 'Déconnexion',
+        pw: 'Changer le mot de passe', old: 'Mot de passe actuel', nw: 'Nouveau mot de passe (8 caractères minimum)', save: 'Enregistrer', cancel: 'Annuler', ok: 'Mot de passe changé.', badOld: 'Le mot de passe actuel est incorrect.', short: 'Le nouveau mot de passe doit avoir au moins 8 caractères.' }
+    : { h: 'כניסה לדף שלך', u: 'שם משתמש', p: 'סיסמה', b: 'כניסה', e: 'שם המשתמש או הסיסמה לא נכונים.', many: 'יותר מדי ניסיונות. נסו שוב בעוד 15 דקות.', out: 'יציאה',
+        pw: 'החלפת סיסמה', old: 'הסיסמה הנוכחית', nw: 'סיסמה חדשה (8 תווים לפחות)', save: 'שמירה', cancel: 'ביטול', ok: 'הסיסמה הוחלפה.', badOld: 'הסיסמה הנוכחית לא נכונה.', short: 'הסיסמה החדשה צריכה 8 תווים לפחות.' };
+  const pwBtn = document.getElementById('pw');
+  let must = false;
+  pwBtn.addEventListener('click', () => pwForm());
+  function pwForm() {
+    if (root.querySelector('.av-pw')) return;
+    const l = L(), f = document.createElement('form');
+    f.className = 'card av-login av-pw';
+    f.innerHTML = `<h1>${l.pw}</h1><label class="f">${l.old}<input name="old" type="password" dir="ltr" autocomplete="current-password" required></label>
+      <label class="f">${l.nw}<input name="nw" type="password" dir="ltr" autocomplete="new-password" minlength="8" required></label>
+      <p class="err" role="alert"></p><button class="btn btn--gold" type="submit">${l.save}</button>${must ? '' : `<button class="av-out" type="button" data-c>${l.cancel}</button>`}`;
+    if (must) { root.innerHTML = ''; f.insertAdjacentHTML('afterbegin', `<p>${lang === 'fr' ? 'Première connexion : choisissez votre propre mot de passe pour ouvrir votre page.' : 'כניסה ראשונה: בחרו סיסמה משלכם, ואז הדף שלכם נפתח.'}</p>`); }
+    root.prepend(f); f.old.focus();
+    f.querySelector('[data-c]')?.addEventListener('click', () => f.remove());
+    f.addEventListener('submit', async e => {
+      e.preventDefault(); const err = f.querySelector('.err'); err.textContent = '';
+      if (f.nw.value.length < 8) { err.textContent = L().short; return; }
+      const r = await fetch('/api/artists?me=1', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ old: f.old.value, password: f.nw.value }) });
+      if (r.ok) { if (must) { must = false; return load(); } f.innerHTML = `<p>${L().ok}</p>`; setTimeout(() => f.remove(), 2500); return; }
+      err.textContent = r.status === 403 ? L().badOld : r.status === 401 ? L().e : L().short;
+    });
+  }
   function loginForm() {
     const l = L();
     root.innerHTML = `<form class="card av-login"><h1>${l.h}</h1>
@@ -83,12 +106,15 @@
       root.innerHTML = '<p class="av-msg"></p>'; root.firstChild.textContent = lang === 'fr' ? FR_ERR : 'הקישור לא תקין או שפג תוקפו. בקשו מ-La Belle Vie קישור חדש.';
       return;
     }
-    artist = (await r.json()).artist;
-    out.hidden = byLink; out.textContent = L().out;
+    const j = await r.json();
+    must = !byLink && !!j.must;
+    out.hidden = byLink; out.textContent = L().out; pwBtn.hidden = byLink || must; pwBtn.textContent = L().pw;
+    if (must) return pwForm();
+    artist = j.artist;
     paint();
   }
-  out.addEventListener('click', async () => { await fetch('/api/artists?me=1', { method: 'DELETE' }); artist = null; out.hidden = true; loginForm(); });
-  document.querySelectorAll('[data-lang]').forEach(b => b.addEventListener('click', () => { out.textContent = L().out; if (!artist && root.querySelector('.av-login')) loginForm(); }));
+  out.addEventListener('click', async () => { await fetch('/api/artists?me=1', { method: 'DELETE' }); artist = null; out.hidden = true; pwBtn.hidden = true; loginForm(); });
+  document.querySelectorAll('[data-lang]').forEach(b => b.addEventListener('click', () => { out.textContent = L().out; pwBtn.textContent = L().pw; if (!artist && root.querySelector('.av-login')) loginForm(); }));
   paint();
   load().catch(() => { root.innerHTML = '<p class="av-msg"></p>'; root.firstChild.textContent = lang === 'fr' ? 'Erreur de connexion. Réessayez.' : 'בעיית חיבור. נסו שוב.'; });
 </script>

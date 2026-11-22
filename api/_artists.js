@@ -102,9 +102,19 @@ export default async function artistsHandler(req, res) {
       const id = artistSession(req);
       const a = id ? await getJ(K.artists, id) : null;
       if (!a) return send(res, 401, { error: 'login' });
+      // owner 22.11: the artist changes his own password (the owner can always set a new one in "פרטים")
+      if (req.method === 'POST') {
+        let b = {}; try { b = (await readBody(req)) || {}; } catch (e) { return send(res, 400, { error: 'bad-json' }); }
+        if (!a.login || !checkPassword(String(b.old || ''), a.login.hash)) return send(res, 403, { error: 'old' });
+        const pw = String(b.password || '');
+        if (pw.length < 8) return send(res, 400, { error: 'password' });
+        a.login = { ...a.login, hash: hashPassword(pw), at: now(), bySelf: true, must: false };
+        await setJ(K.artists, a.id, a);
+        return send(res, 200, { ok: true });
+      }
       const full = await withData(a, { forArtist: true });
       const { contacts, notes, login, ...pub } = full;
-      return send(res, 200, { artist: pub });
+      return send(res, 200, { artist: pub, must: !!a.login?.must });
     }
 
     const s = req.lbvUser || isAuthed(req);
@@ -141,7 +151,7 @@ export default async function artistsHandler(req, res) {
       const owner = await loadOwner().catch(() => ({ username: 'owner' }));
       const taken = name === (owner.username || 'owner') || (await loadUsers().catch(() => [])).some(u => u.username === name) || (await allJ(K.artists)).some(x => x.id !== a.id && x.login?.username === name);
       if (taken) return send(res, 409, { error: 'taken' });
-      a.login = { username: name, hash: hashPassword(pw), at: now() };
+      a.login = { username: name, hash: hashPassword(pw), at: now(), must: true };   // first-time password: he changes it at the first login
       await setJ(K.artists, a.id, a);
       return send(res, 200, { ok: true, username: name });
     }

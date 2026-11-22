@@ -35,6 +35,8 @@ async function api(method, qs = '', body) {
 }
 const fail = e => { if (e.message !== 'login') ctx.toast(e.message === 'not-configured' ? 'מסד הנתונים (Redis) עוד לא מחובר לאתר' : 'משהו השתבש. נסו שוב', 'err'); };
 
+/** Open one hotel card (from the hotels catalog, owner 22.11). */
+export function showHotel(surveyId, hotelId) { openSurvey = surveyId; openHotel = hotelId; cur = null; look = { text: '', results: null, open: null }; }
 export async function hotelsPage(pg, c) {
   ctx = c;
   if (!home) {

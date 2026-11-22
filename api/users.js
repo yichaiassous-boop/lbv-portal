@@ -36,7 +36,7 @@ export default async function handler(req, res) {
   if (req.method === 'POST') {
     if (!name || !/^[a-z0-9._-]{3,30}$/.test(username) || pw.length < 8 || !role) return res.status(400).json({ error: 'invalid' });
     if (list.some(u => u.username === username) || username === owner.username) return res.status(409).json({ error: 'taken' });
-    list.push({ id: crypto.randomUUID(), name, username, role, hash: hashPassword(pw), at: new Date().toISOString() });
+    list.push({ id: crypto.randomUUID(), name, username, role, hash: hashPassword(pw), must: true, at: new Date().toISOString() });   // owner 22.11: first-time password, changed at the first login
     await saveUsers(list);
     return res.status(200).json({ ok: true });
   }
@@ -56,7 +56,7 @@ export default async function handler(req, res) {
   if (req.method === 'PATCH') {
     if (name) u.name = name;
     if (role) u.role = role;
-    if (pw) { if (pw.length < 8) return res.status(400).json({ error: 'short' }); u.hash = hashPassword(pw); }
+    if (pw) { if (pw.length < 8) return res.status(400).json({ error: 'short' }); u.hash = hashPassword(pw); u.must = true; }
     if (Array.isArray(b.areas)) { try { await setAreas(u.id, u.role, b.areas); } catch (e) { return res.status(503).json({ error: 'not-configured' }); } }
     if (email !== null) u.email = email;
     if (name || role || pw || email !== null) await saveUsers(list);

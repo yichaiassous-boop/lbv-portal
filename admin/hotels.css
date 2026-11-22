@@ -331,3 +331,55 @@ mark { background: #FCE7A8; color: inherit; padding: 0 2px; border-radius: 3px; 
   .il-card { padding: 16px 14px; }
   .il-add .input[type=date] { flex: 1 1 140px; }
 }
+
+/* ---------- owner 22.11: השיחות + מאגר המלונות (admin/smart.js) ---------- */
+.sm-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 12px; }
+.sm-bar .input { min-height: 42px; }
+.sm-q { flex: 1 1 220px; }
+.sm-bar--cat > .input { flex: 1 1 240px; }
+.sm-max { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); }
+.sm-max .input { width: 110px; }
+.sm-check { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); cursor: pointer; }
+.sm-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.sm-chips button, .sm-chips label { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line); background: #fff; color: var(--ink); font: inherit; font-size: .9rem; cursor: pointer; }
+.sm-chips i { width: 9px; height: 9px; border-radius: 50%; background: var(--cc, var(--ink-3)); }
+.sm-chips small { color: var(--ink-3); }
+.sm-chips [aria-pressed="true"] { background: var(--ink); color: #fff; border-color: var(--ink); }
+.sm-chips [aria-pressed="true"] small { color: #C7D3E4; }
+.sm-chips--pick input { position: absolute; opacity: 0; pointer-events: none; }
+.sm-chips--pick label:has(input:checked) { background: var(--cc); color: #fff; border-color: var(--cc); }
+.sm-chips--pick label:has(input:checked) i { background: #fff; }
+.sm-chips--pick label:has(input:focus-visible) { outline: 2px solid var(--gold); outline-offset: 2px; }
+.sm-note { margin: 0 0 12px; }
+.sm-list { display: grid; gap: 8px; }
+.sm-call { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: start; background: #fff; border: 1px solid var(--line); border-inline-start: 4px solid var(--cc); border-radius: 12px; padding: 12px 14px; }
+.sm-call__cat { font-size: .78rem; font-weight: 700; color: var(--cc); background: color-mix(in srgb, var(--cc) 10%, #fff); border-radius: 6px; padding: 3px 8px; white-space: nowrap; }
+.sm-call__main b { display: block; }
+.sm-call__main small { color: var(--ink-2); }
+.sm-call__main p { margin: 6px 0 0; color: var(--ink); font-size: .92rem; line-height: 1.5; }
+.sm-call__acts { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.sm-call__acts .btn { min-height: 36px; padding: 0 12px; font-size: .88rem; }
+@media (max-width: 640px) {
+  .sm-call { grid-template-columns: 1fr; gap: 6px; }
+  .sm-call__cat { justify-self: start; }
+  .sm-call__acts { justify-content: flex-start; }
+}
+.sm-cat { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+.sm-h { display: flex; flex-direction: column; background: #fff; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.sm-h__img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; display: block; background: #E9EDF4; }
+.sm-h__img--none { aspect-ratio: auto; height: 8px; background: linear-gradient(90deg, #1f6f8b, #16203A); }
+.sm-h__body { padding: 12px 14px 14px; display: grid; gap: 8px; }
+.sm-h__top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.sm-h__top h3 { margin: 0; font-size: 1.1rem; }
+.sm-best { font-size: .78rem; font-weight: 700; color: #6b4a10; background: #F6E6BF; border-radius: 6px; padding: 3px 8px; white-space: nowrap; }
+.sm-h__where, .sm-h__meta { margin: 0; color: var(--ink-2); font-size: .88rem; }
+.sm-h__meta { color: var(--ink-3); font-size: .82rem; }
+.sm-h__facts { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.sm-av { font-size: .82rem; font-weight: 700; border-radius: 6px; padding: 3px 8px; }
+.sm-av--ok { background: #E3F4EA; color: #1d6b3d; } .sm-av--mid { background: #FFF3DC; color: #8a5a00; }
+.sm-av--no { background: #FDE8E7; color: #a3261c; } .sm-av--unk { background: #EEF1F6; color: var(--ink-2); }
+.sm-price b { font-size: 1.15rem; }
+.sm-price small { color: var(--ink-3); }
+.sm-h__txt { margin: 0; font-size: .9rem; color: var(--ink); }
+.sm-h__acts { display: flex; flex-wrap: wrap; gap: 6px; }
+.sm-h__acts .btn { min-height: 36px; padding: 0 12px; font-size: .88rem; }

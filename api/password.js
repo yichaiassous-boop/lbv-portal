@@ -28,6 +28,7 @@ export default async function handler(req, res) {
   if (!u) return res.status(404).json({ error: 'not-found' });
   if (!checkPassword(current, u.hash)) { await new Promise(r => setTimeout(r, 800)); return res.status(403).json({ error: 'wrong-current' }); }
   u.hash = hashPassword(next);
+  delete u.must;   // the first-time password is gone
   await saveUsers(list);
   return res.status(200).json({ ok: true });
 }

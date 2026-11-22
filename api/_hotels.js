@@ -79,6 +79,7 @@ const K = {
   ilan: 'hs:ilan',                   // owner 19.11: calls with Ilan → what he asks for. 'cfg' → { phones, since }
   ilanCalls: 'hs:ilan:c',            // recording file id → { at, file, summary, wants, quotes, transcript }
   ilanTasks: 'hs:ilan:t',            // task id → { text, due, quote, callId, at, done, doneAt, by }
+  book: 'ph:book',                   // owner 22.11: phone (9 digits) → { cat, name, by, at }: a number we tagged by hand
 };
 const ILAN_SEE = ['cad5d8ff-c32d-4df9-918e-38cfd1d315d8'];   // owner 19.11: besides the owner only מעיין sees the Ilan tasks (not Ilan, not the others)
 const ILAN_BACK_DAYS = 7;            // when his number is saved, his calls of the last week are read too
@@ -316,9 +317,81 @@ export default async function hotelsHandler(req, res) {
     /* ----- the admin ----- */
     const s = req.lbvUser || isAuthed(req);
     if (!s) return send(res, 401, { error: 'login' });
-    const ilanReq = Boolean(q('ilan') || body.op === 'ilan');   // the Ilan tab has its own rule (owner + מעיין), not the hotels area
+    const ilanReq = Boolean(q('ilan') || body.op === 'ilan' || q('calls') || body.op === 'tag');   // the Ilan tab has its own rule (owner + מעיין), not the hotels area
     if (!ilanReq && !(await (await import('./_areas.js')).hasArea(s, 'hotels'))) return send(res, 403, { error: 'forbidden' });
     const uid = meId(s);
+
+    /* ----- owner 22.11: every call on the work phone, sorted by who called (by the number): Ilan, a hotel, an artist, a client, other.
+       It includes the calls with Ilan, so only the owner and מעיין see it (like the Ilan tab). ----- */
+    if (q('calls') || body.op === 'tag') {
+      if (!(isOwner(s) || ILAN_SEE.includes(uid))) return send(res, 403, { error: 'forbidden' });
+      if (req.method === 'POST') {   // tag a number by hand → every call from it, now and later
+        const d = digits(body.phone);
+        if (d.length < 8) return send(res, 400, { error: 'phone' });
+        if (body.cat === '') { await kv.hdel(K.book, d); return send(res, 200, { ok: true }); }
+        const cat = pick(body.cat, ['hotel', 'artist', 'client', 'supplier', 'team', 'private', 'other'], 'other');
+        await setJ(K.book, d, { cat, name: str(body.name, 80), by: s.n || '', at: now() });
+        return send(res, 200, { ok: true });
+      }
+      const book = Object.fromEntries(Object.entries(await kv.hgetall(K.book)).map(([k, v]) => { try { return [k, JSON.parse(v)]; } catch (e) { return [k, null]; } }));
+      const cfg = await ilanCfg();
+      const files = await kv.hgetall(K.files);
+      const byPhone = new Map(), byHotelId = new Map();
+      const put = (d, x) => { if (d.length >= 8 && !byPhone.has(d)) byPhone.set(d, x); };
+      for (const p of cfg.phones || []) put(digits(p), { cat: 'ilan', who: 'אילן' });
+      for (const sv of await allJ(K.surveys)) for (const ho of await allJ(K.hotels(sv.id))) {
+        const x = { cat: 'hotel', who: ho.name || '', sub: [ho.contact, ho.city].filter(Boolean).join(', '), surveyId: sv.id, hotelId: ho.id, survey: sv.title };
+        byHotelId.set(ho.id, x); put(digits(ho.phone), x); put(digits(ho.phone2), x);
+      }
+      const artists = await allJ('ar:all');
+      for (const a of artists) for (const c of a.contacts || []) put(digits(c.phone), { cat: 'artist', who: a.name, sub: [c.name, c.role].filter(Boolean).join(', '), artistId: a.id, color: a.color });
+      for (const e of await allJ('ev:all')) {
+        const a = e.artist && artists.find(x => x.id === e.artist);
+        put(digits(e.phone), { cat: 'client', who: e.client || e.title || '', sub: [e.title, e.date].filter(Boolean).join(', '), eventId: e.id, artistId: a?.id, artist: a?.name, color: a?.color });
+      }
+      const callDigits = c => digits(c.phone) || digits((String(c.name || '').match(/(\+?972|0)\d[\d\- ]{7,12}/) || [''])[0]);
+      const list = (await allJ(K.calls)).sort((a2, b2) => String(b2.at || '').localeCompare(String(a2.at || ''))).slice(0, 300).map(c => {
+        const d = callDigits(c), f = files[c.id];
+        let k = book[d] ? { cat: book[d].cat, who: book[d].name, byHand: true } : byPhone.get(d);
+        if (!k && f === 'ilan') k = { cat: 'ilan', who: 'אילן' };
+        if (!k && f && f !== 'skip' && byHotelId.has(f)) k = byHotelId.get(f);
+        return { id: c.id, at: c.at, name: c.name, phone: d ? '0' + d.replace(/^0/, '') : '', url: c.url, summary: c.sum && !c.sum.error ? str(c.sum.summary || c.sum.answer || '', 600) : '', ...(k || { cat: 'other', who: '' }) };
+      });
+      const counts = {};
+      for (const c of list) counts[c.cat] = (counts[c.cat] || 0) + 1;
+      return send(res, 200, { calls: list, counts });
+    }
+
+    /* ----- owner 22.11: the hotels catalog: every hotel we ever called, from all the surveys I may see, once each,
+       with the lowest price and the latest availability, to search by area / price and see the best options first. ----- */
+    if (req.method === 'GET' && q('catalog')) {
+      const map = new Map();
+      for (const sv of (await allJ(K.surveys)).filter(x => canSee(s, x))) {
+        for (const ho of await allJ(K.hotels(sv.id))) {
+          if (!ho.name) continue;
+          const d = digits(ho.phone) || digits(ho.phone2);
+          const key = d.length >= 8 ? 'p' + d : 'n' + norm(ho.name) + '|' + norm(ho.city);
+          const last = (ho.log || []).map(l => l.at).filter(Boolean).sort().pop() || ho.updatedAt || ho.createdAt || '';
+          const calls = (ho.log || []).filter(l => l.t === 'call').length;
+          const mp = (ho.prices || []).filter(p => p.price > 0).sort((a2, b2) => a2.price - b2.price)[0] || null;
+          const row = { key, name: ho.name, city: ho.city || '', area: sv.area || '', phone: ho.phone || '', contact: ho.contact || '', website: ho.website || '', rating: ho.rating || null,
+            photo: (ho.myPhotos || [])[0] || (ho.photos || [])[0] || '', avail: ho.avail || 'unknown', availText: ho.availText || '', status: ho.status || 'new',
+            min: mp ? { price: mp.price, per: mp.per || '', currency: mp.currency || 'ILS', what: [mp.level, mp.board].filter(Boolean).join(', ') } : null,
+            prices: (ho.prices || []).slice(0, 6), summary: str(ho.summary || '', 300), lastAt: last, calls,
+            surveys: [{ surveyId: sv.id, hotelId: ho.id, title: sv.title, from: sv.from || '', to: sv.to || '' }] };
+          const old = map.get(key);
+          if (!old) { map.set(key, row); continue; }
+          const newer = String(row.lastAt) > String(old.lastAt) ? row : old, other = newer === row ? old : row;
+          newer.surveys = [...new Map([...old.surveys, ...row.surveys].map(x => [x.surveyId + x.hotelId, x])).values()];
+          newer.calls = old.calls + row.calls;
+          if (!newer.min && other.min) newer.min = other.min;
+          if (!newer.photo) newer.photo = other.photo;
+          if (!newer.area) newer.area = other.area;
+          map.set(key, newer);
+        }
+      }
+      return send(res, 200, { hotels: [...map.values()] });
+    }
 
     // Owner 19.11: calls with Ilan → a summary of what he asks for + a to-do list. Only the owner sees it.
     if (q('ilan') || body.op === 'ilan') {
