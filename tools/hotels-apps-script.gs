@@ -72,6 +72,8 @@ function tick() {
     try { indexCalls(); } catch (e) { console.error('index', e); }   // owner 19.11: the list of calls first (quick), so a slow reading never hides new calls
     try { phoneTexts(st); } catch (e) { console.error('phoneTexts', e); }   // owner 24.11: calls the phone transcribed itself
     try { ilanOld(st); } catch (e) { console.error('ilanOld', e); }   // owner 19.11: Ilan's calls first
+    try { ilanMerge(st); } catch (e) { console.error('ilanMerge', e); }   // owner 24.11: the same request from several calls = one task (once)
+    try { sortCalls(st); } catch (e) { console.error('sortCalls', e); }   // owner 24.11 (early, so a long run never skips it): who an unknown call is with
     try { recordings(st); } catch (e) { console.error('recordings', e); }
     try { relistens(st); } catch (e) { console.error('relistens', e); }   // early: it needs minutes
     try { answerAsks(st); } catch (e) { console.error('asks', e); }
@@ -81,10 +83,8 @@ function tick() {
     try { mailScans(st); } catch (e) { console.error('mailScans', e); }
     try { webLooks(st); } catch (e) { console.error('webLooks', e); }
     try { photoChecks(st); } catch (e) { console.error('photoChecks', e); }   // owner 24.11: only real photos of the place
-    try { ilanMerge(st); } catch (e) { console.error('ilanMerge', e); }   // owner 24.11: the same request from several calls = one task (once)
-    try { sortCalls(st); } catch (e) { console.error('sortCalls', e); }
     try { funMails(st); } catch (e) { console.error('funMails', e); }   // owner 24.11: the attractions' mail (with the files) and WhatsApp, like the hotels
-    try { funReads(st); } catch (e) { console.error('funReads', e); }   // owner 24.11: who an unknown call is with, from what was said
+    try { funReads(st); } catch (e) { console.error('funReads', e); }
     try { sheets(st); } catch (e) { console.error('sheets', e); }
   } finally { lock.releaseLock(); }
 }
