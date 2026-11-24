@@ -82,7 +82,9 @@ function tick() {
     try { webLooks(st); } catch (e) { console.error('webLooks', e); }
     try { photoChecks(st); } catch (e) { console.error('photoChecks', e); }   // owner 24.11: only real photos of the place
     try { ilanMerge(st); } catch (e) { console.error('ilanMerge', e); }   // owner 24.11: the same request from several calls = one task (once)
-    try { sortCalls(st); } catch (e) { console.error('sortCalls', e); }   // owner 24.11: who an unknown call is with, from what was said
+    try { sortCalls(st); } catch (e) { console.error('sortCalls', e); }
+    try { funMails(st); } catch (e) { console.error('funMails', e); }   // owner 24.11: the attractions' mail (with the files) and WhatsApp, like the hotels
+    try { funReads(st); } catch (e) { console.error('funReads', e); }   // owner 24.11: who an unknown call is with, from what was said
     try { sheets(st); } catch (e) { console.error('sheets', e); }
   } finally { lock.releaseLock(); }
 }
@@ -302,6 +304,73 @@ function listenIlan(file, at) {
 }
 
 var ILAN_OPEN = [];
+/** What an attraction wrote (mail with its files, or WhatsApp): the offer, prices, dates, and the details for the catalog. */
+function readFun(text, files, name, src) {
+  const parts = [];
+  let extra = '';
+  for (const f of (files || []).slice(0, 4)) {
+    if ((/pdf/.test(f.mime) || /\.pdf$/i.test(f.name)) && f.size < 15 * 1024 * 1024) parts.push({ inline_data: { mime_type: 'application/pdf', data: Utilities.base64Encode(f.blob.getBytes()) } });
+    else if (/^image\//.test(f.mime) && f.size < 8 * 1024 * 1024 && !/heic/.test(f.mime)) parts.push({ inline_data: { mime_type: f.mime, data: Utilities.base64Encode(f.blob.getBytes()) } });
+    else if (/word|officedocument|excel|spreadsheet|msword/.test(f.mime) || /\.(docx|xlsx)$/i.test(f.name)) { const t = officeText(f.blob, f.name); if (t) extra += '\n\n==== The file "' + f.name + '" ====\n' + t; }
+    else if (/text\//.test(f.mime)) extra += '\n\n==== The file "' + f.name + '" ====\n' + f.blob.getDataAsString('UTF-8').slice(0, 20000);
+  }
+  const prompt = [
+    'These are ' + (src === 'wa' ? 'WhatsApp messages' : 'e-mails (with the attached files: read them completely, they usually hold the prices)') + ' between La Belle Vie (לה בל וי, an Israeli events company) and an attraction / activity for groups: "' + name + '".',
+    'Today is ' + Utilities.formatDate(new Date(), 'Asia/Jerusalem', 'EEEE yyyy-MM-dd') + ' (Israel).',
+    'relevant = true only if they talk about this attraction: an offer, prices, dates, availability, group size, conditions.',
+    'summary (Hebrew): start with what was sent (e.g. "הצעת מחיר בקובץ PDF:"), then the main points: what is included, prices, for how many people, dates, conditions, and what must still be answered.',
+    'attraction: kind (show / workshop / sport / team / food / tour / kids / party / other), area, supplier, price (the main price, a number), per (person / group / hour / event), minP / maxP, hours, kids, email (of the attraction), dates (as written), priceText (the offer in words, as written). Only what is really written.',
+    'Answer JSON only.', '', String(text).slice(0, 30000) + extra,
+  ].join('\n');
+  const r = genWeb({ contents: [{ role: 'user', parts: parts.concat([{ text: prompt }]) }], generationConfig: { responseMimeType: 'application/json', temperature: 0.1, responseSchema: { type: 'OBJECT', properties: {
+    relevant: { type: 'BOOLEAN' }, summary: { type: 'STRING' },
+    attraction: { type: 'OBJECT', properties: { kind: { type: 'STRING' }, area: { type: 'STRING' }, supplier: { type: 'STRING' }, price: { type: 'NUMBER' }, per: { type: 'STRING' }, minP: { type: 'NUMBER' }, maxP: { type: 'NUMBER' }, hours: { type: 'STRING' }, kids: { type: 'BOOLEAN' }, email: { type: 'STRING' }, dates: { type: 'ARRAY', items: { type: 'STRING' } }, priceText: { type: 'STRING' } } } }, required: ['relevant', 'summary'] } } });
+  if (r.code >= 300) throw new Error('gemini ' + r.code + ' ' + String(r.body).slice(0, 300));
+  const j = JSON.parse(r.body);
+  return JSON.parse((((j.candidates || [])[0] || {}).content || { parts: [] }).parts.map(p => p.text || '').join(''));
+}
+/** owner 24.11: every attraction's mail, every 4 hours (by its address, else by its name / number), the files read too. */
+function funMails(st) {
+  const me = Session.getEffectiveUser().getEmail().toLowerCase();
+  for (const m of (st.funMail || [])) {
+    if (elapsed() > 220) return;
+    try {
+      const nm = String(m.name || '').replace(/["()]/g, ' ').trim();
+      const q = m.email ? '(from:' + m.email + ' OR to:' + m.email + ')' : '(' + [nm.length >= 4 ? '"' + nm + '"' : '', String(m.phone || '').length >= 8 ? '"' + m.phone + '"' : ''].filter(Boolean).join(' OR ') + ')';
+      if (q === '()') { site('post', 'funmailscan', { id: m.id, msgIds: [] }); continue; }
+      const threads = GmailApp.search(q + ' newer_than:365d' + (m.email ? '' : ' -category:promotions -category:social'), 0, 6);
+      const seen = {}; (m.seen || []).forEach(id => { seen[id] = 1; });
+      const ids = [], incoming = [], files = [], senders = {};
+      let last = null;
+      for (const t of threads) for (const msg of t.getMessages()) {
+        if (seen[msg.getId()]) continue;
+        ids.push(msg.getId());
+        const out = msg.getFrom().toLowerCase().indexOf(me) >= 0;
+        const body = msg.getPlainBody();
+        if (!m.email && !((nm.length >= 4 && (msg.getSubject() + ' ' + body).indexOf(nm) >= 0) || (String(m.phone || '').length >= 8 && body.replace(/\D/g, '').indexOf(String(m.phone).slice(-8)) >= 0))) continue;
+        if (out || /noreply|no-reply|newsletter|mailer-daemon/i.test(msg.getFrom())) continue;
+        const fl = mailFiles(msg);
+        files.push.apply(files, fl);
+        const fm = (msg.getFrom().match(/[^\s<>"]+@[^\s<>"]+/) || [''])[0].toLowerCase(); if (fm) senders[fm] = (senders[fm] || 0) + 1;
+        incoming.push('From: ' + msg.getFrom() + '\nDate: ' + msg.getDate().toISOString() + '\nSubject: ' + msg.getSubject() + (fl.length ? '\nAttached files: ' + fl.map(f => f.name).join(', ') : '') + '\n' + body.slice(0, 6000));
+        last = msg;
+      }
+      if (incoming.length) {
+        const r = readFun(incoming.slice(-6).join('\n\n----\n\n'), files.slice(-6), m.name, 'mail');
+        site('post', 'funread', { id: m.id, src: 'mail', at: last.getDate().toISOString(), from: last.getFrom(), files: files.map(f => ({ name: f.name, url: f.url })), result: r });
+      }
+      const top = Object.keys(senders).sort((a, b) => senders[b] - senders[a])[0] || '';
+      site('post', 'funmailscan', { id: m.id, msgIds: ids, email: m.email ? '' : top });
+    } catch (e) { console.error('funMail ' + m.id, e); }
+  }
+}
+/** owner 24.11: WhatsApp messages from an attraction's number (from the phone's notifications): read like the mail. */
+function funReads(st) {
+  for (const x of (st.funRead || [])) {
+    if (elapsed() > 220) return;
+    try { site('post', 'funread', { id: x.id, src: 'wa', at: new Date().toISOString(), result: readFun(x.text, [], x.name, 'wa') }); } catch (e) { console.error('funRead ' + x.id, e); }
+  }
+}
 /** owner 24.11: once, the open Ilan tasks that are the same request (he said it in several calls) are grouped; the site keeps the first and adds the other calls to it. */
 function ilanMerge(st) {
   const il = st.ilan || {};

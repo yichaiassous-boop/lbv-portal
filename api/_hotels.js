@@ -133,12 +133,12 @@ async function whoMap() {
 }
 
 /** owner 24.11: a call about an attraction fills the attractions catalog by itself (the same attraction once: by its number or its name). */
-async function funFromCall(c, x, phone) {
-  const name = str(x?.name, 100); if (!name) return null;
+async function funFromCall(c, x, phone, src = 'call', into = null) {
+  const name = str(x?.name, 100) || into?.name || ''; if (!name) return null;
   const norm = v => String(v || '').replace(/[^\p{L}\p{N}]/gu, '').toLowerCase();
   const d = digits(phone);
   const all = await allJ('fn:all');
-  let f = all.find(a => d.length >= 8 && digits(a.phone) === d) || all.find(a => norm(a.name) && norm(a.name) === norm(name));
+  let f = into || all.find(a => d.length >= 8 && digits(a.phone) === d) || all.find(a => norm(a.name) && norm(a.name) === norm(name));
   const num = v => { const n = Number(String(v ?? '').replace(/[,\s₪€$]/g, '')); return Number.isFinite(n) && n > 0 && n < 1e8 ? n : null; };
   const KIND = ['show', 'workshop', 'sport', 'team', 'food', 'tour', 'kids', 'party', 'other'];
   const fresh = !f;
@@ -150,7 +150,8 @@ async function funFromCall(c, x, phone) {
   fill('price', num(x.price)); if (num(x.price) && ['person', 'group', 'hour', 'event'].includes(x.per) && fresh) f.per = x.per;
   fill('minP', num(x.minP)); fill('maxP', num(x.maxP)); fill('hours', str(x.hours, 40));
   if (fresh && typeof x.kids === 'boolean') f.kids = x.kids;
-  f.calls = [...(f.calls || []).filter(y => y.callId !== c.id), { callId: c.id, at: c.at, url: c.url || '', summary: str(x.summary, 600), price: str(x.priceText, 300), dates: (Array.isArray(x.dates) ? x.dates : []).map(v => str(v, 60)).filter(Boolean).slice(0, 8) }].slice(-20);
+  fill('email', /^[^\s@<>"]+@[^\s@<>"]+\.[a-z]{2,}$/i.test(str(x.email, 120)) ? str(x.email, 120) : '');
+  f.calls = [...(f.calls || []).filter(y => !c.id || y.callId !== c.id), { src, callId: c.id || '', at: c.at || now(), url: c.url || '', from: str(c.from, 120), summary: str(x.summary, 800), price: str(x.priceText, 300), dates: (Array.isArray(x.dates) ? x.dates : []).map(v => str(v, 60)).filter(Boolean).slice(0, 8), files: (Array.isArray(c.files) ? c.files : []).slice(0, 6).map(y => ({ name: str(y?.name, 120), url: link(y?.url, 300) })).filter(y => y.url) }].slice(-30);
   f.updatedAt = now();
   await setJ('fn:all', f.id, f);
   return f.id;
@@ -967,7 +968,18 @@ async function script(req, res, what, userId, b) {
         jobs.watch.unshift(...c.phones.map(p => ({ ilan: true, phone: p, from: c.since, to })));
       }
     }
-    let sortCalls = [];
+    let sortCalls = [], funMail = [], funRead = [];
+    if (userId === 'owner') {
+      // owner 24.11: the attractions like the hotels: their mail and WhatsApp are read too
+      for (const f of await allJ('fn:all')) {
+        const d = digits(f.phone).slice(-9);
+        if (d.length >= 8) jobs.wa.push({ phone: d, names: [f.name, f.supplier].map(x => String(x || '').trim()).filter(x => x.length >= 3) });
+        if ((f.waNew || []).length) funRead.push({ id: f.id, name: f.name || '', text: f.waNew.map(m => 'הודעת וואטסאפ מ' + m.from + ' (' + m.at + '):\n' + m.text).join('\n\n').slice(0, 20000) });
+        const named = String(f.name || '').replace(/[^\p{L}\p{N}]/gu, '').length >= 4;
+        if ((f.email || named || d.length >= 8) && Date.now() - (Date.parse(f.mailAt) || 0) > 4 * 3600e3) funMail.push({ id: f.id, name: f.name || '', phone: d.length >= 8 ? '0' + d : '', email: f.email || '', seen: (f.msgIds || []).slice(-200) });
+      }
+      funMail = funMail.slice(0, 2); funRead = funRead.slice(0, 2);
+    }
     if (userId === 'owner') {
       const { whoOf } = await whoMap();
       const since = Date.now() - 365 * 864e5;   // every unknown call from the last year
@@ -975,7 +987,7 @@ async function script(req, res, what, userId, b) {
         .sort((a2, b2) => String(b2.at).localeCompare(String(a2.at))).slice(0, 2)
         .map(c => ({ id: c.id, at: c.at, name: c.name || '', phone: whoOf(c).d, local: !!c.local, text: c.local ? str(c.sum?.transcript || '', 30000) : '' }));
     }
-    return send(res, 200, { sortCalls, ilan, windows, mode, surveys: active, outbox, threads, asks, watch: jobs.watch.slice(0, 300), parses: jobs.parses.slice(0, 5), mailScan: jobs.mailScan.concat(jobs.mailAuto).slice(0, 5), photoCheck: jobs.photoCheck.slice(0, 2), webLook: jobs.webLook.slice(0, 3), webRedo: jobs.webRedo.slice(0, 2), relisten: jobs.relisten.slice(0, 1), wa: jobs.wa.slice(0, 300) });
+    return send(res, 200, { sortCalls, funMail, funRead, ilan, windows, mode, surveys: active, outbox, threads, asks, watch: jobs.watch.slice(0, 300), parses: jobs.parses.slice(0, 5), mailScan: jobs.mailScan.concat(jobs.mailAuto).slice(0, 5), photoCheck: jobs.photoCheck.slice(0, 2), webLook: jobs.webLook.slice(0, 3), webRedo: jobs.webRedo.slice(0, 2), relisten: jobs.relisten.slice(0, 1), wa: jobs.wa.slice(0, 300) });
   }
 
   // The robot's web-app address (for the phone app) + when the app last sent a recording
@@ -1223,7 +1235,32 @@ async function script(req, res, what, userId, b) {
         filed++;
       }
     }
+    if (userId === 'owner') for (const f of await allJ('fn:all')) {
+      const d = digits(f.phone).slice(-9);
+      if (d.length < 8 || !byPhone[d]) continue;
+      f.waNew = [...(f.waNew || []), ...byPhone[d].map(m => ({ at: str(m.at, 40) || now(), from: str(m.from, 120), text: str(m.text, 4000) }))].slice(-20);
+      await setJ('fn:all', f.id, f); filed++;
+    }
     return send(res, 200, { ok: true, filed });
+  }
+
+  // owner 24.11: what the robot read about an attraction in its mail / WhatsApp: on the card, and fills what is still empty
+  if (what === 'funmailscan' || what === 'funread') {
+    if (userId !== 'owner') return send(res, 403, { error: 'owner' });
+    const f = await getJ('fn:all', str(b.id, 40));
+    if (!f) return send(res, 404, { error: 'not-found' });
+    if (what === 'funmailscan') {
+      f.mailAt = now();
+      f.msgIds = [...new Set([...(f.msgIds || []), ...(Array.isArray(b.msgIds) ? b.msgIds : []).map(x => str(x, 40))])].slice(-300);
+      if (!f.email && /^[^\s@<>"]+@[^\s@<>"]+\.[a-z]{2,}$/i.test(str(b.email, 120))) f.email = str(b.email, 120);
+      await setJ('fn:all', f.id, f);
+      return send(res, 200, { ok: true });
+    }
+    if (b.src === 'wa') { delete f.waNew; await setJ('fn:all', f.id, f); }
+    const r = b.result || {};
+    if (!r.relevant && b.src === 'mail') return send(res, 200, { ok: true, skipped: true });
+    await funFromCall({ at: str(b.at, 40) || now(), from: str(b.from, 120), files: b.files }, { ...(r.attraction || {}), name: '', summary: r.summary }, '', b.src === 'wa' ? 'wa' : 'mail', await getJ('fn:all', f.id));
+    return send(res, 200, { ok: true });
   }
 
   if (what === 'web') {
