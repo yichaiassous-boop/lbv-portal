@@ -362,7 +362,7 @@ function robotJobs(sv, hotels) {
     if ((h.photosCand || []).length && h.website) photoCheck.unshift({ surveyId: sv.id, hotelId: h.id, name: h.name || '', city: h.city || '', website: h.website, photos: h.photosCand.slice(0, 12), cand: true });
     else if (((h.photos || []).length || h.website || h.about) && (h.photosOk || 0) < 2) photoCheck.push({ surveyId: sv.id, hotelId: h.id, name: h.name || '', city: h.city || '', website: h.website || '', photos: (h.photos || []).slice(0, 12) });
     // a new hotel: the robot looks it up on the web once (website, photos, missing details) - owner 19.11
-    if (h.name && !/ללא שם/.test(h.name) && (h.webV || 0) < 6 && (h.webTries6 || 0) < 4 && !(h.webDone && h.website && ((h.photos || []).length || (h.photosCand || []).length))) webLook.push({ surveyId: sv.id, hotelId: h.id, name: h.name, city: h.city || '', website: h.website || '', avoid: h.webBad || [], hall: /אולם/.test((sv.title || '') + ' ' + (sv.kind || '') + ' ' + h.name) || /^אולם/.test(h.name || '') });
+    if (h.name && !/ללא שם/.test(h.name) && (h.webV || 0) < 7 && (h.webTries7 || 0) < 4 && !(h.webDone && h.website && ((h.photos || []).length || (h.photosCand || []).length))) webLook.push({ surveyId: sv.id, hotelId: h.id, name: h.name, city: h.city || '', website: h.website || '', avoid: h.webBad || [], hall: /אולם/.test((sv.title || '') + ' ' + (sv.kind || '') + ' ' + h.name) || /^אולם/.test(h.name || '') });
     // looked up without a real web search (no reviews yet): again once the robot can search (Claude key)
     if (h.name && h.webNoSearch && !h.webGrounded && (h.webRedoTries || 0) < 2) webRedo.push({ surveyId: sv.id, hotelId: h.id, name: h.name, city: h.city || '', website: h.website || '', redo: true });
   }
@@ -1487,6 +1487,7 @@ async function script(req, res, what, userId, b) {
     h.webTries4 = (h.webTries4 || 0) + 1;
     h.webTries5 = (h.webTries5 || 0) + 1;
     h.webTries6 = (h.webTries6 || 0) + 1;
+    h.webTries7 = (h.webTries7 || 0) + 1;   // owner 24.11: a new round with the Tavily search
     if (b.redo) h.webRedoTries = (h.webRedoTries || 0) + 1;
     if (b.grounded === false) h.webNoSearch = true;
     if (b.grounded === true && b.found) { h.webGrounded = true; delete h.webNoSearch; }
@@ -1502,7 +1503,7 @@ async function script(req, res, what, userId, b) {
       else if (ph.length && h.website && !(h.photos || []).length) h.photosCand = [...new Set(ph)].slice(0, 12);   // not checked yet (no Gemini quota): checked in a later run, shown only after that
       if (g.about && !h.about && h.website) h.about = str(g.about, 400);   // only from the place's own site
       if (b.grounded === false) { h.webV = 3; await setJ(key, h.id, h); return send(res, 200, { ok: true }); }   // no search: no ratings / phone / e-mail
-      h.webV = 6;
+      h.webV = 7;
       const rt = Number(g.rating), rc = Number(g.reviews), sc = Number(g.ratingScale) === 10 || rt > 5 ? 10 : 5;
       if (rt > 0 && rt <= sc) { h.rating = Math.round(rt * 10) / 10; h.ratingScale = sc; }
       if (g.reviewsSource) h.reviewsSource = str(g.reviewsSource, 40);
@@ -1552,7 +1553,7 @@ async function script(req, res, what, userId, b) {
     if ((b.siteBad || notOwnSite(h.website)) && h.website) {
       h.webBad = [...new Set([...(h.webBad || []), h.website])].slice(-10);
       h.log = [...(h.log || []), { t: 'note', at: now(), by: 'המערכת', text: 'האתר ' + h.website + ' לא שייך למקום הזה. הוא והתמונות ממנו הוסרו, והמקום נחפש שוב ברשת.' }].slice(-80);
-      h.website = ''; h.photos = []; delete h.about; delete h.photosCand; h.webDone = false; h.webV = 0; h.webTries5 = 0; h.webTries6 = 0; h.photosOk = 2;
+      h.website = ''; h.photos = []; delete h.about; delete h.photosCand; h.webDone = false; h.webV = 0; h.webTries5 = 0; h.webTries6 = 0; h.webTries7 = 0; h.photosOk = 2;
       await setJ(key, h.id, h);
       return send(res, 200, { ok: true, siteRemoved: true });
     }
