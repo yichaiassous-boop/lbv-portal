@@ -89,6 +89,9 @@ const ILAN_BACK_DAYS = 7;            // when his number is saved, his calls of t
 const callKey = (name, at) => String(name || '').split(' · ').pop().trim() + '|' + String(at || '').slice(0, 19);
 /** owner 22.11 + 24.11: who a call is with, by its number (the tags, Ilan, the hotels, the artists, the clients). */
 /** owner 24.11: sites that are never a place's own site (booking, reviews, maps, news, encyclopedias, history blogs, directories). */
+/** owner 24.11: a recording's file name ("שיחה *6426_261124.m4a") is never the name of a place. */
+const fileLike = n => /\.(m4a|mp3|amr|wav|ogg|3gp|aac|opus)\s*$/i.test(String(n || '')) || /^\s*(הקלטת שיחה|שיחה)[\s\u200e\u200f\u202a-\u202e]*[*+\d]/.test(String(n || ''));
+const noName = (h, title) => (/אולם|אולמות/.test(title || '') ? 'אולם' : 'מקום') + ' ללא שם' + (digits(h.phone) || String(h.phone || '').trim() ? ' (' + String(h.phone || '').trim() + ')' : '');
 const NOT_OWN_SITE = /(^|\.)(booking|hotel4u|tripadvisor|moovit|wikipedia|wikiwand|google|facebook|instagram|tiktok|youtube|easy\.co|gogo|hotels\.com|expedia|agoda|trivago|kayak|zimmer|zimmeril|rest\.co|mapcarta|waze|ynet|walla|mako|haaretz|maariv|historyistold|yad2|madlan|b144|d\.co\.il|dapei|lametayel|pinterest|linkedin)/i;
 const hostOf = u => String(u || '').replace(/^https?:\/\/(www\.)?/i, '').split(/[/?#]/)[0].toLowerCase();
 const notOwnSite = u => !!u && NOT_OWN_SITE.test(hostOf(u) + String(u).replace(/^https?:\/\/[^/]+/, ''));
@@ -298,7 +301,7 @@ function robotJobs(sv, hotels) {
     // owner 24.11: only real photos of the place (no logos, icons, flags, banners): the photos already on a card are checked once
     if (((h.photos || []).length || h.website || h.about) && (h.photosOk || 0) < 2) photoCheck.push({ surveyId: sv.id, hotelId: h.id, name: h.name || '', city: h.city || '', website: h.website || '', photos: (h.photos || []).slice(0, 12) });
     // a new hotel: the robot looks it up on the web once (website, photos, missing details) - owner 19.11
-    if (h.name && (h.webV || 0) < 5 && (h.webTries5 || 0) < 3 && !(h.webDone && h.website && (h.photos || []).length)) webLook.push({ surveyId: sv.id, hotelId: h.id, name: h.name, city: h.city || '', website: h.website || '', avoid: h.webBad || [] });
+    if (h.name && !/ללא שם/.test(h.name) && (h.webV || 0) < 5 && (h.webTries5 || 0) < 3 && !(h.webDone && h.website && (h.photos || []).length)) webLook.push({ surveyId: sv.id, hotelId: h.id, name: h.name, city: h.city || '', website: h.website || '', avoid: h.webBad || [] });
     // looked up without a real web search (no reviews yet): again once the robot can search (Claude key)
     if (h.name && h.webNoSearch && !h.webGrounded && (h.webRedoTries || 0) < 2) webRedo.push({ surveyId: sv.id, hotelId: h.id, name: h.name, city: h.city || '', website: h.website || '', redo: true });
   }
@@ -695,7 +698,7 @@ export default async function hotelsHandler(req, res) {
       const key = K.hotels(sv.id);
       let h = body.hotelId ? await getJ(key, str(body.hotelId, 40)) : null;
       if (body.hotelId && !h) return send(res, 404, { error: 'not-found' });
-      if (!h) h = { ...cleanHotel({ name: str(body.name, 120) || c.sum.who || c.name.replace(/\.[a-z0-9]{2,4}$/i, ''), phone: c.phone }), id: rid('h'), createdAt: now() };
+      if (!h) { const nm0 = [str(body.name, 120), c.sum.who].find(x => x && !fileLike(x)) || ''; h = { ...cleanHotel({ name: nm0, phone: c.phone }), id: rid('h'), createdAt: now() }; if (!h.name) h.name = noName(h, sv.title); }
       if ((h.log || []).some(l => l.t === 'call' && l.file?.id === c.id)) return send(res, 200, { ...h, min: minPrice(h), already: true });
       const sm = c.sum;
       h.log = [...(h.log || []), { t: 'call', at: c.at || now(), file: { id: c.id, name: c.name, url: c.url }, dur: sm.duration || '',
@@ -970,7 +973,12 @@ async function script(req, res, what, userId, b) {
       const seenPh = new Set();
       const cleanPh = (h.photos || []).filter(u => { const s = stem(u); if (!s || seenPh.has(s) || /bstatic|booking\.com|tripadvisor|trvl|expedia|agoda|googleusercontent\.com\/p\/|logo|icon|favicon|flag|sprite|placeholder|avatar|banner-ad|whatsapp|facebook|instagram/i.test(u)) return false; seenPh.add(s); return true; });
       const phChanged = cleanPh.length !== (h.photos || []).length;
-      if (!bad && !(!h.website && h.about) && !phChanged) continue;
+      const badName = fileLike(h.name);
+      // owner 24.11: the place's own site but no photo left after the check: look for its photos once more
+      const rePh = !bad && h.website && !cleanPh.length && (h.photosOk || 0) >= 2 && !h.photoRedo;
+      if (!bad && !(!h.website && h.about) && !phChanged && !badName && !rePh) continue;
+      if (badName) { h.log = [...(h.log || []), { t: 'note', at: now(), by: 'המערכת', text: 'השם היה שם של קובץ הקלטה (' + h.name + '). אפשר לכתוב כאן את שם המקום.' }].slice(-80); h.name = noName(h, sv.title); }
+      if (rePh) { h.photoRedo = 1; h.webV = 0; h.webTries5 = 0; h.webDone = false; }
       if (phChanged && !bad) { h.log = [...(h.log || []), { t: 'note', at: now(), by: 'המערכת', text: 'הוסרו ' + ((h.photos || []).length - cleanPh.length) + ' תמונות: כפולות, לוגו או מאתר הזמנות.' }].slice(-80); h.photos = cleanPh; }
       if (bad) {
         h.webBad = [...new Set([...(h.webBad || []), h.website])].slice(-10);
