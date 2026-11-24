@@ -371,7 +371,10 @@ const callText = r => [r.hotel?.name, r.summary, ...(Array.isArray(r.places) ? r
 const hotelText = h => [h.name, h.summary, h.availText, h.notes, ...(h.log || []).map(l => [l.summary, l.text, str(l.transcript, 6000), l.subject, l.body].filter(Boolean).join(' '))].filter(Boolean).join('\n');
 async function waitList(s) {
   const own = isOwner(s), uid = meId(s);
-  return (await allJ(K.wait)).filter(w => own || w.userId === uid).sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 60)
+  // owner 24.11: also everyone who manages one of the cards it may go to (the owner on another computer / account saw nothing)
+  const svs = new Map((await allJ(K.surveys)).map(x => [x.id, x]));
+  const mayManage = id => { const sv = svs.get(id); return !!sv && canManage(s, sv); };
+  return (await allJ(K.wait)).filter(w => own || w.userId === uid || (w.cards || []).some(c => mayManage(c.surveyId || c.id || c)) || mayManage(w.from) || mayManage(w.to)).sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 60)
     .map(w => ({ id: w.id, type: w.type, at: w.at, name: w.name, summary: w.summary, transcript: str(w.transcript, 4000), cards: w.cards, from: w.from, hotelId: w.hotelId, fromTitle: w.fromTitle, to: w.to, toTitle: w.toTitle, why: w.why }));
 }
 
