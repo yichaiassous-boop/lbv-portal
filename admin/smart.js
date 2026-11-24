@@ -50,7 +50,7 @@ export async function callsPage(pg, c) {
   q.addEventListener('input', () => { callQ = q.value; draw(); });
   const box = h('<div class="sm-list"></div>');
   pg.append(bar);
-  if (counts.other) pg.append(h(`<p class="hint sm-note">${counts.other} שיחות שהמערכת עוד לא זיהתה. היא מקשיבה להן לבד ומכניסה כל אחת למקום שלה (שתיים בכל כמה דקות). אפשר גם ללחוץ "מי זה?", וכל שיחה מהמספר הזה תיכנס מעכשיו למקום הנכון.</p>`));
+  if (counts.other) pg.append(h(`<p class="hint sm-note">${counts.other} שיחות שהמערכת עוד לא זיהתה. היא מקשיבה להן לבד ומכניסה כל אחת למקום שלה (שתיים בכל כמה דקות, מהשנה האחרונה). אפשר גם ללחוץ "מי זה?", וכל שיחה מהמספר הזה תיכנס מעכשיו למקום הנכון.</p>`));
   if (calls.hidden) pg.append(h(`<p class="hint">${calls.hidden} שיחות אישיות מוסתרות.</p>`));
   pg.append(box);
   function draw() {

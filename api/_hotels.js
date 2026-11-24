@@ -948,7 +948,7 @@ async function script(req, res, what, userId, b) {
     let sortCalls = [];
     if (userId === 'owner') {
       const { whoOf } = await whoMap();
-      const since = Date.now() - 45 * 864e5;
+      const since = Date.now() - 365 * 864e5;   // every unknown call from the last year
       sortCalls = (await allJ(K.calls)).filter(c => c.owner === userId && !c.dup && !c.sort && (c.sortTries || 0) < 2 && (Date.parse(c.at) || 0) >= since && !whoOf(c).k)
         .sort((a2, b2) => String(b2.at).localeCompare(String(a2.at))).slice(0, 2)
         .map(c => ({ id: c.id, at: c.at, name: c.name || '', phone: whoOf(c).d, local: !!c.local, text: c.local ? str(c.sum?.transcript || '', 30000) : '' }));
