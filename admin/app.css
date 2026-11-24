@@ -267,3 +267,6 @@
 .ah-zone__t { margin: 0 0 10px; font: 700 .95rem/1.2 "Assistant", sans-serif; color: var(--ink-3); }
 .ah-zone--site .ah-grid { grid-template-columns: 1fr; }
 .ah-zone--site .ah-tile { grid-template-columns: auto 1fr; align-items: center; min-height: 0; }
+
+/* a tile alone on the last row (owner 24.11) */
+.ah-tile--wide { grid-column: 1 / -1; grid-template-columns: auto 1fr; align-items: center; min-height: 0; }
