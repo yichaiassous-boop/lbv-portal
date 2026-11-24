@@ -70,6 +70,7 @@ function callRow(x) {
       <b>${esc(x.who || x.name || x.phone || 'מספר לא ידוע')}${x.artist ? ` <small>(${esc(x.artist)})</small>` : ''}</b>
       <small>${[x.sub, x.survey ? 'בדיקה: ' + x.survey : '', x.phone ? `<span dir="ltr">${esc(x.phone)}</span>` : '', when(x.at)].filter(Boolean).map(v => (v.startsWith('<span') ? v : esc(v))).join(' · ')}</small>
       ${x.summary ? `<p>${esc(x.summary)}</p>` : ''}
+      ${x.local ? `<details class="sm-call__txt"><summary>${x.full ? 'התמלול מהטלפון' : 'תמלול 30 השניות הראשונות'}${x.lang === 'fr' ? ' (צרפתית)' : ''}</summary><pre dir="auto">${esc(x.text || 'התמלול עוד לא הגיע')}</pre></details>` : ''}
     </div>
     <div class="sm-call__acts">
       ${url ? `<a class="btn btn--line" href="${esc(url)}" target="_blank" rel="noopener">להקשיב</a>` : ''}

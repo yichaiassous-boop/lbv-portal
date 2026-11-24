@@ -69,6 +69,7 @@ function tick() {
     try { site('post', 'app', { url: P('APP_URL') || ScriptApp.getService().getUrl() || '', secret: P('APP_SECRET'), last: P('APP_LAST') }); } catch (e) { console.error('app', e); }
     const st = site('get', 'status');
     try { indexCalls(); } catch (e) { console.error('index', e); }   // owner 19.11: the list of calls first (quick), so a slow reading never hides new calls
+    try { phoneTexts(st); } catch (e) { console.error('phoneTexts', e); }   // owner 24.11: calls the phone transcribed itself
     try { ilanOld(st); } catch (e) { console.error('ilanOld', e); }   // owner 19.11: Ilan's calls first
     try { recordings(st); } catch (e) { console.error('recordings', e); }
     try { relistens(st); } catch (e) { console.error('relistens', e); }   // early: it needs minutes
@@ -189,12 +190,14 @@ function phoneFromName(n) {
 
 /* ---------- Gemini ---------- */
 function listen(file, sv, at, question) {
+  let part = file.textPart;   // owner 24.11: the phone transcribed the call itself → only its text comes here
+  if (!part) {
   const blob = file.getBlob();
   let mime = blob.getContentType() || 'audio/mp4';
   if (/octet/.test(mime)) mime = /\.amr$/i.test(file.getName()) ? 'audio/amr' : /\.mp3$/i.test(file.getName()) ? 'audio/mpeg' : /\.wav$/i.test(file.getName()) ? 'audio/wav' : 'audio/mp4';
-  let part;
   if (blob.getBytes().length < 14 * 1024 * 1024) part = { inline_data: { mime_type: mime, data: Utilities.base64Encode(blob.getBytes()) } };
   else part = { big: { blob: blob, mime: mime, name: file.getName() } };   // uploaded per key inside gemini()
+  }
 
   if (!sv) return gemini(part, [
     'This is a recording of a phone call made from the work phone of La Belle Vie (in Hebrew: לה בל וי), an Israeli events and holiday company.',
@@ -268,10 +271,13 @@ function ilanOld(st) {
   }
 }
 function listenIlan(file, at) {
+  let part = file.textPart;
+  if (!part) {
   const blob = file.getBlob();
   let mime = blob.getContentType() || 'audio/mp4';
   if (/octet/.test(mime)) mime = /\.amr$/i.test(file.getName()) ? 'audio/amr' : /\.mp3$/i.test(file.getName()) ? 'audio/mpeg' : /\.wav$/i.test(file.getName()) ? 'audio/wav' : 'audio/mp4';
-  const part = blob.getBytes().length < 14 * 1024 * 1024 ? { inline_data: { mime_type: mime, data: Utilities.base64Encode(blob.getBytes()) } } : { big: { blob: blob, mime: mime, name: file.getName() } };
+  part = blob.getBytes().length < 14 * 1024 * 1024 ? { inline_data: { mime_type: mime, data: Utilities.base64Encode(blob.getBytes()) } } : { big: { blob: blob, mime: mime, name: file.getName() } };
+  }
   const Q = { type: 'OBJECT', properties: { time: { type: 'STRING' }, speaker: { type: 'STRING' }, text: { type: 'STRING' } } };
   return gemini(part, [
     'This is a recording of a phone call between the owner of the work phone of La Belle Vie (in Hebrew: לה בל וי), an Israeli events company, and Ilan (אילן).',
@@ -670,7 +676,87 @@ function sheets(st) {
   }
 }
 
+/* ---------- 0b (owner 24.11): our own transcription on the phone ----------
+   The phone transcribes the call itself and sends only the text (never the recording). Here the text is
+   (1) listed with the other calls (with where the recording is on the phone, "ref"), (2) read by Gemini when it is
+   a work call: a hotel call in check mode → the hotel card, Ilan → his tasks, anything else → a summary on the call.
+   Each text waits as a small file in "תמלולים מהטלפון" and is deleted as soon as it is handled. */
+function textFolder() {
+  const n = 'תמלולים מהטלפון';
+  const it = DriveApp.getFoldersByName(n);
+  return it.hasNext() ? it.next() : DriveApp.createFolder(n);
+}
+function textId(b) { return 'ph_' + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_1, String(b.name) + '|' + String(b.size))).slice(0, 20); }
+function phoneTexts(st) {
+  const fi = textFolder().getFiles();
+  const list = [];
+  while (fi.hasNext()) list.push(fi.next());
+  list.sort((a, b) => a.getDateCreated() - b.getDateCreated());
+  for (const jf of list.slice(0, 8)) {
+    if (elapsed() > 200) return;
+    let b;
+    try { b = JSON.parse(jf.getBlob().getDataAsString('UTF-8')); } catch (e) { jf.setTrashed(true); continue; }
+    const c = b.call || {};
+    const id = textId(b);
+    const at = new Date(c.at || b.modified || Date.now());
+    const who = (c.contact ? c.contact + ' · ' : '') + String(b.name || '');
+    // the file stand-in: the prompts read its name / call details, and its text instead of a recording
+    const desc = JSON.stringify({ phone: c.phone || '', contact: c.contact || '', at: c.at || '', duration: c.duration || '', dir: c.dir || '' });
+    const header = 'This phone call was transcribed automatically on the phone (it can have mistakes: fix obvious ones from the context, never invent). Language: ' + (b.lang || '?') + '. Each line: "mm:ss text" (the speakers are not marked: tell them apart from the context).\n\n';
+    const fake = { getName: () => String(b.name || ''), getDescription: () => desc, getId: () => id, getUrl: () => '', textPart: { text: header + String(b.text || '').slice(0, 60000) } };
+    const file = { id: id, name: String(b.name || ''), url: '' };
+    try {
+      if (!b.listed) {
+        site('post', 'index', { items: [{ id: id, name: who, phone: c.phone || '', at: at.toISOString(), url: '', ref: String(b.ref || ''), local: true, lang: b.lang || '', full: !!b.full, took: b.took || 0, seconds: b.seconds || 0 }] });
+        // the transcript is on the call at once (even before Gemini reads it, and even if Gemini is busy)
+        site('post', 'answer', { id: id, result: { summary: b.full ? '' : 'שיחה לא קשורה לעבודה (נבדקו 30 השניות הראשונות).', transcript: String(b.text || '').slice(0, 30000) } });
+        b.listed = true;
+        jf.setContent(JSON.stringify(b));
+      }
+      if (b.full) {
+        if (ilanFor(st, { getDescription: () => desc, getName: () => String(b.name || '') }, at)) {
+          site('post', 'ilan', { at: at.toISOString(), file: file, result: listenIlan(fake, at) });
+        } else {
+          const w = windowFor(st, at) || watchForPhone(st, c.phone, at);
+          const sv = w ? (st.surveys || []).find(s => s.id === w.surveyId) : null;
+          if (sv) {
+            const result = listen(fake, sv, at);
+            if (result && result.relevant) { result.hotel = result.hotel || {}; if (!result.hotel.phone) result.hotel.phone = c.phone || ''; }
+            site('post', 'call', { surveyId: sv.id, at: at.toISOString(), file: file, result: result });
+          } else {
+            const r = listen(fake, null, at);
+            r.transcript = r.transcript || String(b.text || '');
+            site('post', 'answer', { id: id, result: r });
+          }
+        }
+      }
+      jf.setTrashed(true);   // handled: the text file is deleted (the transcript lives on the site)
+    } catch (e) {
+      console.error('phoneText ' + b.name, e);   // Gemini busy / no quota: the file stays and is tried again next run
+      b.tries = (b.tries || 0) + 1;
+      if (b.tries >= 12) jf.setTrashed(true); else jf.setContent(JSON.stringify(b));
+    }
+  }
+}
+/** A hotel number watched for this time (like watchFor, from the number the phone sent). */
+function watchForPhone(st, phone, at) {
+  const d = String(phone || '').replace(/\D/g, '').replace(/^972/, '0').slice(-9);
+  if (d.length < 8) return null;
+  const ms = at.getTime();
+  for (const w of st.watch || []) {
+    const wd = String(w.phone || '').replace(/\D/g, '').replace(/^972/, '0').slice(-9);
+    if (wd === d && ms >= Date.parse(w.from) && ms <= Date.parse(w.to)) return w;
+  }
+  return null;
+}
+
 /* ---------- 0: the phone app sends each recording here ---------- */
+/** The names the phone's engine should spell right: the hotels in the surveys (and the company). */
+function vocabOf(s) {
+  const names = [];
+  for (const sv of s.surveys || []) for (const h of sv.hotels || []) if (h.name && names.indexOf(h.name) < 0) names.push(h.name);
+  return names.slice(0, 40).join(', ');
+}
 function recFolder() {
   const n = P('FOLDER') || 'הקלטות שיחות';
   const it = DriveApp.getFoldersByName(n);
@@ -687,15 +773,28 @@ function doPost(e) {
     try { st = JSON.parse(cache.get('phoneJobs') || 'null'); } catch (err) {}
     if (!st) {
       const s = site('get', 'status');
-      st = { windows: (s.windows || []).map(w => ({ from: Date.parse(w.from) || 0, to: w.to ? Date.parse(w.to) || 0 : 0 })), watch: (s.watch || []).map(w => ({ phone: w.phone, from: Date.parse(w.from) || 0, to: Date.parse(w.to) || 0 })), wa: s.wa || [] };
+      st = { windows: (s.windows || []).map(w => ({ from: Date.parse(w.from) || 0, to: w.to ? Date.parse(w.to) || 0 : 0 })), watch: (s.watch || []).map(w => ({ phone: w.phone, from: Date.parse(w.from) || 0, to: Date.parse(w.to) || 0 })), wa: s.wa || [],
+        ilan: ((s.ilan || {}).phones || []), vocab: vocabOf(s) };
       try { cache.put('phoneJobs', JSON.stringify(st), 60); } catch (err) {}
     }
-    return reply({ ok: true, windows: st.windows, watch: st.watch, wa: st.wa || [] });
+    return reply({ ok: true, windows: st.windows, watch: st.watch, wa: st.wa || [], ilan: st.ilan || [], vocab: st.vocab || '', modelHe: P('MODEL_HE') || '', modelFr: P('MODEL_FR') || '' });
   }
   // WhatsApp messages from hotels (read on the phone from the notifications) → the site files them and reads the details
   if (b.op === 'wa') {
     const items = (Array.isArray(b.items) ? b.items : []).slice(0, 100);
     if (items.length) site('post', 'wa', { items: items });
+    return reply({ ok: true });
+  }
+  // owner 24.11: a call the phone transcribed itself (only text, never the recording)
+  if (b.op === 'text') {
+    if (!b.name) return reply({ ok: false, error: 'name' });
+    const folder = textFolder();
+    const fname = textId(b) + '.json';
+    const same = folder.getFilesByName(fname);
+    while (same.hasNext()) same.next().setTrashed(true);   // sent again (a call read again in full): the newest wins
+    delete b.secret;
+    folder.createFile(fname, JSON.stringify(b), 'application/json');
+    props().setProperty('APP_LAST', new Date().toISOString());
     return reply({ ok: true });
   }
   if (b.op !== 'upload' || !b.data || !b.name) return reply({ ok: false, error: 'op' });

@@ -396,3 +396,8 @@ mark { background: #FCE7A8; color: inherit; padding: 0 2px; border-radius: 3px; 
 .sm-fun__k { flex: none; font-size: .78rem; font-weight: 700; padding: 3px 10px; border-radius: 999px; background: #f4ecd8; color: #7a5a14; }
 .sm-fun__f { font-size: .82rem; padding: 3px 9px; border-radius: 999px; background: #eef1f6; color: #44546a; }
 .sm-check--f { align-self: end; padding-bottom: 10px; }
+
+/* a call the phone transcribed itself (owner 24.11) */
+.sm-call__txt { margin-top: 6px; }
+.sm-call__txt summary { cursor: pointer; font-size: .85rem; color: var(--ink-3, #5b6678); }
+.sm-call__txt pre { white-space: pre-wrap; font: inherit; font-size: .9rem; line-height: 1.6; margin: 6px 0 0; max-height: 320px; overflow: auto; background: #f6f7fa; padding: 8px 10px; border-radius: 8px; }

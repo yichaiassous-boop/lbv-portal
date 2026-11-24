@@ -356,7 +356,8 @@ export default async function hotelsHandler(req, res) {
         let k = book[d] ? { cat: book[d].cat, who: book[d].name, byHand: true } : byPhone.get(d);
         if (!k && f === 'ilan') k = { cat: 'ilan', who: 'אילן' };
         if (!k && f && f !== 'skip' && byHotelId.has(f)) k = byHotelId.get(f);
-        return { id: c.id, at: c.at, name: c.name, phone: d ? '0' + d.replace(/^0/, '') : '', url: c.url, summary: c.sum && !c.sum.error ? str(c.sum.summary || c.sum.answer || '', 600) : str(ilanSum[c.id] || '', 600), ...(k || { cat: 'other', who: '' }) };
+        return { id: c.id, at: c.at, name: c.name, phone: d ? '0' + d.replace(/^0/, '') : '', url: c.url, summary: c.sum && !c.sum.error ? str(c.sum.summary || c.sum.answer || '', 600) : str(ilanSum[c.id] || '', 600), ...(k || { cat: 'other', who: '' }),
+          ...(c.local ? { local: true, full: !!c.full, lang: c.lang || '', text: str(c.sum?.transcript || '', 4000) } : {}) };
       });
       const counts = {};
       for (const c of list) counts[c.cat] = (counts[c.cat] || 0) + 1;
@@ -736,7 +737,7 @@ async function script(req, res, what, userId, b) {
     for (const sv of surveys) for (const h of await allJ(K.hotels(sv.id))) for (const m of (h.log || []))
       if ((m.t === 'mail-out' || m.t === 'mail-in') && m.threadId && Date.now() - Date.parse(m.at) < 60 * 864e5 && !threads.some(x => x.threadId === m.threadId)) threads.push({ surveyId: sv.id, hotelId: h.id, threadId: m.threadId, seen: (h.log || []).filter(x => x.t === 'mail-in').map(x => x.msgId) });
     // Phone calls the owner asked to summarize ("you talked a week ago, want a summary?" → yes)
-    const asks = (await allJ(K.calls)).filter(c => c.owner === userId && c.ask && !c.sum).slice(0, 3).map(c => ({ id: c.id, name: c.name, at: c.at, q: c.q || '' }));
+    const asks = (await allJ(K.calls)).filter(c => c.owner === userId && c.ask && !c.sum && !c.local).slice(0, 3).map(c => ({ id: c.id, name: c.name, at: c.at, q: c.q || '' }));
     let windows = u.windows || [], mode = u.mode || { on: false };
     if (userId === 'owner') {
       const all = Object.entries((await kv.hgetall(K.users)) || {}).map(([id, v]) => [id, typeof v === 'string' ? JSON.parse(v) : v]);
@@ -752,7 +753,7 @@ async function script(req, res, what, userId, b) {
       if (c.phones.length && c.since) {
         // calls with him that are already in the robot's folder (uploaded earlier, e.g. in check mode) but not read for Ilan yet
         const have = await kv.hgetall(K.ilanCalls) || {};
-        const files = (await allJ(K.calls)).filter(x => !have[x.id] && c.phones.includes(digits(x.phone)) && (Date.parse(x.at) || 0) >= Date.parse(c.since))
+        const files = (await allJ(K.calls)).filter(x => !x.local && !have[x.id] && c.phones.includes(digits(x.phone)) && (Date.parse(x.at) || 0) >= Date.parse(c.since))
           .sort((a2, b2) => String(b2.at).localeCompare(String(a2.at))).slice(0, 2).map(x => ({ id: x.id, at: x.at }));   // newest first
         ilan = { phones: c.phones, since: c.since, files };
         const to = new Date(Date.now() + 3650 * 864e5).toISOString();
@@ -779,6 +780,8 @@ async function script(req, res, what, userId, b) {
       const id = str(it.id, 120);
       if (!id || old[id]) continue;
       const rec = { id, owner: userId, name: str(it.name, 200), phone: str(it.phone, 30), at: str(it.at, 30), url: link(it.url, 300) };
+      // owner 24.11: transcribed on the phone itself: no recording here, only where it is on the phone (ref) + how it went
+      if (it.local) Object.assign(rec, { local: true, ref: str(it.ref, 400), lang: str(it.lang, 8), full: it.full === true, took: Number(it.took) || 0, seconds: Number(it.seconds) || 0 });
       const pd = digits(rec.phone).slice(-9), pat = Date.parse(rec.at) || 0;
       const p = pd.length >= 7 && (pend || (pend = ((await getJ(K.pend, 'list')) || []))).find(x => x.phone === pd && Math.abs(Date.parse(x.at) - pat) < 20 * 60e3);
       if (p) { rec.ask = true; rec.q = p.q; rec.askedAt = now(); pend = pend.filter(x => x !== p); pendChanged = true; }
