@@ -965,13 +965,19 @@ async function script(req, res, what, userId, b) {
     // and text "about" the place that did not come from its own site (a search result: Wikipedia, a store, a map) goes too
     for (const sv of surveys) for (const h of await allJ(K.hotels(sv.id))) {
       const bad = h.website && notOwnSite(h.website);
-      if (!bad && !(!h.website && h.about)) continue;
+      // photos: never from a booking / review site, never a logo / icon / flag, and the same photo once (also .jpg vs .webp, or sizes)
+      const stem = u => String(u).split('?')[0].split('/').pop().toLowerCase().replace(/\.(jpe?g|png|webp|avif|gif)$/, '').replace(/[-_]?\d{2,4}x\d{2,4}$/, '').replace(/[-_](scaled|large|medium|small|thumb)$/, '');
+      const seenPh = new Set();
+      const cleanPh = (h.photos || []).filter(u => { const s = stem(u); if (!s || seenPh.has(s) || /bstatic|booking\.com|tripadvisor|trvl|expedia|agoda|googleusercontent\.com\/p\/|logo|icon|favicon|flag|sprite|placeholder|avatar|banner-ad|whatsapp|facebook|instagram/i.test(u)) return false; seenPh.add(s); return true; });
+      const phChanged = cleanPh.length !== (h.photos || []).length;
+      if (!bad && !(!h.website && h.about) && !phChanged) continue;
+      if (phChanged && !bad) { h.log = [...(h.log || []), { t: 'note', at: now(), by: 'המערכת', text: 'הוסרו ' + ((h.photos || []).length - cleanPh.length) + ' תמונות: כפולות, לוגו או מאתר הזמנות.' }].slice(-80); h.photos = cleanPh; }
       if (bad) {
         h.webBad = [...new Set([...(h.webBad || []), h.website])].slice(-10);
         h.log = [...(h.log || []), { t: 'note', at: now(), by: 'המערכת', text: 'האתר ' + h.website + ' הוא אתר הזמנות / ביקורות / מידע, לא האתר של המקום. הוא והתמונות ממנו הוסרו, והמקום נחפש שוב.' }].slice(-80);
         h.website = ''; h.photos = []; h.webDone = false; h.webV = 0; h.webTries5 = 0; h.photosOk = 2;
       }
-      delete h.about;
+      if (!h.website) delete h.about;   // text only from the place's own site
       await setJ(K.hotels(sv.id), h.id, h);
     }
     for (const sv of surveys) { const j = robotJobs(sv, await allJ(K.hotels(sv.id))); jobs.watch.push(...j.watch); jobs.parses.push(...j.parses); jobs.mailScan.push(...j.mailScan); jobs.webLook.push(...j.webLook); jobs.wa.push(...j.wa); jobs.webRedo.push(...j.webRedo); jobs.relisten.push(...j.relisten); jobs.mailAuto.push(...j.mailAuto); jobs.photoCheck.push(...j.photoCheck); }
