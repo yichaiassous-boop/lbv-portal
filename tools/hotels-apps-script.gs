@@ -377,7 +377,7 @@ function ilanMerge(st) {
   if (!il.merge || elapsed() > 150) return;
   const open = il.open || [];
   const r = gemini({ text: open.map(function (t) { return t.id + ': ' + t.text; }).join('\n') },
-    'These are open tasks the owner got from Ilan in phone calls (id: task, in Hebrew). Some are the same request said in more than one call, in other words. Group only tasks that are really the same thing to do (same action on the same subject). Different tasks stay apart. Answer JSON: groups = lists of ids, each list with 2 or more ids. No group if none.',
+    'These are open tasks the owner got from Ilan in phone calls (id: task, in Hebrew). Ilan often repeats the same request in several calls, in other words, or asks again to go on with it. Group the tasks that are the same request: the same thing to do on the same subject, also when one says "go on" / "again" / "urgently" (e.g. "לחפש מקום לשבת" and "להמשיך לחפש אפשרויות לשבת חתן"; "לפרסם בסטטוס קישור לאינסטגרם" and "לנסח הודעה לקישור האינסטגרם לסטטוס"). Tasks about a different place, person or event stay apart (checking hotel A and checking hotel B are two tasks). Answer JSON: groups = lists of ids, each list with 2 or more ids. No group if none.',
     { type: 'OBJECT', properties: { groups: { type: 'ARRAY', items: { type: 'ARRAY', items: { type: 'STRING' } } } }, required: ['groups'] });
   site('post', 'ilanmerge', { groups: (r.groups || []).filter(function (g) { return g && g.length > 1; }) });
 }

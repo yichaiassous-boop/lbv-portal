@@ -998,7 +998,7 @@ async function script(req, res, what, userId, b) {
         const files = (await allJ(K.calls)).filter(x => !x.local && !x.dup && !have[x.id] && c.phones.includes(digits(x.phone)) && (Date.parse(x.at) || 0) >= Date.parse(c.since))
           .sort((a2, b2) => String(b2.at).localeCompare(String(a2.at))).slice(0, 2).map(x => ({ id: x.id, at: x.at }));   // newest first
         const open = (await allJ(K.ilanTasks)).filter(t => !t.done).sort((a2, b2) => String(a2.at).localeCompare(String(b2.at)));
-        ilan = { phones: c.phones, since: c.since, files, open: open.slice(-60).map(t => ({ id: t.id, text: t.text })), merge: (c.mergedV || 0) < 1 && open.length > 1 };
+        ilan = { phones: c.phones, since: c.since, files, open: open.slice(-60).map(t => ({ id: t.id, text: t.text })), merge: (c.mergedV || 0) < 2 && open.length > 1 };
         const to = new Date(Date.now() + 3650 * 864e5).toISOString();
         jobs.watch.unshift(...c.phones.map(p => ({ ilan: true, phone: p, from: c.since, to })));
       }
@@ -1361,7 +1361,7 @@ async function script(req, res, what, userId, b) {
       }
       await setJ(K.ilanTasks, keep.id, keep);
     }
-    const cfg = await ilanCfg(); cfg.mergedV = 1; await setJ(K.ilan, 'cfg', cfg);
+    const cfg = await ilanCfg(); cfg.mergedV = 2; await setJ(K.ilan, 'cfg', cfg);
     return send(res, 200, { ok: true, merged });
   }
 
