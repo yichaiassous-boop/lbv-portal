@@ -895,6 +895,19 @@ export default async function hotelsHandler(req, res) {
       return send(res, 200, { ...sv, token: sv.link ? viewToken(sv.id) : undefined });
     }
 
+    // owner 24.11: photos from the place's own site, checked by hand (when the robot's check has no Gemini quota). Managers only.
+    if (op === 'webPhotos') {
+      const sv = await getJ(K.surveys, str(body.surveyId, 40));
+      if (!canManage(s, sv)) return send(res, 404, { error: 'not-found' });
+      const key = K.hotels(sv.id), h = await getJ(key, str(body.id, 40));
+      if (!h || !h.website) return send(res, 400, { error: 'no-site' });
+      const ph = (Array.isArray(body.photos) ? body.photos : []).map(u => String(u || '').slice(0, 500)).filter(u => /^https:\/\/[^\s"'<>]+$/i.test(u)).slice(0, 8);
+      if (!ph.length) return send(res, 400, { error: 'no-photos' });
+      h.photos = [...new Set(ph)]; h.photosOk = 2; delete h.photosCand; h.webDone = true;
+      h.log = [...(h.log || []), { t: 'note', at: now(), by: s.n || '', text: 'נוספו ' + h.photos.length + ' תמונות מהאתר של המקום (נבדקו ידנית).' }].slice(-80);
+      await setJ(key, h.id, h);
+      return send(res, 200, { ok: true, photos: h.photos });
+    }
     if (op === 'hotel' || op === 'note' || op === 'mail' || op === 'draft' || op === 'paste' || op === 'photos' || op === 'mailNow' || op === 'relisten') {
       const sv = await getJ(K.surveys, body.surveyId);
       if (!canSee(s, sv)) return send(res, 404, { error: 'not-found' });
