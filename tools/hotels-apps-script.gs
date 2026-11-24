@@ -80,6 +80,8 @@ function tick() {
     const st = site('get', 'status');
     ILAN_OPEN = (st.ilan || {}).open || [];
     try { indexCalls(); } catch (e) { console.error('index', e); }   // owner 19.11: the list of calls first (quick), so a slow reading never hides new calls
+    // owner 24.11: a mail check someone asked for with the button runs first (a Gmail search takes seconds), never after the slow Gemini work
+    try { mailScans(Object.assign({}, st, { mailScan: (st.mailScan || []).filter(m => m.ask) })); } catch (e) { console.error('mailAsk', e); }
     try { phoneTexts(st); } catch (e) { console.error('phoneTexts', e); }   // owner 24.11: calls the phone transcribed itself
     try { ilanOld(st); } catch (e) { console.error('ilanOld', e); }   // owner 19.11: Ilan's calls first
     try { ilanMerge(st); } catch (e) { console.error('ilanMerge', e); }   // owner 24.11: the same request from several calls = one task (once)
@@ -91,7 +93,7 @@ function tick() {
     try { outbox(st); } catch (e) { console.error('outbox', e); }
     try { replies(st); } catch (e) { console.error('replies', e); }
     try { parses(st); } catch (e) { console.error('parses', e); }
-    try { mailScans(st); } catch (e) { console.error('mailScans', e); }
+    try { mailScans(Object.assign({}, st, { mailScan: (st.mailScan || []).filter(m => !m.ask) })); } catch (e) { console.error('mailScans', e); }
     try { webLooks(st); } catch (e) { console.error('webLooks', e); }
     try { funMails(st); } catch (e) { console.error('funMails', e); }   // owner 24.11: the attractions' mail (with the files) and WhatsApp, like the hotels
     try { funReads(st); } catch (e) { console.error('funReads', e); }
