@@ -589,6 +589,7 @@ function claudeWeb(prompt) {
 function ddg(q) {
   const r = UrlFetchApp.fetch('https://html.duckduckgo.com/html/?q=' + encodeURIComponent(q) + '&kl=il-he', { muteHttpExceptions: true, followRedirects: true,
     headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36', 'Accept-Language': 'he,en;q=0.8' } });
+  if (r.getResponseCode() === 202) { console.log('ddg 202 (busy): ' + q); }
   if (r.getResponseCode() >= 300) return [];
   const t = r.getContentText();
   const strip = s => String(s || '').replace(/<[^>]+>/g, '').replace(/&#x27;|&#39;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/\s+/g, ' ').trim();
@@ -649,6 +650,8 @@ function freeLook(w) {
   h._pages = all.filter(x => x.url === h.reviewsUrl || (h.website && host(x.url) === host(h.website)) || about(x)).map(x => x.url).slice(0, 6);
   return h;
 }
+/** owner 24.11: a quick check from the editor that the free search works from Google's servers. */
+function testSearch() { ['אולמיה', 'רמוס', 'מלון דן ירושלים'].forEach(q => { const r = ddg(q); console.log(q + ': ' + r.length + ' ' + r.slice(0, 3).map(x => x.url).join(' ')); Utilities.sleep(1500); }); }
 function webLooks(st) {
   const useClaude = !!P('CLAUDE_KEY');
   const list = (st.webLook || []).slice(0, 2).concat((st.webRedo || []).slice(0, 1));
@@ -664,7 +667,7 @@ function webLooks(st) {
       if (cm) { try { hotel = JSON.parse(cm[0]); found = !!hotel.found; answered = true; } catch (e) { hotel = {}; } }
       // free: web search + Gemini reading only the results
       if (!answered) { try { const fl = freeLook(w); if (fl) { hotel = fl; found = !!fl.found; answered = true; } } catch (e) { console.error('freeLook', e); } }
-      if (!answered) { answered = true; found = false; hotel = { found: false }; }   // nothing found on the web: counted as a try, no AI guess
+      if (!answered) { console.log('webLook: the search gave nothing for ' + w.name + ' (blocked?), next run'); continue; }   // owner 24.11: not counted as a try
       if (!answered && code >= 300) {
         // search blocked (quota) -> Gemini on its own knowledge: website / city / about only, never ratings, phone or e-mail
         console.log('webLook: search ' + code + ', trying without search');
@@ -702,7 +705,7 @@ function webLooks(st) {
     } catch (e) { console.error('webLook', e); }
     if (!answered) continue;   // Gemini did not answer at all: try again next run, not counted as a try
     let checked = false;
-    if (photos.length) { try { photos = goodPhotos(photos, w.name).slice(0, 8); checked = true; } catch (e) { console.error('goodPhotos', e); photos = []; } }   // owner 24.11: only real photos of the place
+    if (photos.length) { try { photos = goodPhotos(photos, w.name).slice(0, 8); checked = true; } catch (e) { console.log('goodPhotos later: ' + e); photos = photos.slice(0, 12); } }   // owner 24.11: only real photos of the place
     site('post', 'web', { surveyId: w.surveyId, hotelId: w.hotelId, found: found, grounded: grounded, hotel: hotel, photos: photos, photosChecked: checked, redo: !!w.redo });
   }
 }
@@ -905,7 +908,7 @@ function photoChecks(st) {
     if (elapsed() > 150) return;
     try {
       if (p.website && siteIsPlace(p.website, p.name, p.city) === false) { site('post', 'photoscheck', { surveyId: p.surveyId, hotelId: p.hotelId, siteBad: true, keep: [] }); continue; }
-      site('post', 'photoscheck', { surveyId: p.surveyId, hotelId: p.hotelId, keep: goodPhotos(p.photos, p.name) });
+      site('post', 'photoscheck', { surveyId: p.surveyId, hotelId: p.hotelId, keep: goodPhotos(p.photos, p.name), cand: !!p.cand });
     } catch (e) { console.error('photoCheck', e); }   // Gemini busy: again next run
   }
 }
