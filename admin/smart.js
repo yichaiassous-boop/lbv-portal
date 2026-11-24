@@ -23,11 +23,11 @@ const fail = e => { if (e.message !== 'login') ctx.toast(e.message === 'forbidde
 
 /* ---------------- השיחות ---------------- */
 const CATS = {
-  ilan: { t: 'אילן', c: '#6b4fa0' }, hotel: { t: 'מלונות', c: '#1f6f8b' }, artist: { t: 'אמנים', c: '#7a2e4d' }, client: { t: 'לקוחות', c: '#2f7d4f' },
+  ilan: { t: 'אילן', c: '#6b4fa0' }, hotel: { t: 'מלונות ואולמות', c: '#1f6f8b' }, artist: { t: 'אמנים', c: '#7a2e4d' }, client: { t: 'לקוחות', c: '#2f7d4f' },
   supplier: { t: 'ספקים', c: '#a8661c' }, attraction: { t: 'אטרקציות', c: '#b0408a' }, team: { t: 'צוות', c: '#44546a' }, private: { t: 'פרטי', c: '#8a8f98' }, hide: { t: 'מוסתר', c: '#5b5f66' }, other: { t: 'לא מזוהה', c: '#b42318' },
 };
 const TAGGABLE = ['hotel', 'artist', 'client', 'supplier', 'attraction', 'team', 'private', 'hide', 'other'];
-const ONE = { hotel: 'מלון', artist: 'אמן', client: 'לקוח', supplier: 'ספק', attraction: 'אטרקציה', team: 'צוות', private: 'פרטי', hide: 'אישי, לא להציג בכלל', other: 'אחר' };
+const ONE = { hotel: 'מלון / אולם', artist: 'אמן', client: 'לקוח', supplier: 'ספק', attraction: 'אטרקציה', team: 'צוות', private: 'פרטי', hide: 'אישי, לא להציג בכלל', other: 'אחר' };
 let calls = null, callCat = 'all', callQ = '';
 
 export async function callsPage(pg, c) {
@@ -76,14 +76,20 @@ function callRow(x) {
     <div class="sm-call__acts">
       ${url ? `<a class="btn btn--line" href="${esc(url)}" target="_blank" rel="noopener">להקשיב</a>` : ''}
       ${ctx.quote && !['ilan', 'hotel', 'supplier', 'team', 'private'].includes(x.cat) ? '<button type="button" class="btn btn--gold" data-q>הצעת מחיר</button>' : ''}
-      ${x.phone ? `<button type="button" class="btn btn--line" data-tag>${x.cat === 'other' ? 'מי זה?' : 'לשנות'}</button>` : ''}
+      ${x.phone ? `<button type="button" class="btn btn--line" data-tag>${x.cat === 'other' ? 'מי זה?' : 'לשנות'}</button>` : '<button type="button" class="btn btn--line" data-hide>להסתיר תמיד</button>'}
     </div>
   </article>`);
   el.querySelector('[data-tag]')?.addEventListener('click', () => tagSheet(x));
+  el.querySelector('[data-hide]')?.addEventListener('click', async () => {   // a call with no number: hidden by the name, now and later
+    const who = contactName(x.name);
+    if (!confirm('להסתיר תמיד את כל השיחות עם "' + who + '"? הן לא יימחקו, רק לא יופיעו כאן.')) return;
+    try { await api('POST', '', { op: 'tag', hideName: x.name }); ctx.toast('מוסתר'); againCalls(); } catch (e) { fail(e); }
+  });
   el.querySelector('[data-q]')?.addEventListener('click', () => ctx.quote(x));
   return el;
 }
 
+const contactName = n => { const s = String(n || ''); return (s.includes(' · ') ? s.split(' · ')[0] : s.replace(/\.(m4a|mp3|amr|wav|aac|ogg|3gp)$/i, '').replace(/^(הקלטת\s+)?שיחה\s*/, '').replace(/[_\s-]*\+?\d[\d_\s-]{5,}$/, '').replace(/_/g, ' ')).replace(/\s+/g, ' ').trim(); };
 function tagSheet(x) {
   document.querySelector('.ev-sheet')?.remove();
   const w = h(`<div class="ev-sheet" role="dialog" aria-modal="true" aria-label="מי זה?">

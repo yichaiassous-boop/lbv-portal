@@ -88,6 +88,13 @@ const ILAN_BACK_DAYS = 7;            // when his number is saved, his calls of t
 /** owner 24.11: the same recording uploaded twice to Drive is one call: same file name (without the contact) + same time. */
 const callKey = (name, at) => String(name || '').split(' · ').pop().trim() + '|' + String(at || '').slice(0, 19);
 /** owner 22.11 + 24.11: who a call is with, by its number (the tags, Ilan, the hotels, the artists, the clients). */
+/** owner 24.11: who a call is with by name, for calls with no number ("הקלטת שיחה יצחק מנהל ראש העין_260531_131447.m4a" → "יצחק מנהל ראש העין"). */
+export const contactOf = name => {
+  const s = String(name || '');
+  const base = s.includes(' · ') ? s.split(' · ')[0] : s.replace(/\.(m4a|mp3|amr|wav|aac|ogg|3gp)$/i, '').replace(/^(הקלטת\s+)?שיחה\s*/, '').replace(/[_\s-]*\+?\d[\d_\s-]{5,}$/, '').replace(/_/g, ' ');
+  return base.replace(/\s+/g, ' ').trim();
+};
+const normName = v => String(v || '').replace(/[^\p{L}\p{N}]/gu, '').toLowerCase();
 const SORT_CATS = ['hotel', 'artist', 'client', 'supplier', 'attraction', 'team', 'private', 'other'];
 async function whoMap() {
   const book = Object.fromEntries(Object.entries(await kv.hgetall(K.book) || {}).map(([k, v]) => { try { return [k, JSON.parse(v)]; } catch (e) { return [k, null]; } }));
@@ -107,12 +114,18 @@ async function whoMap() {
     put(digits(e.phone), { cat: 'client', who: e.client || e.title || '', sub: [e.title, e.date].filter(Boolean).join(', '), eventId: e.id, artistId: a?.id, artist: a?.name, color: a?.color });
   }
   for (const f of await allJ('fn:all')) put(digits(f.phone), { cat: 'attraction', who: f.name || '', sub: [f.supplier, f.area].filter(Boolean).join(', '), funId: f.id });
+  const hideNames = new Set(Object.keys(await kv.hgetall('hs:hidenames') || {}));
   const callDigits = c => digits(c.phone) || digits((String(c.name || '').match(/(\+?972|0)\d[\d\- ]{7,12}/) || [''])[0]);
   const whoOf = c => {
     const d = callDigits(c), f = files[c.id];
+    const nm = normName(contactOf(c.name));
+    if (nm.length >= 3 && hideNames.has(nm)) return { d, k: { cat: 'hide', who: contactOf(c.name) } };
     let k = book[d] ? { cat: book[d].cat, who: book[d].name, byHand: book[d].by !== 'המערכת', auto: book[d].by === 'המערכת' } : byPhone.get(d);
     if (!k && f === 'ilan') k = { cat: 'ilan', who: 'אילן' };
     if (!k && f && f !== 'skip' && f !== 'wait' && byHotelId.has(f)) k = byHotelId.get(f);
+    if (!k && f === 'wait') k = { cat: 'hotel', who: contactOf(c.name), sub: 'מחכה באזור ההמתנה בבדיקת מלונות' };
+    // owner 24.11: the contact's name says what it is ("אולם קדמא", "מלון ...")
+    if (!k && /(^|\s)(אולם|אולמי|מלון|גן אירועים|גני אירועים|וילה|hotel|venue)(\s|$)/i.test(contactOf(c.name))) k = { cat: 'hotel', who: contactOf(c.name), byName: true };
     if (!k && c.sort?.cat) k = { cat: c.sort.cat, who: c.sort.who || '', sub: c.sort.sub || '', auto: true, ...(c.sort.funId ? { funId: c.sort.funId } : {}) };
     return { d, k };
   };
@@ -478,6 +491,12 @@ export default async function hotelsHandler(req, res) {
     if (q('calls') || body.op === 'tag') {
       if (!(isOwner(s) || ILAN_SEE.includes(uid))) return send(res, 403, { error: 'forbidden' });
       if (req.method === 'POST') {   // tag a number by hand → every call from it, now and later
+        if (body.hideName) {   // owner 24.11: a call with no number: hide everyone with this name, always
+          const nm = normName(contactOf(body.hideName));
+          if (nm.length < 3) return send(res, 400, { error: 'name' });
+          await kv.hset('hs:hidenames', nm, JSON.stringify({ name: contactOf(body.hideName), by: s.n || '', at: now() }));
+          return send(res, 200, { ok: true });
+        }
         const d = digits(body.phone);
         if (d.length < 8) return send(res, 400, { error: 'phone' });
         if (body.cat === '') { await kv.hdel(K.book, d); return send(res, 200, { ok: true }); }
