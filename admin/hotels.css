@@ -516,3 +516,8 @@ mark { background: #FCE7A8; color: inherit; padding: 0 2px; border-radius: 3px; 
 .tw-aud { display: grid; gap: 4px; }
 .tw-check { display: flex; gap: 8px; align-items: center; font-size: .9rem; flex: 1 1 100%; }
 @media (max-width: 560px) { .tw-tabs button { padding: 10px; } .tw-tabs button small { display: none; } .tw-tabs button b { font-size: .88rem; } }
+
+/* owner 24.11: export to a sheet with a preferred date */
+.hs-exp .hs-chips { margin-top: 10px; flex-wrap: wrap; }
+.hs-exp__foot { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+@media (max-width: 560px) { .hs-exp__foot .btn { flex: 1 1 100%; } }
