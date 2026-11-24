@@ -961,6 +961,19 @@ async function script(req, res, what, userId, b) {
       if (!mode.on) mode = (riders.map(([, x]) => x.mode).find(x => x?.on)) || mode;
     }
     const jobs = { watch: [], parses: [], mailScan: [], webLook: [], wa: [], webRedo: [], relisten: [], mailAuto: [], photoCheck: [] };
+    // owner 24.11: a booking / review / news / history site on a card goes at once (no need to wait for Gemini), with its photos and text;
+    // and text "about" the place that did not come from its own site (a search result: Wikipedia, a store, a map) goes too
+    for (const sv of surveys) for (const h of await allJ(K.hotels(sv.id))) {
+      const bad = h.website && notOwnSite(h.website);
+      if (!bad && !(!h.website && h.about)) continue;
+      if (bad) {
+        h.webBad = [...new Set([...(h.webBad || []), h.website])].slice(-10);
+        h.log = [...(h.log || []), { t: 'note', at: now(), by: 'המערכת', text: 'האתר ' + h.website + ' הוא אתר הזמנות / ביקורות / מידע, לא האתר של המקום. הוא והתמונות ממנו הוסרו, והמקום נחפש שוב.' }].slice(-80);
+        h.website = ''; h.photos = []; h.webDone = false; h.webV = 0; h.webTries5 = 0; h.photosOk = 2;
+      }
+      delete h.about;
+      await setJ(K.hotels(sv.id), h.id, h);
+    }
     for (const sv of surveys) { const j = robotJobs(sv, await allJ(K.hotels(sv.id))); jobs.watch.push(...j.watch); jobs.parses.push(...j.parses); jobs.mailScan.push(...j.mailScan); jobs.webLook.push(...j.webLook); jobs.wa.push(...j.wa); jobs.webRedo.push(...j.webRedo); jobs.relisten.push(...j.relisten); jobs.mailAuto.push(...j.mailAuto); jobs.photoCheck.push(...j.photoCheck); }
     let ilan = { phones: [] };
     if (userId === 'owner') {
