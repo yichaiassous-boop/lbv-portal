@@ -102,6 +102,7 @@ export const contactOf = name => {
   return base.replace(/\s+/g, ' ').trim();
 };
 const normName = v => String(v || '').replace(/[^\p{L}\p{N}]/gu, '').toLowerCase();
+const SORT_V = 2;   // owner 24.11: calls read with older rules are read again
 const SORT_CATS = ['hotel', 'artist', 'client', 'supplier', 'attraction', 'team', 'private', 'other'];
 async function whoMap() {
   const book = Object.fromEntries(Object.entries(await kv.hgetall(K.book) || {}).map(([k, v]) => { try { return [k, JSON.parse(v)]; } catch (e) { return [k, null]; } }));
@@ -974,9 +975,11 @@ async function script(req, res, what, userId, b) {
       const cleanPh = (h.photos || []).filter(u => { const s = stem(u); if (!s || seenPh.has(s) || /bstatic|booking\.com|tripadvisor|trvl|expedia|agoda|googleusercontent\.com\/p\/|logo|icon|favicon|flag|sprite|placeholder|avatar|banner-ad|whatsapp|facebook|instagram/i.test(u)) return false; seenPh.add(s); return true; });
       const phChanged = cleanPh.length !== (h.photos || []).length;
       const badName = fileLike(h.name);
+      const noSitePh = !bad && !h.website && cleanPh.length > 0;   // owner 24.11: no own site → no photos from a search
       // owner 24.11: the place's own site but no photo left after the check: look for its photos once more
       const rePh = !bad && h.website && !cleanPh.length && (h.photosOk || 0) >= 2 && !h.photoRedo;
-      if (!bad && !(!h.website && h.about) && !phChanged && !badName && !rePh) continue;
+      if (!bad && !(!h.website && h.about) && !phChanged && !badName && !rePh && !noSitePh) continue;
+      if (noSitePh) { h.log = [...(h.log || []), { t: 'note', at: now(), by: 'המערכת', text: 'הוסרו ' + cleanPh.length + ' תמונות מחיפוש ברשת: תמונות באות רק מהאתר של המקום עצמו. אפשר להוסיף תמונות שלכם.' }].slice(-80); cleanPh.length = 0; h.photos = []; }
       if (badName) { h.log = [...(h.log || []), { t: 'note', at: now(), by: 'המערכת', text: 'השם היה שם של קובץ הקלטה (' + h.name + '). אפשר לכתוב כאן את שם המקום.' }].slice(-80); h.name = noName(h, sv.title); }
       if (rePh) { h.photoRedo = 1; h.webV = 0; h.webTries5 = 0; h.webDone = false; }
       if (phChanged && !bad) { h.log = [...(h.log || []), { t: 'note', at: now(), by: 'המערכת', text: 'הוסרו ' + ((h.photos || []).length - cleanPh.length) + ' תמונות: כפולות, לוגו או מאתר הזמנות.' }].slice(-80); h.photos = cleanPh; }
@@ -1018,8 +1021,9 @@ async function script(req, res, what, userId, b) {
     if (userId === 'owner') {
       const { whoOf } = await whoMap();
       const since = Date.now() - 365 * 864e5;   // every unknown call from the last year
-      sortCalls = (await allJ(K.calls)).filter(c => c.owner === userId && !c.dup && !c.sort && (c.sortFails || 0) < 3 && (Date.parse(c.at) || 0) >= since && !whoOf(c).k)
-        .sort((a2, b2) => String(b2.at).localeCompare(String(a2.at))).slice(0, 2)
+      const sysOnly = k => !k || k.auto;   // a number a person tagged is never read again
+      sortCalls = (await allJ(K.calls)).filter(c => c.owner === userId && !c.dup && (!c.sort || (c.sort.v || 1) < SORT_V) && (c.sortFails || 0) < 3 && (Date.parse(c.at) || 0) >= since && sysOnly(whoOf(c).k))
+        .sort((a2, b2) => String(b2.at).localeCompare(String(a2.at))).slice(0, 3)
         .map(c => ({ id: c.id, at: c.at, name: c.name || '', phone: whoOf(c).d, local: !!c.local, text: c.local ? str(c.sum?.transcript || '', 30000) : '' }));
     }
     return send(res, 200, { sortCalls, funMail, funRead, ilan, windows, mode, surveys: active, outbox, threads, asks, watch: jobs.watch.slice(0, 300), parses: jobs.parses.slice(0, 5), mailScan: jobs.mailScan.concat(jobs.mailAuto).slice(0, 5), photoCheck: jobs.photoCheck.slice(0, 4), webLook: jobs.webLook.slice(0, 3), webRedo: jobs.webRedo.slice(0, 2), relisten: jobs.relisten.slice(0, 1), wa: jobs.wa.slice(0, 300) });
@@ -1068,12 +1072,17 @@ async function script(req, res, what, userId, b) {
       return send(res, 200, { ok: true, fails: c.sortFails || 0 });
     }
     const cat = pick(r.cat, SORT_CATS, 'other');
-    c.sort = { cat, who: str(r.who, 100), sub: str(r.sub, 120), summary: str(r.summary, 800), at: now() };
+    c.sort = { cat, who: str(r.who, 100), sub: str(r.sub, 120), summary: str(r.summary, 800), at: now(), v: SORT_V };
     if (cat === 'attraction') { const fid = await funFromCall(c, { ...(r.attraction || {}), summary: r.summary }, b.phone || c.phone); if (fid) c.sort.funId = fid; }
     await setJ(K.calls, c.id, c);
     // a sure answer about a number: every call from it goes there from now on (the owner can change it with "לשנות")
     const d = digits(b.phone || c.phone);
-    if (r.sure === true && cat !== 'other' && d.length >= 8 && !(await kv.hget(K.book, d))) await setJ(K.book, d, { cat, name: c.sort.who, by: 'המערכת', at: now() });
+    const oldTag = d.length >= 8 ? await getJ(K.book, d) : null;
+    const sysTag = !oldTag || oldTag.by === 'המערכת';   // what a person set stays; what the system set follows the newest reading
+    if (sysTag && d.length >= 8) {
+      if (r.sure === true && cat !== 'other') await setJ(K.book, d, { cat, name: c.sort.who, by: 'המערכת', at: now() });
+      else if (oldTag) await kv.hdel(K.book, d);
+    }
     return send(res, 200, { ok: true, cat, funId: c.sort.funId || '' });
   }
 
@@ -1321,7 +1330,7 @@ async function script(req, res, what, userId, b) {
       for (const k of (b.grounded === false ? ['city'] : ['city', 'phone', 'email'])) if (!h[k] && g[k]) h[k] = str(g[k], 160);
       if (!safe(h.website) && safe(g.website) && !notOwnSite(g.website) && !(h.webBad || []).some(x => hostOf(x) === hostOf(g.website))) h.website = safe(g.website);
       const ph = (Array.isArray(b.photos) ? b.photos : []).map(safe).filter(Boolean);
-      if (ph.length && b.photosChecked) { h.photos = [...new Set(ph)].slice(0, 8); h.photosOk = 2; }   // owner 24.11: only photos the robot checked
+      if (ph.length && b.photosChecked && h.website) { h.photos = [...new Set(ph)].slice(0, 8); h.photosOk = 2; }   // owner 24.11: only photos the robot checked
       if (g.about && !h.about && h.website) h.about = str(g.about, 400);   // only from the place's own site
       if (b.grounded === false) { h.webV = 3; await setJ(key, h.id, h); return send(res, 200, { ok: true }); }   // no search: no ratings / phone / e-mail
       h.webV = 5;
