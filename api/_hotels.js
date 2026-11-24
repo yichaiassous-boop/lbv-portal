@@ -116,7 +116,7 @@ function fixSort(sort) {
     const m = String(x.summary || '').match(/(אולם|אולמי|מלון|מתחם האירועים|מתחם אירועים|גן האירועים|גן אירועים|וילה)\s*["״]([^"״]{2,40})["״]/);
     if (m && !/^(עבור|של|את|על|לגבי|כדי|אחר|שלה|שלו)$/.test(m[2])) x.who = (m[1].replace(/^מתחם האירועים$/, 'מתחם') + ' ' + m[2]).trim();
   }
-  if (x.cat === 'hotel' && !x.sub) x.sub = 'מקום שבדקנו (מלון / אולם)';
+  if (x.cat === 'hotel' && !/מלון|אולם|גן|וילה|מתחם|קיבוץ|כפר|רשת/.test(x.sub || '')) x.sub = 'מקום שבדקנו (מלון / אולם)';   // not 'חתונה' / 'שיחה פנימית'
   return x;
 }
 const SORT_V = 2;   // owner 24.11: calls read with older rules are read again
