@@ -124,12 +124,13 @@ let cat = null, cq = '', cmax = '', cavail = false;
 export async function catalogPage(pg, c) {
   ctx = c;
   pg.append(h('<p class="hint">טוען…</p>'));
-  try { cat = await api('GET', '?catalog=1'); } catch (e) { pg.innerHTML = ''; fail(e); return; }
+  const V = !!c.venues, W = V ? { many: 'אולמות', one: 'אולם' } : { many: 'מלונות', one: 'מלון' };
+  try { cat = await api('GET', V ? '?catalog=venues' : '?catalog=1'); } catch (e) { pg.innerHTML = ''; fail(e); return; }
   pg.innerHTML = '';
   const all = cat.hotels || [];
-  if (!all.length) { pg.append(h('<section class="card"><h2>עוד אין מלונות במאגר</h2><p class="hint">כל מלון שמתקשרים אליו בבדיקת מלונות נכנס לכאן לבד, עם המחיר והזמינות האחרונים.</p></section>')); return; }
+  if (!all.length) { pg.append(h(`<section class="card"><h2>עוד אין ${W.many} במאגר</h2><p class="hint">כל ${W.one} שמתקשרים אליו בבדיקת מלונות ואולמות נכנס לכאן לבד, עם המחיר והזמינות האחרונים.</p></section>`)); return; }
   const bar = h(`<form class="sm-bar sm-bar--cat" role="search">
-    <input class="input" name="q" type="search" placeholder="אזור, עיר או שם מלון" value="${esc(cq)}" aria-label="חיפוש לפי אזור, עיר או שם">
+    <input class="input" name="q" type="search" placeholder="אזור, עיר או שם ${W.one}" value="${esc(cq)}" aria-label="חיפוש לפי אזור, עיר או שם">
     <label class="sm-max">עד <input class="input" name="max" type="number" inputmode="numeric" min="0" step="50" value="${esc(cmax)}" placeholder="מחיר" aria-label="מחיר מקסימלי"> ₪</label>
     <label class="sm-check"><input type="checkbox" name="av"${cavail ? ' checked' : ''}> רק עם מקום</label>
   </form>`);
@@ -142,8 +143,8 @@ export async function catalogPage(pg, c) {
     const rows = all.filter(x => words.every(w => [x.name, x.city, x.area, x.contact, x.summary].join(' ').toLowerCase().includes(w))
       && (!max || (x.min && x.min.price <= max)) && (!cavail || x.avail === 'available' || x.avail === 'partial'))
       .sort((a, b) => (AV_RANK[a.avail] - AV_RANK[b.avail]) || ((a.min ? a.min.price : 1e9) - (b.min ? b.min.price : 1e9)) || String(b.lastAt).localeCompare(String(a.lastAt)));
-    sum.textContent = `${rows.length} מתוך ${all.length} מלונות. הכי טובים קודם: יש מקום, ואז הכי זול.`;
-    box.innerHTML = rows.length ? '' : '<p class="hint">אין מלון שמתאים. נסו מחיר גבוה יותר או אזור אחר.</p>';
+    sum.textContent = `${rows.length} מתוך ${all.length} ${W.many}. הכי טובים קודם: יש מקום, ואז הכי זול.`;
+    box.innerHTML = rows.length ? '' : `<p class="hint">אין ${W.one} שמתאים. נסו מחיר גבוה יותר או אזור אחר.</p>`;
     rows.forEach((x, i) => box.append(hotelCard(x, i < 3 && x.avail !== 'full' && x.min && !words.length ? i + 1 : 0)));
   }
   draw();

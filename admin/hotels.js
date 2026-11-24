@@ -98,7 +98,7 @@ function phoneRecsBox(q, list, intro) {
 async function refreshSurvey() { cur = await api('GET', '?survey=' + encodeURIComponent(openSurvey)); }
 
 function notReady() {
-  return h(`<section class="card"><h2>בדיקת מלונות</h2><p class="hint hint--box">כדי שהסקר יעבוד צריך שמסד הנתונים של האתר (Upstash Redis, אותו אחד של הסטטיסטיקה) יהיה מחובר בפרויקט ב-Vercel.</p></section>`);
+  return h(`<section class="card"><h2>בדיקת מלונות ואולמות</h2><p class="hint hint--box">כדי שהסקר יעבוד צריך שמסד הנתונים של האתר (Upstash Redis, אותו אחד של הסטטיסטיקה) יהיה מחובר בפרויקט ב-Vercel.</p></section>`);
 }
 
 /* ---------- survey mode: the big switch (made for the phone) ---------- */
@@ -214,8 +214,8 @@ function lookupCard() {
   const here = openSurvey && cur ? cur.survey : null;   // inside a card: offer to add a hotel from another card
   const c = h(`<section class="card hs-look" id="hs-look">
     <form class="hs-look__f" role="search"><label class="hs-look__l" for="hs-look-in">חיפוש</label>
-      <div class="hs-look__row"><input id="hs-look-in" type="search" enterkeyhint="search" autocomplete="off" placeholder="מספר טלפון, שם מלון או נושא" value="${esc(look.raw || '')}"><button class="btn btn--dark" type="submit">חיפוש</button></div>
-      <p class="hs-look__ex">מחפש בכל המלונות, השיחות, המיילים והוואטסאפ. למשל: <button type="button" data-ex="מחיר לשבת">מחיר לשבת</button> <button type="button" data-ex="תפוס">תפוס</button> <button type="button" data-ex="052-0000000 שעת כניסה">מספר + נושא</button></p></form>
+      <div class="hs-look__row"><input id="hs-look-in" type="search" enterkeyhint="search" autocomplete="off" placeholder="מספר טלפון, שם מלון או אולם, או נושא" value="${esc(look.raw || '')}"><button class="btn btn--dark" type="submit">חיפוש</button></div>
+      <p class="hs-look__ex">מחפש בכל המלונות והאולמות, השיחות, המיילים והוואטסאפ. למשל: <button type="button" data-ex="מחיר לשבת">מחיר לשבת</button> <button type="button" data-ex="תפוס">תפוס</button> <button type="button" data-ex="052-0000000 שעת כניסה">מספר + נושא</button></p></form>
     <div class="hs-look__out" aria-live="polite"></div></section>`);
   const out = $('.hs-look__out', c);
   const draw = () => {

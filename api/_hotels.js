@@ -537,7 +537,9 @@ export default async function hotelsHandler(req, res) {
           const calls = (ho.log || []).filter(l => l.t === 'call').length;
           const kid = p => /ילד|ילדה|ילדים|תינוק|child|kid|enfant|bébé|baby/i.test([p.per, p.level, p.note].join(' '));   // a child's price is not the hotel's price
           const mp = (ho.prices || []).filter(p => p.price > 0 && !kid(p)).sort((a2, b2) => a2.price - b2.price)[0] || null;
-          const row = { key, name: ho.name, city: ho.city || '', area: sv.area || '', phone: ho.phone || '', contact: ho.contact || '', website: ho.website || '', rating: ho.rating || null,
+          // owner 24.11: a hall / events garden goes to the halls catalog (by its name, or a card about halls)
+          const venue = /(^|\s)(אולם|אולמי|אולמות|גן אירועים|גני אירועים|גן|וילה|לופט|venue|hall)(\s|$)/i.test(ho.name) || /אולם|אולמות|venue/i.test([sv.title, sv.kind].join(' '));
+          const row = { key, venue, name: ho.name, city: ho.city || '', area: sv.area || '', phone: ho.phone || '', contact: ho.contact || '', website: ho.website || '', rating: ho.rating || null,
             photo: (ho.myPhotos || [])[0] || (ho.photos || [])[0] || '', avail: ho.avail || 'unknown', availText: ho.availText || '', status: ho.status || 'new',
             min: mp ? { price: mp.price, per: mp.per || '', currency: mp.currency || 'ILS', what: [mp.level, mp.board].filter(Boolean).join(', ') } : null,
             prices: (ho.prices || []).slice(0, 6), summary: str(ho.summary || '', 300), lastAt: last, calls,
@@ -547,13 +549,15 @@ export default async function hotelsHandler(req, res) {
           const newer = String(row.lastAt) > String(old.lastAt) ? row : old, other = newer === row ? old : row;
           newer.surveys = [...new Map([...old.surveys, ...row.surveys].map(x => [x.surveyId + x.hotelId, x])).values()];
           newer.calls = old.calls + row.calls;
+          newer.venue = old.venue || row.venue;
           if (!newer.min && other.min) newer.min = other.min;
           if (!newer.photo) newer.photo = other.photo;
           if (!newer.area) newer.area = other.area;
           map.set(key, newer);
         }
       }
-      return send(res, 200, { hotels: [...map.values()] });
+      const wantVenues = q('catalog') === 'venues';
+      return send(res, 200, { hotels: [...map.values()].filter(x => !!x.venue === wantVenues) });
     }
 
     // Owner 19.11: calls with Ilan → a summary of what he asks for + a to-do list. Only the owner sees it.
