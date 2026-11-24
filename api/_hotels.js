@@ -102,6 +102,23 @@ export const contactOf = name => {
   return base.replace(/\s+/g, ' ').trim();
 };
 const normName = v => String(v || '').replace(/[^\p{L}\p{N}]/gu, '').toLowerCase();
+/** owner 24.11 (2): Maayan / Ilan are us. A call where one of us asks a place about a date / availability / a price is a call with that PLACE
+ *  (a hotel / hall), never a client, supplier or team member, even when the model says so; and our names are never "who". */
+const OURS = /(^|[\s"'(])(מעיין|אילן)(?=$|[\s"'),.:])/;
+function fixSort(sort) {
+  if (!sort || !sort.cat) return sort;
+  const x = { ...sort };
+  const txt = [x.who, x.sub, x.summary].join(' ');
+  const asks = /זמינות|תאריך|הצעת מחיר|מחיר|מינימום|מנות|חדרים|אורחים|מוזמנים/.test(txt);
+  if (['client', 'supplier', 'team'].includes(x.cat) && OURS.test(txt) && asks) { x.cat = 'hotel'; x.fixed = true; }
+  if (OURS.test(x.who || '')) x.who = '';
+  if (x.cat === 'hotel' && !x.who) {
+    const m = String(x.summary || '').match(/(אולם|אולמי|מלון|מתחם האירועים|מתחם אירועים|גן האירועים|גן אירועים|וילה)\s*["״]([^"״]{2,40})["״]/);
+    if (m && !/^(עבור|של|את|על|לגבי|כדי|אחר|שלה|שלו)$/.test(m[2])) x.who = (m[1].replace(/^מתחם האירועים$/, 'מתחם') + ' ' + m[2]).trim();
+  }
+  if (x.cat === 'hotel' && !x.sub) x.sub = 'מקום שבדקנו (מלון / אולם)';
+  return x;
+}
 const SORT_V = 2;   // owner 24.11: calls read with older rules are read again
 const SORT_CATS = ['hotel', 'artist', 'client', 'supplier', 'attraction', 'team', 'private', 'other'];
 async function whoMap() {
@@ -128,13 +145,16 @@ async function whoMap() {
     const d = callDigits(c), f = files[c.id];
     const nm = normName(contactOf(c.name));
     if (nm.length >= 3 && hideNames.has(nm)) return { d, k: { cat: 'hide', who: contactOf(c.name) } };
-    let k = book[d] ? { cat: book[d].cat, who: book[d].name, byHand: book[d].by !== 'המערכת', auto: book[d].by === 'המערכת' } : byPhone.get(d);
+    const fs2 = fixSort(c.sort);
+    const sortK = fs2?.cat ? { cat: fs2.cat, who: fs2.who || '', sub: fs2.sub || '', auto: true, ...(c.sort.funId ? { funId: c.sort.funId } : {}) } : null;
+    // what the system set by itself follows the newest reading of the call (with today's rules); what a person set always wins
+    let k = book[d] ? (book[d].by === 'המערכת' && sortK ? sortK : { cat: book[d].cat, who: book[d].name, byHand: book[d].by !== 'המערכת', auto: book[d].by === 'המערכת' }) : byPhone.get(d);
     if (!k && f === 'ilan') k = { cat: 'ilan', who: 'אילן' };
     if (!k && f && f !== 'skip' && f !== 'wait' && byHotelId.has(f)) k = byHotelId.get(f);
     if (!k && f === 'wait') k = { cat: 'hotel', who: contactOf(c.name), sub: 'מחכה באזור ההמתנה בבדיקת מלונות' };
     // owner 24.11: the contact's name says what it is ("אולם קדמא", "מלון ...")
     if (!k && /(^|\s)(אולם|אולמי|מלון|גן אירועים|גני אירועים|וילה|hotel|venue)(\s|$)/i.test(contactOf(c.name))) k = { cat: 'hotel', who: contactOf(c.name), byName: true };
-    if (!k && c.sort?.cat) k = { cat: c.sort.cat, who: c.sort.who || '', sub: c.sort.sub || '', auto: true, ...(c.sort.funId ? { funId: c.sort.funId } : {}) };
+    if (!k && sortK) k = sortK;
     return { d, k };
   };
   return { whoOf };
@@ -1076,7 +1096,7 @@ async function script(req, res, what, userId, b) {
       return send(res, 200, { ok: true, fails: c.sortFails || 0 });
     }
     const cat = pick(r.cat, SORT_CATS, 'other');
-    c.sort = { cat, who: str(r.who, 100), sub: str(r.sub, 120), summary: str(r.summary, 800), at: now(), v: SORT_V };
+    c.sort = fixSort({ cat, who: str(r.who, 100), sub: str(r.sub, 120), summary: str(r.summary, 800), at: now(), v: SORT_V });
     if (cat === 'attraction') { const fid = await funFromCall(c, { ...(r.attraction || {}), summary: r.summary }, b.phone || c.phone); if (fid) c.sort.funId = fid; }
     await setJ(K.calls, c.id, c);
     // a sure answer about a number: every call from it goes there from now on (the owner can change it with "לשנות")
@@ -1084,7 +1104,7 @@ async function script(req, res, what, userId, b) {
     const oldTag = d.length >= 8 ? await getJ(K.book, d) : null;
     const sysTag = !oldTag || oldTag.by === 'המערכת';   // what a person set stays; what the system set follows the newest reading
     if (sysTag && d.length >= 8) {
-      if (r.sure === true && cat !== 'other') await setJ(K.book, d, { cat, name: c.sort.who, by: 'המערכת', at: now() });
+      if (r.sure === true && cat !== 'other' && !c.sort.fixed && c.sort.who) await setJ(K.book, d, { cat: c.sort.cat, name: c.sort.who, by: 'המערכת', at: now() });
       else if (oldTag) await kv.hdel(K.book, d);
     }
     return send(res, 200, { ok: true, cat, funId: c.sort.funId || '' });
