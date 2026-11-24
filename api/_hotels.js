@@ -128,7 +128,8 @@ async function robotHealth() {
   const sum = k => td.reduce((n, r) => n + ((r.gem || {})[k] || 0), 0);
   const errs = [];
   for (const r of runs.slice(-24).reverse()) for (const e of r.errors || []) if (!errs.some(x => x.text === e) && errs.length < 8) errs.push({ at: r.at, text: e });
-  return { last: runs[runs.length - 1] || null, runsToday: td.length, gem: { ok: sum('ok'), busy: sum('busy'), quota: sum('quota') }, queue, errors: errs };
+  const done = runs.filter(r => !r.killed);
+  return { last: done[done.length - 1] || null, killedToday: td.filter(r => r.killed).length, runsToday: td.filter(r => !r.killed).length, gem: { ok: sum('ok'), busy: sum('busy'), quota: sum('quota') }, queue, errors: errs };
 }
 /** owner 24.11: the robot learns from the owner: calls a person tagged by hand are examples for the next readings. */
 async function sortExamples() {
@@ -1187,7 +1188,7 @@ async function script(req, res, what, userId, b) {
   if (what === 'health') {
     if (userId !== 'owner') return send(res, 403, { error: 'owner' });
     const g = b.gem || {}, n = v => Math.max(0, Math.min(999, Number(v) || 0));
-    const runs = ((await getJ(HEALTH, 'runs')) || []).concat([{ at: now(), secs: n(b.secs), gem: { ok: n(g.ok), busy: n(g.busy), quota: n(g.quota) }, errors: (Array.isArray(b.errors) ? b.errors : []).slice(0, 12).map(e => str(e, 200)) }]).slice(-320);
+    const runs = ((await getJ(HEALTH, 'runs')) || []).concat([{ at: now(), secs: n(b.secs), killed: !!b.killed, gem: { ok: n(g.ok), busy: n(g.busy), quota: n(g.quota) }, errors: (Array.isArray(b.errors) ? b.errors : []).slice(0, 12).map(e => str(e, 200)) }]).slice(-320);
     await setJ(HEALTH, 'runs', runs);
     return send(res, 200, { ok: true });
   }

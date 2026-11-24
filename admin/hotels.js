@@ -461,6 +461,7 @@ function robotCard(r) {
   const g = r.gem || {}, tries = (g.ok || 0) + (g.busy || 0) + (g.quota || 0);
   const crowded = tries > 0 && (g.busy + g.quota) > g.ok;
   const st = mins == null || mins > 15 ? ['bad', mins == null ? 'הרובוט עוד לא דיווח' : 'הרובוט לא רץ מאז ' + when(r.last.at)]
+    : r.killedToday > 2 ? ['warn', 'הרובוט עובד, אבל ' + r.killedToday + ' ריצות היום נעצרו באמצע (6 דקות). מה שלא הספיק ממשיך בריצה הבאה']
     : crowded ? ['warn', 'הרובוט עובד, אבל Gemini עמוס היום. דברים לוקחים יותר זמן']
     : ['ok', 'הרובוט עובד כרגיל'];
   const q = r.queue || {}, line = [];
@@ -476,7 +477,7 @@ function robotCard(r) {
     <div class="card__head"><div><h2>מצב הרובוט</h2><p><i class="hs-bot__dot"></i>${esc(st[1])}</p></div></div>
     <dl class="hs-bot__grid">
       <div><dt>ריצה אחרונה</dt><dd>${esc(ago)}${r.last ? ' · ' + r.last.secs + ' שניות' : ''}</dd></div>
-      <div><dt>ריצות היום</dt><dd>${r.runsToday || 0}</dd></div>
+      <div><dt>ריצות היום</dt><dd>${r.runsToday || 0}${r.killedToday ? ' · ' + r.killedToday + ' נעצרו באמצע' : ''}</dd></div>
       <div><dt>Gemini היום</dt><dd>${g.ok || 0} תשובות${g.busy ? ' · ' + g.busy + ' פעמים עמוס' : ''}${g.quota ? ' · ' + g.quota + ' בלי מכסה' : ''}</dd></div>
       <div><dt>מחכה בתור</dt><dd>${line.length ? esc(line.join(', ')) : 'כלום, הכול מעודכן'}</dd></div>
     </dl>

@@ -68,6 +68,11 @@ function tick() {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(1000)) return;
   HEALTH = { gem: { ok: 0, busy: 0, quota: 0 }, errors: [] };
+  try {
+    const open = P('RUN_OPEN');
+    if (open) site('post', 'health', { secs: 360, killed: true, gem: {}, errors: ['הריצה של ' + Utilities.formatDate(new Date(Number(open)), 'Asia/Jerusalem', 'HH:mm') + ' נעצרה על ידי גוגל אחרי 6 דקות, לפני שסיימה'] });
+    props().setProperty('RUN_OPEN', String(Date.now()));
+  } catch (e) {}
   const ce = console.error;
   try { console.error = function () { try { HEALTH.errors.push(Array.prototype.slice.call(arguments).map(String).join(' ').slice(0, 200)); } catch (e) {} return ce.apply(console, arguments); }; } catch (e) {}
   try {
@@ -93,6 +98,7 @@ function tick() {
     try { sheets(st); } catch (e) { console.error('sheets', e); }
   } finally {
     try { console.error = ce; } catch (e) {}
+    try { props().deleteProperty('RUN_OPEN'); } catch (e) {}
     try { site('post', 'health', { secs: Math.round(elapsed()), gem: HEALTH.gem, errors: HEALTH.errors.slice(-12) }); } catch (e) {}
     lock.releaseLock();
   }
@@ -547,7 +553,7 @@ function genWeb(payload) {
   // owner 19.11: a light model writes poor Hebrew, so every strong model is tried on every key before a light one
   for (const m of WEB_MODELS.filter((x, i, a) => a.indexOf(x) === i)) {
     for (let k = 0; k < keys.length; k++) {
-      if (elapsed() > 270) { console.log('gemini: out of time, next run'); return { code: code || 503, body: body || 'out of time' }; }   // owner 19.11: never let one recording run the robot into the 6-minute limit
+      if (elapsed() > 200) { console.log('gemini: out of time, next run'); return { code: code || 503, body: body || 'out of time' }; }   // owner 19.11: never let one recording run the robot into the 6-minute limit
       const r = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + m + ':generateContent', {
         method: 'post', contentType: 'application/json', muteHttpExceptions: true, headers: { 'x-goog-api-key': keys[k] }, payload: textFor(keys[k]),
       });
@@ -853,7 +859,7 @@ function readMail(text, files, sv, hotelName) {
 function goodPhotos(urls, name) {
   const cand = [];
   for (const u of (urls || []).slice(0, 12)) {
-    if (cand.length >= 10 || elapsed() > 240) break;
+    if (cand.length >= 10 || elapsed() > 200) break;
     try {
       const r = UrlFetchApp.fetch(u, { muteHttpExceptions: true, followRedirects: true, headers: { 'User-Agent': 'Mozilla/5.0' } });
       if (r.getResponseCode() >= 300) continue;
