@@ -108,7 +108,7 @@ function modeBar() {
   const el = h(`<section class="hs-mode ${m.on ? 'is-on' : ''}">
     <div class="hs-mode__txt">
       <b>${m.on ? 'מצב בדיקה פעיל' : 'מצב בדיקה כבוי'}</b>
-      <span>${m.on ? `כל שיחה מעכשיו נכנסת ל<b>${esc(sv?.title || 'סקר')}</b> · מאז ${when(m.since)}` : 'שיחות לא נקראות. מדליקים לפני שמתחילים להתקשר למלונות.'}</span>
+      <span>${m.on ? (home.surveys.filter(x => x.manage && (!(x.to || x.from) || (x.to || x.from) >= new Date(Date.now() - 864e5).toISOString().slice(0, 10))).length > 1 ? `כל שיחה נכנסת לאירוע שמדברים עליו בה. כשלא ברור, היא מחכה באזור ההמתנה · מאז ${when(m.since)}` : `כל שיחה מעכשיו נכנסת ל<b>${esc(sv?.title || 'סקר')}</b> · מאז ${when(m.since)}`) : 'שיחות לא נקראות. מדליקים לפני שמתחילים להתקשר למלונות.'}</span>
     </div>
     <div class="hs-mode__act">
       ${m.on ? '' : `<select class="hs-sel" aria-label="לאיזו כרטיסייה">${home.surveys.map(s => `<option value="${s.id}" ${s.id === (openSurvey || home.surveys[0]?.id) ? 'selected' : ''}>${esc(s.title)}</option>`).join('')}</select>`}
