@@ -68,6 +68,7 @@ function tick() {
   try {
     try { site('post', 'app', { url: P('APP_URL') || ScriptApp.getService().getUrl() || '', secret: P('APP_SECRET'), last: P('APP_LAST') }); } catch (e) { console.error('app', e); }
     const st = site('get', 'status');
+    ILAN_OPEN = (st.ilan || {}).open || [];
     try { indexCalls(); } catch (e) { console.error('index', e); }   // owner 19.11: the list of calls first (quick), so a slow reading never hides new calls
     try { phoneTexts(st); } catch (e) { console.error('phoneTexts', e); }   // owner 24.11: calls the phone transcribed itself
     try { ilanOld(st); } catch (e) { console.error('ilanOld', e); }   // owner 19.11: Ilan's calls first
@@ -80,6 +81,8 @@ function tick() {
     try { mailScans(st); } catch (e) { console.error('mailScans', e); }
     try { webLooks(st); } catch (e) { console.error('webLooks', e); }
     try { photoChecks(st); } catch (e) { console.error('photoChecks', e); }   // owner 24.11: only real photos of the place
+    try { ilanMerge(st); } catch (e) { console.error('ilanMerge', e); }   // owner 24.11: the same request from several calls = one task (once)
+    try { sortCalls(st); } catch (e) { console.error('sortCalls', e); }   // owner 24.11: who an unknown call is with, from what was said
     try { sheets(st); } catch (e) { console.error('sheets', e); }
   } finally { lock.releaseLock(); }
 }
@@ -289,12 +292,59 @@ function listenIlan(file, at) {
     'wants: what Ilan wants, one short line each (his goals and wishes, also ones that are not a concrete task).',
     'tasks: every concrete thing Ilan asked the owner to do, and every thing the owner promised him to do in this call. One task each, starting with a verb ("לשלוח ל...", "לבדוק...", "להתקשר ל..."), with every detail that was said (names, numbers, places, amounts). due: YYYY-MM-DD only if a day was said or clearly meant, otherwise empty. when: the deadline as it was said, if any. quote: the exact words in the recording where it was asked.',
     'Do not invent tasks. Only what was really said. If a word or number is not clear, write (לא ברור).',
+    ILAN_OPEN.length ? 'The owner already has these open tasks from earlier calls with Ilan (id: task):\n' + ILAN_OPEN.map(function (t) { return t.id + ': ' + t.text; }).join('\n') + '\nIf a task in this call is the same request as one of them (also in other words, or a reminder of it), still list it, and put that id in same. Otherwise leave same empty.' : '',
     'keyQuotes: the sentences that matter most, the exact words, with the time (mm:ss) and who said it (אילן / אני).',
     'transcript: the whole conversation, each turn on its own line, "mm:ss אילן:" / "mm:ss אני:". duration: mm:ss.',
   ].join('\n'), { type: 'OBJECT', properties: {
     summary: { type: 'STRING' }, wants: { type: 'ARRAY', items: { type: 'STRING' } },
-    tasks: { type: 'ARRAY', items: { type: 'OBJECT', properties: { text: { type: 'STRING' }, due: { type: 'STRING' }, when: { type: 'STRING' }, quote: { type: 'STRING' } }, required: ['text'] } },
+    tasks: { type: 'ARRAY', items: { type: 'OBJECT', properties: { text: { type: 'STRING' }, due: { type: 'STRING' }, when: { type: 'STRING' }, quote: { type: 'STRING' }, same: { type: 'STRING' } }, required: ['text'] } },
     keyQuotes: { type: 'ARRAY', items: Q }, transcript: { type: 'STRING' }, duration: { type: 'STRING' } }, required: ['summary', 'tasks'] });
+}
+
+var ILAN_OPEN = [];
+/** owner 24.11: once, the open Ilan tasks that are the same request (he said it in several calls) are grouped; the site keeps the first and adds the other calls to it. */
+function ilanMerge(st) {
+  const il = st.ilan || {};
+  if (!il.merge || elapsed() > 150) return;
+  const open = il.open || [];
+  const r = gemini({ text: open.map(function (t) { return t.id + ': ' + t.text; }).join('\n') },
+    'These are open tasks the owner got from Ilan in phone calls (id: task, in Hebrew). Some are the same request said in more than one call, in other words. Group only tasks that are really the same thing to do (same action on the same subject). Different tasks stay apart. Answer JSON: groups = lists of ids, each list with 2 or more ids. No group if none.',
+    { type: 'OBJECT', properties: { groups: { type: 'ARRAY', items: { type: 'ARRAY', items: { type: 'STRING' } } } }, required: ['groups'] });
+  site('post', 'ilanmerge', { groups: (r.groups || []).filter(function (g) { return g && g.length > 1; }) });
+}
+
+/** owner 24.11: a call from a number nobody knows: listen, say who it is (client / supplier / attraction / hotel / artist / team / private),
+ *  and for an attraction: what it is, where, the price, the dates, so it goes into the attractions catalog by itself. */
+function sortCalls(st) {
+  for (const x of (st.sortCalls || [])) {
+    if (elapsed() > 200) return;
+    let part;
+    try {
+      if (x.local && x.text) part = { text: 'This call was transcribed automatically on the phone (it can have mistakes).\n\n' + String(x.text).slice(0, 60000) };
+      else {
+        const file = DriveApp.getFileById(x.id), blob = file.getBlob();
+        let mime = blob.getContentType() || 'audio/mp4';
+        if (/octet/.test(mime)) mime = /\.amr$/i.test(file.getName()) ? 'audio/amr' : /\.mp3$/i.test(file.getName()) ? 'audio/mpeg' : /\.wav$/i.test(file.getName()) ? 'audio/wav' : 'audio/mp4';
+        part = blob.getBytes().length < 14 * 1024 * 1024 ? { inline_data: { mime_type: mime, data: Utilities.base64Encode(blob.getBytes()) } } : { big: { blob: blob, mime: mime, name: file.getName() } };
+      }
+      const r = gemini(part, [
+        'This is a phone call on the work phone of La Belle Vie (לה בל וי), an Israeli company that produces events: weddings, bar mitzvas, galas, fun days (ימי כיף) for groups, and holidays in hotels.',
+        'The file name / contact: "' + String(x.name || '') + '". The call was on ' + String(x.at || '') + '.',
+        'Say who the other side is, from what was said (never guess from nothing):',
+        'cat: client (someone who wants an event / a quote from us), supplier (sells us a service: sound, catering, flowers, transport...), attraction (an attraction or activity for groups / fun days: a show, a workshop, a tour, sport, an escape room, a park...), hotel, artist (a singer / band / performer or their manager), team (works with us), private (a personal call, not about work), other (cannot tell).',
+        'who: the name of the business or the person, as said (Hebrew if said in Hebrew). sub: what they are in 2-5 words. sure: true only if it is clear from the call.',
+        'summary: what the call was about, 2-3 short sentences in Hebrew, with the numbers, dates and prices that were said.',
+        'If cat is attraction: attraction = name (of the attraction), kind (show / workshop / sport / team / food / tour / kids / party / other), area (city or region), supplier, price (a number, the main price said), per (person / group / hour / event), minP / maxP (group size), hours (how long), kids (true/false if said), dates (the dates or days that were said, as said), priceText (the price / the offer in words, exactly as said). Only what was really said.',
+        'Answer JSON only.',
+      ].join('\n'), { type: 'OBJECT', properties: {
+        cat: { type: 'STRING', enum: ['client', 'supplier', 'attraction', 'hotel', 'artist', 'team', 'private', 'other'] }, who: { type: 'STRING' }, sub: { type: 'STRING' }, sure: { type: 'BOOLEAN' }, summary: { type: 'STRING' },
+        attraction: { type: 'OBJECT', properties: { name: { type: 'STRING' }, kind: { type: 'STRING' }, area: { type: 'STRING' }, supplier: { type: 'STRING' }, price: { type: 'NUMBER' }, per: { type: 'STRING' }, minP: { type: 'NUMBER' }, maxP: { type: 'NUMBER' }, hours: { type: 'STRING' }, kids: { type: 'BOOLEAN' }, dates: { type: 'ARRAY', items: { type: 'STRING' } }, priceText: { type: 'STRING' } } } }, required: ['cat', 'summary'] });
+      site('post', 'sorted', { id: x.id, phone: x.phone || '', result: r });
+    } catch (e) {
+      console.error('sortCalls ' + x.id, e);
+      try { site('post', 'sorted', { id: x.id, error: String(e).slice(0, 200) }); } catch (e2) {}
+    }
+  }
 }
 
 /** "לקרוא את השיחה מחדש": the hotel's calls read again with today's rules; the answer replaces the old reading. */

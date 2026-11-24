@@ -64,6 +64,7 @@ function taskRow(t) {
       <p>${esc(t.text)}</p>
       <small>${t.due ? `<em class="${late ? 'late' : ''}">${late ? 'עבר הזמן: ' : 'עד '}${dm(t.due)}</em>` : t.when ? `<em>${esc(t.when)}</em>` : ''}${call ? `<button type="button" class="il-link" data-call>מהשיחה של ${esc(when(call.at))}</button>` : t.by === 'me' ? 'הוספתי בעצמי' : ''}</small>
       ${t.quote ? `<q>${esc(t.quote)}</q>` : ''}
+      ${(t.also || []).length ? `<small class="il-also">עלה גם ב${t.also.length === 1 ? 'שיחה' : t.also.length + ' שיחות'}: ${t.also.map(a => esc(when(a.at))).join(', ')}</small>${t.also.filter(a => a.quote).slice(-2).map(a => `<q>${esc(a.quote)}</q>`).join('')}` : ''}
     </div>
     <button type="button" class="il-x" aria-label="למחוק את המטלה">×</button>
   </li>`);

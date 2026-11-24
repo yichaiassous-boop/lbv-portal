@@ -85,16 +85,84 @@ const K = {
 const ILAN_SEE = ['cad5d8ff-c32d-4df9-918e-38cfd1d315d8'];   // owner 19.11: besides the owner only מעיין sees the Ilan tasks (not Ilan, not the others)
 const ILAN_BACK_DAYS = 7;            // when his number is saved, his calls of the last week are read too
 /** One Ilan call (summary, wants, quotes, transcript, tasks) into the tab: from the robot, or (owner 19.11) imported from the computer when Gemini is stuck. */
+/** owner 24.11: the same recording uploaded twice to Drive is one call: same file name (without the contact) + same time. */
+const callKey = (name, at) => String(name || '').split(' · ').pop().trim() + '|' + String(at || '').slice(0, 19);
+/** owner 22.11 + 24.11: who a call is with, by its number (the tags, Ilan, the hotels, the artists, the clients). */
+const SORT_CATS = ['hotel', 'artist', 'client', 'supplier', 'attraction', 'team', 'private', 'other'];
+async function whoMap() {
+  const book = Object.fromEntries(Object.entries(await kv.hgetall(K.book) || {}).map(([k, v]) => { try { return [k, JSON.parse(v)]; } catch (e) { return [k, null]; } }));
+  const cfg = await ilanCfg();
+  const files = await kv.hgetall(K.files) || {};
+  const byPhone = new Map(), byHotelId = new Map();
+  const put = (d, x) => { if (d.length >= 8 && !byPhone.has(d)) byPhone.set(d, x); };
+  for (const p of cfg.phones || []) put(digits(p), { cat: 'ilan', who: 'אילן' });
+  for (const sv of await allJ(K.surveys)) for (const ho of await allJ(K.hotels(sv.id))) {
+    const x = { cat: 'hotel', who: ho.name || '', sub: [ho.contact, ho.city].filter(Boolean).join(', '), surveyId: sv.id, hotelId: ho.id, survey: sv.title };
+    byHotelId.set(ho.id, x); put(digits(ho.phone), x); put(digits(ho.phone2), x);
+  }
+  const artists = await allJ('ar:all');
+  for (const a of artists) for (const c of a.contacts || []) put(digits(c.phone), { cat: 'artist', who: a.name, sub: [c.name, c.role].filter(Boolean).join(', '), artistId: a.id, color: a.color });
+  for (const e of await allJ('ev:all')) {
+    const a = e.artist && artists.find(x => x.id === e.artist);
+    put(digits(e.phone), { cat: 'client', who: e.client || e.title || '', sub: [e.title, e.date].filter(Boolean).join(', '), eventId: e.id, artistId: a?.id, artist: a?.name, color: a?.color });
+  }
+  for (const f of await allJ('fn:all')) put(digits(f.phone), { cat: 'attraction', who: f.name || '', sub: [f.supplier, f.area].filter(Boolean).join(', '), funId: f.id });
+  const callDigits = c => digits(c.phone) || digits((String(c.name || '').match(/(\+?972|0)\d[\d\- ]{7,12}/) || [''])[0]);
+  const whoOf = c => {
+    const d = callDigits(c), f = files[c.id];
+    let k = book[d] ? { cat: book[d].cat, who: book[d].name, byHand: book[d].by !== 'המערכת', auto: book[d].by === 'המערכת' } : byPhone.get(d);
+    if (!k && f === 'ilan') k = { cat: 'ilan', who: 'אילן' };
+    if (!k && f && f !== 'skip' && f !== 'wait' && byHotelId.has(f)) k = byHotelId.get(f);
+    if (!k && c.sort?.cat) k = { cat: c.sort.cat, who: c.sort.who || '', sub: c.sort.sub || '', auto: true, ...(c.sort.funId ? { funId: c.sort.funId } : {}) };
+    return { d, k };
+  };
+  return { whoOf };
+}
+
+/** owner 24.11: a call about an attraction fills the attractions catalog by itself (the same attraction once: by its number or its name). */
+async function funFromCall(c, x, phone) {
+  const name = str(x?.name, 100); if (!name) return null;
+  const norm = v => String(v || '').replace(/[^\p{L}\p{N}]/gu, '').toLowerCase();
+  const d = digits(phone);
+  const all = await allJ('fn:all');
+  let f = all.find(a => d.length >= 8 && digits(a.phone) === d) || all.find(a => norm(a.name) && norm(a.name) === norm(name));
+  const num = v => { const n = Number(String(v ?? '').replace(/[,\s₪€$]/g, '')); return Number.isFinite(n) && n > 0 && n < 1e8 ? n : null; };
+  const KIND = ['show', 'workshop', 'sport', 'team', 'food', 'tour', 'kids', 'party', 'other'];
+  const fresh = !f;
+  if (!f) f = { id: crypto.randomBytes(6).toString('hex'), createdAt: now(), by: 'המערכת', name, kind: 'other', area: '', supplier: '', phone: '', price: null, per: 'person', currency: 'ILS', minP: null, maxP: null, hours: '', place: '', kids: false, link: '', notes: '' };
+  // what the call said fills what is still empty (never over what a person wrote)
+  const fill = (k, v) => { if (v !== null && v !== undefined && v !== '' && (f[k] === null || f[k] === undefined || f[k] === '' || (k === 'kind' && f[k] === 'other'))) f[k] = v; };
+  fill('kind', KIND.includes(x.kind) ? x.kind : '');
+  fill('area', str(x.area, 80)); fill('supplier', str(x.supplier, 100)); fill('phone', d.length >= 8 ? '0' + d.replace(/^0/, '') : '');
+  fill('price', num(x.price)); if (num(x.price) && ['person', 'group', 'hour', 'event'].includes(x.per) && fresh) f.per = x.per;
+  fill('minP', num(x.minP)); fill('maxP', num(x.maxP)); fill('hours', str(x.hours, 40));
+  if (fresh && typeof x.kids === 'boolean') f.kids = x.kids;
+  f.calls = [...(f.calls || []).filter(y => y.callId !== c.id), { callId: c.id, at: c.at, url: c.url || '', summary: str(x.summary, 600), price: str(x.priceText, 300), dates: (Array.isArray(x.dates) ? x.dates : []).map(v => str(v, 60)).filter(Boolean).slice(0, 8) }].slice(-20);
+  f.updatedAt = now();
+  await setJ('fn:all', f.id, f);
+  return f.id;
+}
+
 async function saveIlanCall(b) {
   const file = { id: str(b.file?.id, 120), name: str(b.file?.name, 200), url: link(b.file?.url, 400) };
   if (!file.id) return { code: 400, body: { error: 'file' } };
   if (await getJ(K.ilanCalls, file.id)) return { code: 200, body: { ok: true, duplicate: true } };
+  const ck = callKey(file.name, b.at);
+  const twin = (await allJ(K.ilanCalls)).find(c => !c.hidden && callKey(c.file?.name, c.at) === ck);
+  if (twin) { await setJ(K.ilanCalls, file.id, { id: file.id, at: str(b.at, 30), hidden: true, dupOf: twin.id, tasks: [] }); await kv.hset(K.files, file.id, 'ilan'); return { code: 200, body: { ok: true, duplicate: true } }; }
   const r = b.result || {};
   const qs = a => (Array.isArray(a) ? a : []).slice(0, 12).map(x => ({ time: str(x?.time, 8), speaker: str(x?.speaker, 30), text: str(x?.text, 400) })).filter(x => x.text);
   const call = { id: file.id, at: str(b.at, 30) || now(), file, summary: str(r.summary, 3000), wants: (Array.isArray(r.wants) ? r.wants : []).slice(0, 20).map(x => str(x, 400)).filter(Boolean),
     quotes: qs(r.keyQuotes), transcript: str(r.transcript, 40000), duration: str(r.duration, 8), tasks: [] };
   for (const x of (Array.isArray(r.tasks) ? r.tasks : []).slice(0, 25)) {
     const text = str(x?.text, 400); if (!text) continue;
+    const same = str(x?.same, 40) ? await getJ(K.ilanTasks, str(x.same, 40)) : null;
+    if (same && !same.done) {
+      same.also = [...(same.also || []), { callId: file.id, at: call.at, quote: str(x?.quote, 400), text }].slice(-10);
+      const due = /^\d{4}-\d{2}-\d{2}$/.test(str(x?.due, 10)) ? str(x.due, 10) : '';
+      if (due) same.due = due;   // the newest deadline he said
+      await setJ(K.ilanTasks, same.id, same); call.tasks.push(same.id); continue;
+    }
     const t = { id: 'it' + crypto.randomBytes(6).toString('hex'), text, due: /^\d{4}-\d{2}-\d{2}$/.test(str(x?.due, 10)) ? str(x.due, 10) : '', when: str(x?.when, 80), quote: str(x?.quote, 400), callId: file.id, at: call.at, done: false, doneAt: null, by: 'robot' };
     await setJ(K.ilanTasks, t.id, t); call.tasks.push(t.id);
   }
@@ -413,39 +481,24 @@ export default async function hotelsHandler(req, res) {
         const d = digits(body.phone);
         if (d.length < 8) return send(res, 400, { error: 'phone' });
         if (body.cat === '') { await kv.hdel(K.book, d); return send(res, 200, { ok: true }); }
-        const cat = pick(body.cat, ['hotel', 'artist', 'client', 'supplier', 'team', 'private', 'other'], 'other');
+        const cat = pick(body.cat, ['hotel', 'artist', 'client', 'supplier', 'attraction', 'team', 'private', 'hide', 'other'], 'other');
         await setJ(K.book, d, { cat, name: str(body.name, 80), by: s.n || '', at: now() });
         return send(res, 200, { ok: true });
       }
-      const book = Object.fromEntries(Object.entries(await kv.hgetall(K.book)).map(([k, v]) => { try { return [k, JSON.parse(v)]; } catch (e) { return [k, null]; } }));
-      const cfg = await ilanCfg();
-      const files = await kv.hgetall(K.files);
-      const byPhone = new Map(), byHotelId = new Map();
-      const put = (d, x) => { if (d.length >= 8 && !byPhone.has(d)) byPhone.set(d, x); };
-      for (const p of cfg.phones || []) put(digits(p), { cat: 'ilan', who: 'אילן' });
-      for (const sv of await allJ(K.surveys)) for (const ho of await allJ(K.hotels(sv.id))) {
-        const x = { cat: 'hotel', who: ho.name || '', sub: [ho.contact, ho.city].filter(Boolean).join(', '), surveyId: sv.id, hotelId: ho.id, survey: sv.title };
-        byHotelId.set(ho.id, x); put(digits(ho.phone), x); put(digits(ho.phone2), x);
-      }
-      const artists = await allJ('ar:all');
-      for (const a of artists) for (const c of a.contacts || []) put(digits(c.phone), { cat: 'artist', who: a.name, sub: [c.name, c.role].filter(Boolean).join(', '), artistId: a.id, color: a.color });
-      for (const e of await allJ('ev:all')) {
-        const a = e.artist && artists.find(x => x.id === e.artist);
-        put(digits(e.phone), { cat: 'client', who: e.client || e.title || '', sub: [e.title, e.date].filter(Boolean).join(', '), eventId: e.id, artistId: a?.id, artist: a?.name, color: a?.color });
-      }
+      const { whoOf } = await whoMap();
       const ilanSum = Object.fromEntries((await allJ(K.ilanCalls)).map(c => [c.id, c.summary || '']));
-      const callDigits = c => digits(c.phone) || digits((String(c.name || '').match(/(\+?972|0)\d[\d\- ]{7,12}/) || [''])[0]);
-      const list = (await allJ(K.calls)).sort((a2, b2) => String(b2.at || '').localeCompare(String(a2.at || ''))).slice(0, 300).map(c => {
-        const d = callDigits(c), f = files[c.id];
-        let k = book[d] ? { cat: book[d].cat, who: book[d].name, byHand: true } : byPhone.get(d);
-        if (!k && f === 'ilan') k = { cat: 'ilan', who: 'אילן' };
-        if (!k && f && f !== 'skip' && byHotelId.has(f)) k = byHotelId.get(f);
-        return { id: c.id, at: c.at, name: c.name, phone: d ? '0' + d.replace(/^0/, '') : '', url: c.url, summary: c.sum && !c.sum.error ? str(c.sum.summary || c.sum.answer || '', 600) : str(ilanSum[c.id] || '', 600), ...(k || { cat: 'other', who: '' }),
+      const seenKey = new Set();
+      let hidden = 0;
+      const list = (await allJ(K.calls)).filter(c => !c.dup).sort((a2, b2) => String(b2.at || '').localeCompare(String(a2.at || ''))).filter(c => { const k2 = callKey(c.name, c.at); if (seenKey.has(k2)) return false; seenKey.add(k2); return true; }).slice(0, 300).map(c => {
+        const { d, k } = whoOf(c);
+        const said = c.sum && !c.sum.error ? str(c.sum.summary || c.sum.answer || '', 600) : str(ilanSum[c.id] || '', 600);
+        return { id: c.id, at: c.at, name: c.name, phone: d ? '0' + d.replace(/^0/, '') : '', url: c.url, summary: said || str(c.sort?.summary || '', 600), ...(k || { cat: 'other', who: '' }),
           ...(c.local ? { local: true, full: !!c.full, lang: c.lang || '', text: str(c.sum?.transcript || '', 4000) } : {}) };
       });
+      const shown = list.filter(c => { if (c.cat === 'hide') { hidden++; return false; } return true; });   // owner 24.11: a personal number the owner hid: never listed
       const counts = {};
-      for (const c of list) counts[c.cat] = (counts[c.cat] || 0) + 1;
-      return send(res, 200, { calls: list, counts });
+      for (const c of shown) counts[c.cat] = (counts[c.cat] || 0) + 1;
+      return send(res, 200, { calls: shown, counts, hidden });
     }
 
     /* ----- owner 22.11: the hotels catalog: every hotel we ever called, from all the surveys I may see, once each,
@@ -485,6 +538,7 @@ export default async function hotelsHandler(req, res) {
       if (!(isOwner(s) || ILAN_SEE.includes(uid))) return send(res, 403, { error: 'forbidden' });   // owner 19.11: only the owner and Maayan
       if (req.method === 'GET') {
         const calls = (await allJ(K.ilanCalls)).filter(c => !c.hidden).sort((a2, b2) => String(b2.at).localeCompare(String(a2.at))).slice(0, 80);
+        // (copies of the same call made before 24.11 are cleaned by the robot's merge: see script 'ilanmerge')
         const tasks = (await allJ(K.ilanTasks)).sort((a2, b2) => (a2.done - b2.done) || String(b2.at).localeCompare(String(a2.at)));
         return send(res, 200, { cfg: await ilanCfg(), calls, tasks });
       }
@@ -493,7 +547,7 @@ export default async function hotelsHandler(req, res) {
         const phones = [...new Set((Array.isArray(body.phones) ? body.phones : []).map(digits).filter(d => d.length >= 8))].slice(0, 5);
         const old = await ilanCfg();
         const since = old.since && phones.every(p => old.phones.includes(p)) ? old.since : new Date(Date.now() - ILAN_BACK_DAYS * 864e5).toISOString();
-        const cfg = { phones, since };
+        const cfg = { phones, since, mergedV: old.mergedV || 0 };
         await setJ(K.ilan, 'cfg', cfg);
         return send(res, 200, { ok: true, cfg });
       }
@@ -883,14 +937,23 @@ async function script(req, res, what, userId, b) {
       if (c.phones.length && c.since) {
         // calls with him that are already in the robot's folder (uploaded earlier, e.g. in check mode) but not read for Ilan yet
         const have = await kv.hgetall(K.ilanCalls) || {};
-        const files = (await allJ(K.calls)).filter(x => !x.local && !have[x.id] && c.phones.includes(digits(x.phone)) && (Date.parse(x.at) || 0) >= Date.parse(c.since))
+        const files = (await allJ(K.calls)).filter(x => !x.local && !x.dup && !have[x.id] && c.phones.includes(digits(x.phone)) && (Date.parse(x.at) || 0) >= Date.parse(c.since))
           .sort((a2, b2) => String(b2.at).localeCompare(String(a2.at))).slice(0, 2).map(x => ({ id: x.id, at: x.at }));   // newest first
-        ilan = { phones: c.phones, since: c.since, files };
+        const open = (await allJ(K.ilanTasks)).filter(t => !t.done).sort((a2, b2) => String(a2.at).localeCompare(String(b2.at)));
+        ilan = { phones: c.phones, since: c.since, files, open: open.slice(-60).map(t => ({ id: t.id, text: t.text })), merge: (c.mergedV || 0) < 1 && open.length > 1 };
         const to = new Date(Date.now() + 3650 * 864e5).toISOString();
         jobs.watch.unshift(...c.phones.map(p => ({ ilan: true, phone: p, from: c.since, to })));
       }
     }
-    return send(res, 200, { ilan, windows, mode, surveys: active, outbox, threads, asks, watch: jobs.watch.slice(0, 300), parses: jobs.parses.slice(0, 5), mailScan: jobs.mailScan.concat(jobs.mailAuto).slice(0, 5), photoCheck: jobs.photoCheck.slice(0, 2), webLook: jobs.webLook.slice(0, 3), webRedo: jobs.webRedo.slice(0, 2), relisten: jobs.relisten.slice(0, 1), wa: jobs.wa.slice(0, 300) });
+    let sortCalls = [];
+    if (userId === 'owner') {
+      const { whoOf } = await whoMap();
+      const since = Date.now() - 45 * 864e5;
+      sortCalls = (await allJ(K.calls)).filter(c => c.owner === userId && !c.dup && !c.sort && (c.sortTries || 0) < 2 && (Date.parse(c.at) || 0) >= since && !whoOf(c).k)
+        .sort((a2, b2) => String(b2.at).localeCompare(String(a2.at))).slice(0, 2)
+        .map(c => ({ id: c.id, at: c.at, name: c.name || '', phone: whoOf(c).d, local: !!c.local, text: c.local ? str(c.sum?.transcript || '', 30000) : '' }));
+    }
+    return send(res, 200, { sortCalls, ilan, windows, mode, surveys: active, outbox, threads, asks, watch: jobs.watch.slice(0, 300), parses: jobs.parses.slice(0, 5), mailScan: jobs.mailScan.concat(jobs.mailAuto).slice(0, 5), photoCheck: jobs.photoCheck.slice(0, 2), webLook: jobs.webLook.slice(0, 3), webRedo: jobs.webRedo.slice(0, 2), relisten: jobs.relisten.slice(0, 1), wa: jobs.wa.slice(0, 300) });
   }
 
   // The robot's web-app address (for the phone app) + when the app last sent a recording
@@ -906,10 +969,14 @@ async function script(req, res, what, userId, b) {
     const items = (Array.isArray(b.items) ? b.items : []).slice(0, 500);
     const old = await kv.hgetall(K.calls) || {};
     let n = 0, pend = null, pendChanged = false;
+    const keys = new Map();   // the same recording uploaded twice (also twice in this batch) = one call
+    for (const v of Object.values(old)) { try { const x = JSON.parse(v); if (x && !x.dup) keys.set(callKey(x.name, x.at), x.id); } catch (e) {} }
     for (const it of items) {
       const id = str(it.id, 120);
       if (!id || old[id]) continue;
       const rec = { id, owner: userId, name: str(it.name, 200), phone: str(it.phone, 30), at: str(it.at, 30), url: link(it.url, 300) };
+      const ck = callKey(rec.name, rec.at);
+      if (keys.has(ck)) { rec.dup = keys.get(ck); await kv.hset(K.files, id, 'skip'); } else keys.set(ck, id);
       // owner 24.11: transcribed on the phone itself: no recording here, only where it is on the phone (ref) + how it went
       if (it.local) Object.assign(rec, { local: true, ref: str(it.ref, 400), lang: str(it.lang, 8), full: it.full === true, took: Number(it.took) || 0, seconds: Number(it.seconds) || 0 });
       const pd = digits(rec.phone).slice(-9), pat = Date.parse(rec.at) || 0;
@@ -922,6 +989,22 @@ async function script(req, res, what, userId, b) {
     u.indexedAt = now(); await saveUser(userId, u);
     return send(res, 200, { ok: true, added: n });
   }
+  if (what === 'sorted') {
+    if (userId !== 'owner') return send(res, 403, { error: 'owner' });
+    const c = await getJ(K.calls, str(b.id, 120));
+    if (!c) return send(res, 404, { error: 'not-found' });
+    const r = b.result || {};
+    if (b.error || !r.cat) { c.sortTries = (c.sortTries || 0) + 1; await setJ(K.calls, c.id, c); return send(res, 200, { ok: true, tries: c.sortTries }); }
+    const cat = pick(r.cat, SORT_CATS, 'other');
+    c.sort = { cat, who: str(r.who, 100), sub: str(r.sub, 120), summary: str(r.summary, 800), at: now() };
+    if (cat === 'attraction') { const fid = await funFromCall(c, { ...(r.attraction || {}), summary: r.summary }, b.phone || c.phone); if (fid) c.sort.funId = fid; }
+    await setJ(K.calls, c.id, c);
+    // a sure answer about a number: every call from it goes there from now on (the owner can change it with "לשנות")
+    const d = digits(b.phone || c.phone);
+    if (r.sure === true && cat !== 'other' && d.length >= 8 && !(await kv.hget(K.book, d))) await setJ(K.book, d, { cat, name: c.sort.who, by: 'המערכת', at: now() });
+    return send(res, 200, { ok: true, cat, funId: c.sort.funId || '' });
+  }
+
   if (what === 'answer') {
     const c = await getJ(K.calls, str(b.id, 120));
     if (!c || c.owner !== userId) return send(res, 404, { error: 'not-found' });
@@ -948,6 +1031,7 @@ async function script(req, res, what, userId, b) {
     const file = { id: str(b.file?.id, 120), name: str(b.file?.name, 200), url: link(b.file?.url, 400) };
     if (!file.id) return send(res, 400, { error: 'file' });
     if (!b.replace && await kv.hget(K.files, file.id)) return send(res, 200, { ok: true, duplicate: true });
+    if (!b.replace && !b.placed && (await getJ(K.calls, file.id))?.dup) { await kv.hset(K.files, file.id, 'skip'); return send(res, 200, { ok: true, duplicate: true }); }
     const r = b.result || {};
     if (!r.relevant) {
       u.skipped = (u.skipped || 0) + 1; await saveUser(userId, u);
@@ -1153,6 +1237,35 @@ async function script(req, res, what, userId, b) {
     }
     await setJ(key, h.id, h);
     return send(res, 200, { ok: true });
+  }
+
+  // owner 24.11: the robot grouped the open Ilan tasks that are the same request (also the copies of the same call): one task each, with every call it came up in
+  if (what === 'ilanmerge') {
+    if (userId !== 'owner') return send(res, 403, { error: 'owner' });
+    let merged = 0;
+    // copies of the same call: hidden, their open robot tasks go (the first copy keeps its own)
+    const seen = new Map();
+    for (const c of (await allJ(K.ilanCalls)).filter(c => !c.hidden).sort((a2, b2) => String(a2.at).localeCompare(String(b2.at)))) {
+      const k2 = callKey(c.file?.name, c.at);
+      if (!seen.has(k2)) { seen.set(k2, c.id); continue; }
+      for (const tid of c.tasks || []) { const t = await getJ(K.ilanTasks, tid); if (t && t.by === 'robot' && !t.done) { await kv.hdel(K.ilanTasks, tid); merged++; } }
+      await setJ(K.ilanCalls, c.id, { id: c.id, at: c.at, hidden: true, dupOf: seen.get(k2), tasks: [] });
+    }
+    for (const g of (Array.isArray(b.groups) ? b.groups : []).slice(0, 60)) {
+      const ts = [];
+      for (const id of (Array.isArray(g) ? g : []).slice(0, 12)) { const t = await getJ(K.ilanTasks, str(id, 40)); if (t && !t.done && !ts.some(x => x.id === t.id)) ts.push(t); }
+      if (ts.length < 2) continue;
+      ts.sort((a2, b2) => String(a2.at).localeCompare(String(b2.at)));
+      const keep = ts[0];
+      for (const t of ts.slice(1)) {
+        keep.also = [...(keep.also || []), { callId: t.callId, at: t.at, quote: t.quote, text: t.text }, ...(t.also || [])].slice(-10);
+        if (t.due && (!keep.due || t.due > keep.due)) keep.due = t.due;
+        await kv.hdel(K.ilanTasks, t.id); merged++;
+      }
+      await setJ(K.ilanTasks, keep.id, keep);
+    }
+    const cfg = await ilanCfg(); cfg.mergedV = 1; await setJ(K.ilan, 'cfg', cfg);
+    return send(res, 200, { ok: true, merged });
   }
 
   if (what === 'photoscheck') {

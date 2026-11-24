@@ -24,10 +24,10 @@ const fail = e => { if (e.message !== 'login') ctx.toast(e.message === 'forbidde
 /* ---------------- השיחות ---------------- */
 const CATS = {
   ilan: { t: 'אילן', c: '#6b4fa0' }, hotel: { t: 'מלונות', c: '#1f6f8b' }, artist: { t: 'אמנים', c: '#7a2e4d' }, client: { t: 'לקוחות', c: '#2f7d4f' },
-  supplier: { t: 'ספקים', c: '#a8661c' }, team: { t: 'צוות', c: '#44546a' }, private: { t: 'פרטי', c: '#8a8f98' }, other: { t: 'לא מזוהה', c: '#b42318' },
+  supplier: { t: 'ספקים', c: '#a8661c' }, attraction: { t: 'אטרקציות', c: '#b0408a' }, team: { t: 'צוות', c: '#44546a' }, private: { t: 'פרטי', c: '#8a8f98' }, hide: { t: 'מוסתר', c: '#5b5f66' }, other: { t: 'לא מזוהה', c: '#b42318' },
 };
-const TAGGABLE = ['hotel', 'artist', 'client', 'supplier', 'team', 'private', 'other'];
-const ONE = { hotel: 'מלון', artist: 'אמן', client: 'לקוח', supplier: 'ספק', team: 'צוות', private: 'פרטי', other: 'אחר' };
+const TAGGABLE = ['hotel', 'artist', 'client', 'supplier', 'attraction', 'team', 'private', 'hide', 'other'];
+const ONE = { hotel: 'מלון', artist: 'אמן', client: 'לקוח', supplier: 'ספק', attraction: 'אטרקציה', team: 'צוות', private: 'פרטי', hide: 'אישי, לא להציג בכלל', other: 'אחר' };
 let calls = null, callCat = 'all', callQ = '';
 
 export async function callsPage(pg, c) {
@@ -50,7 +50,8 @@ export async function callsPage(pg, c) {
   q.addEventListener('input', () => { callQ = q.value; draw(); });
   const box = h('<div class="sm-list"></div>');
   pg.append(bar);
-  if (counts.other) pg.append(h(`<p class="hint sm-note">${counts.other} שיחות ממספרים שהמערכת עוד לא מכירה. לוחצים "מי זה?" פעם אחת, וכל שיחה מהמספר הזה תיכנס מעכשיו למקום הנכון.</p>`));
+  if (counts.other) pg.append(h(`<p class="hint sm-note">${counts.other} שיחות שהמערכת עוד לא זיהתה. היא מקשיבה להן לבד ומכניסה כל אחת למקום שלה (שתיים בכל כמה דקות). אפשר גם ללחוץ "מי זה?", וכל שיחה מהמספר הזה תיכנס מעכשיו למקום הנכון.</p>`));
+  if (calls.hidden) pg.append(h(`<p class="hint">${calls.hidden} שיחות אישיות מוסתרות.</p>`));
   pg.append(box);
   function draw() {
     const words = callQ.trim().toLowerCase().split(/\s+/).filter(Boolean);
@@ -65,7 +66,7 @@ const againCalls = async () => { try { calls = await api('GET', '?calls=1'); } c
 function callRow(x) {
   const k = CATS[x.cat] || CATS.other, url = safeUrl(x.url);
   const el = h(`<article class="sm-call" style="--cc:${esc(x.color || k.c)}">
-    <span class="sm-call__cat">${k.t}</span>
+    <span class="sm-call__cat">${k.t}${x.auto ? '<small> (זוהה לבד)</small>' : ''}</span>
     <div class="sm-call__main">
       <b>${esc(x.who || x.name || x.phone || 'מספר לא ידוע')}${x.artist ? ` <small>(${esc(x.artist)})</small>` : ''}</b>
       <small>${[x.sub, x.survey ? 'בדיקה: ' + x.survey : '', x.phone ? `<span dir="ltr">${esc(x.phone)}</span>` : '', when(x.at)].filter(Boolean).map(v => (v.startsWith('<span') ? v : esc(v))).join(' · ')}</small>
@@ -278,6 +279,7 @@ function funCard(x) {
         ${size ? `<span class="sm-fun__f">${esc(size)}</span>` : ''}${x.hours ? `<span class="sm-fun__f">${esc(x.hours)}</span>` : ''}${FPLACE[x.place] ? `<span class="sm-fun__f">${FPLACE[x.place]}</span>` : ''}${x.kids ? '<span class="sm-fun__f">מתאים לילדים</span>' : ''}
       </div>
       ${x.notes ? `<p class="sm-h__txt">${esc(x.notes)}</p>` : ''}
+      ${(x.calls || []).length ? `<details class="sm-fun__calls"><summary>מהשיחות (${x.calls.length})${x.by === 'המערכת' ? ' · נוסף לבד מהשיחות' : ''}</summary>${x.calls.slice().reverse().map(k => `<div class="sm-fun__call"><b>${esc(when(k.at))}</b>${k.dates?.length ? `<span>תאריכים: ${esc(k.dates.join(', '))}</span>` : ''}${k.price ? `<span>מחיר / הצעה: ${esc(k.price)}</span>` : ''}${k.summary ? `<p>${esc(k.summary)}</p>` : ''}${safeUrl(k.url) ? `<a href="${esc(safeUrl(k.url))}" target="_blank" rel="noopener">להקשיב לשיחה</a>` : ''}</div>`).join('')}</details>` : ''}
       <div class="sm-h__acts">
         ${x.phone ? `<a class="btn btn--line" href="tel:${esc(x.phone.replace(/[^\d+]/g, ''))}" dir="ltr">${esc(x.phone)}</a>` : ''}
         ${site ? `<a class="btn btn--line" href="${esc(site)}" target="_blank" rel="noopener">האתר</a>` : ''}
