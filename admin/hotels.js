@@ -356,8 +356,18 @@ function lookupCard() {
 let showConnect = false, newOpen = false;
 function homeView(pg) {
   const list = h(`<section class="card"><div class="card__head"><div><h2>הכרטיסיות שלי</h2><p>כרטיסייה לכל אירוע: שם, סוג ותאריך. בפנים מוסיפים מלונות. רואים רק אתם ומי שבחרתם לשתף.</p></div>
-    <div class="row-tools"><button class="btn btn--gold" type="button" data-new>+ כרטיסייה חדשה</button></div></div><div class="hs-surveys"></div></section>`);
+    <div class="row-tools">${home.surveys.filter(s => s.manage).length > 1 ? '<button class="btn btn--line" type="button" data-recheck>לבדוק לאיזה אירוע שייך כל מקום</button>' : ''}<button class="btn btn--gold" type="button" data-new>+ כרטיסייה חדשה</button></div></div><div class="hs-surveys"></div></section>`);
   const box = $('.hs-surveys', list);
+  if ((home.wait || []).length) pg.append(waitCard());
+  $('[data-recheck]', list)?.addEventListener('click', async e => {
+    e.currentTarget.disabled = true; e.currentTarget.textContent = 'בודק…';
+    try {
+      const r = await api('POST', '', { op: 'recheck' });
+      await refreshHome();
+      ctx.toast(r.found ? (r.found === 1 ? 'מקום אחד נראה שייך לאירוע אחר. הוא באזור ההמתנה' : r.found + ' מקומות נראים שייכים לאירוע אחר. הם באזור ההמתנה') : 'כל המקומות בכרטיסייה הנכונה');
+      again();
+    } catch (e2) { fail(e2); again(); }
+  });
   if (!home.surveys.length) box.append(h('<p class="hint">עוד אין כרטיסיות. פותחים כרטיסייה לאירוע (למשל "שבת חתן משפחת כהן"), ובפנים מוסיפים מלונות.</p>'));
   for (const s of home.surveys) {
     const b = h(`<button type="button" class="hs-sv">
@@ -373,6 +383,36 @@ function homeView(pg) {
   pg.append(list);
   if (newOpen) list.after(surveyForm());
   pg.append(connectCard());
+}
+
+/** owner 24.11: calls and places the system was not sure about (several events at the same time). The owner says where they go. */
+function waitCard() {
+  const c = h(`<section class="card hs-wait"><div class="card__head"><div><h2>אזור המתנה</h2><p>כמה אירועים פתוחים יחד, והמערכת לא בטוחה לאיזה מהם זה שייך. בוחרים לאן להכניס.</p></div></div><div class="hs-wait__list"></div></section>`);
+  const box = $('.hs-wait__list', c);
+  for (const w of home.wait) {
+    const move = w.type === 'move';
+    const it = h(`<article class="hs-wait__it">
+      <header><b>${esc(w.name || 'שיחה')}</b><small>${move ? 'מקום שכבר בכרטיסייה' : 'שיחה'} · ${when(w.at)}</small></header>
+      ${move ? `<p>נמצא בכרטיסייה "${esc(w.fromTitle)}", אבל לפי מה שנאמר עליו הוא שייך ל"${esc(w.toTitle)}"${(w.why || []).length ? ' (נאמר: ' + w.why.map(esc).join(', ') + ')' : ''}.</p>` : `<p>${esc(w.summary || 'אין סיכום')}</p>`}
+      ${!move && w.transcript ? `<details class="sm-call__txt"><summary>התמלול</summary><pre dir="auto">${esc(w.transcript)}</pre></details>` : ''}
+      <div class="hs-wait__btns"></div></article>`);
+    const btns = $('.hs-wait__btns', it);
+    const go = async (surveyId, done) => {
+      btns.querySelectorAll('button').forEach(b => { b.disabled = true; });
+      try { await api('POST', '', { op: 'place', id: w.id, surveyId }); await refreshHome(); ctx.toast(done); again(); }
+      catch (e) { fail(e); btns.querySelectorAll('button').forEach(b => { b.disabled = false; }); }
+    };
+    const add = (label, cls, fn) => { const b = h(`<button class="btn btn--${cls} btn--sm" type="button"></button>`); b.textContent = label; b.addEventListener('click', fn); btns.append(b); };
+    if (move) {
+      add('להעביר ל"' + w.toTitle + '"', 'gold', () => go(w.to, 'המקום הועבר'));
+      add('להשאיר ב"' + w.fromTitle + '"', 'line', () => go('', 'המקום נשאר בכרטיסייה'));
+    } else {
+      [...(w.cards || [])].sort((a, b) => b.score - a.score).forEach((cd, i) => add('להכניס ל"' + cd.title + '"', i ? 'line' : 'gold', () => go(cd.surveyId, 'השיחה נכנסה ל"' + cd.title + '"')));
+      add('לא שייך לאף אירוע', 'line', () => go('', 'השיחה נשארה רק ברשימת השיחות'));
+    }
+    box.append(it);
+  }
+  return c;
 }
 
 const KINDS = ['שבת חתן', 'בר מצווה', 'בת מצווה', 'חתונה', 'חג', 'אחר'];
@@ -739,9 +779,21 @@ function hotelView(sv, x) {
       <button class="btn btn--line btn--sm" type="button" data-paste>להדביק הצעת מחיר או הודעה</button>
       ${(x.log || []).some(l => l.t === 'call') ? `<button class="btn btn--line btn--sm" type="button" data-relisten ${x.relisten ? 'disabled' : ''}>${x.relisten ? 'קורא את השיחה מחדש…' : 'לקרוא את השיחה מחדש'}</button>` : ''}
       ${safeUrl(x.website) ? `<a class="btn btn--line btn--sm" href="${esc(x.website)}" target="_blank" rel="noopener">לאתר של המלון</a>` : ''}
+      ${sv.manage && moveTargets(sv).length ? `<button class="btn btn--line btn--sm" type="button" data-move>להעביר לכרטיסייה אחרת</button>` : ''}
       ${sv.manage ? '<button class="btn btn--danger btn--sm" type="button" data-del>מחיקת המלון</button>' : ''}
     </div>
+    ${moveOpen === x.id ? `<div class="hs-move"><p>לאיזו כרטיסייה להעביר את "${esc(x.name || 'המקום')}"? הוא עובר עם כל השיחות, המיילים וההערות.</p><div class="hs-wait__btns">${moveTargets(sv).map(t => `<button class="btn btn--gold btn--sm" type="button" data-to="${esc(t.id)}">${esc(t.title)}${t.from ? ' · ' + dmy(t.from) : ''}</button>`).join('')}<button class="btn btn--line btn--sm" type="button" data-nomove>ביטול</button></div></div>` : ''}
   </section>`);
+  $('[data-move]', head)?.addEventListener('click', () => { moveOpen = moveOpen === x.id ? null : x.id; again(); });
+  $('[data-nomove]', head)?.addEventListener('click', () => { moveOpen = null; again(); });
+  head.querySelectorAll('[data-to]').forEach(b => b.addEventListener('click', async () => {
+    b.disabled = true;
+    try {
+      const r = await api('POST', '', { op: 'move', surveyId: sv.id, id: x.id, toSurvey: b.dataset.to });
+      moveOpen = null; openHotel = null; await refreshSurvey(); await refreshHome();
+      ctx.toast('הועבר ל"' + r.toTitle + '"'); again();
+    } catch (e2) { fail(e2); b.disabled = false; }
+  }));
   $('[data-back]', head).addEventListener('click', () => { openHotel = null; mailOpen = false; pasteOpen = false; again(); });
   $('[data-paste]', head).addEventListener('click', () => { pasteOpen = !pasteOpen; again(); });
   $('[data-relisten]', head)?.addEventListener('click', async () => {
@@ -792,6 +844,8 @@ function hotelView(sv, x) {
 }
 
 let pasteOpen = false;
+let moveOpen = null;
+const moveTargets = sv => (home?.surveys || []).filter(t => t.manage && t.id !== sv.id);
 /** Paste a price quote / a WhatsApp message / notes: the robot reads it and fills prices, rooms, hours, conditions. */
 function pasteForm(sv, x) {
   const f = h(`<form class="card hs-form hs-paste">

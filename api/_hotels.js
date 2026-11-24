@@ -80,6 +80,7 @@ const K = {
   ilanCalls: 'hs:ilan:c',            // recording file id → { at, file, summary, wants, quotes, transcript }
   ilanTasks: 'hs:ilan:t',            // task id → { text, due, quote, callId, at, done, doneAt, by }
   book: 'ph:book',                   // owner 22.11: phone (9 digits) → { cat, name, by, at }: a number we tagged by hand
+  wait: 'hs:wait',                   // owner 24.11: calls (and places) the system was not sure which card they belong to → the owner decides
 };
 const ILAN_SEE = ['cad5d8ff-c32d-4df9-918e-38cfd1d315d8'];   // owner 19.11: besides the owner only מעיין sees the Ilan tasks (not Ilan, not the others)
 const ILAN_BACK_DAYS = 7;            // when his number is saved, his calls of the last week are read too
@@ -222,6 +223,61 @@ async function userRec(id) { return (await getJ(K.users, id)) || { mode: { on: f
 /** The robot this person's phone works with: his own if he installed one, otherwise the company's (the owner's). */
 async function robotOf(id) { const u = await userRec(id); return (u.keyHash && u.app?.url) || id === 'owner' ? { id, u } : { id: 'owner', u: await userRec('owner') }; }
 const saveUser = (id, u) => setJ(K.users, id, u);
+
+/* ---------- owner 24.11: several events at the same time → which card a call (or a place) belongs to ----------
+   Decided by what was said: the kind of event (שבת חתן / חתונה / בר מצווה…), words of the card's name and area,
+   and a place that is already in one card. Not sure → the waiting area, and the owner says where it goes. */
+const KIND_WORDS = {
+  'שבת חתן': [['שבת חתן', 4], ['אופרוף', 4], ['aufruf', 4], ['shabbat hatan', 4], ['chabbat hatan', 4], ['shabbat chatan', 4], ['שבת', 2], ['חדרים', 1], ['לינה', 1], ['סעודות', 1], ['קידוש', 1]],
+  'חתונה': [['חתונה', 4], ['חופה', 4], ['אולם', 3], ['אולמות', 3], ['גן אירועים', 3], ['mariage', 4], ['houppa', 4], ['salle', 2], ['קבלת פנים', 1], ['מנות', 1], ['רחבה', 1]],
+  'בר מצווה': [['בר מצווה', 4], ['בר מצוה', 4], ['bar mitsva', 4], ['bar mitzvah', 4], ['תפילין', 2]],
+  'בת מצווה': [['בת מצווה', 4], ['בת מצוה', 4], ['bat mitsva', 4], ['bat mitzvah', 4]],
+  'חג': [['פסח', 3], ['סוכות', 3], ['ראש השנה', 3], ['שבועות', 3], ['pessah', 3], ['souccot', 3], ['חג', 1]],
+};
+const CARD_SKIP = new Set(['בדיקת', 'מלונות', 'מלון', 'משפחת', 'אירוע', 'הכל', 'הכול', 'כללי', 'אחר']);
+const cardEnd = sv => sv.to || sv.from || '';
+async function openCards(userId) {
+  const day = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
+  return (await allJ(K.surveys)).filter(sv => mine(sv, userId) && !sv.closed && (!cardEnd(sv) || cardEnd(sv) >= day));
+}
+function cardScore(sv, text, hotels, h) {
+  const t = flat(text);
+  let score = 0; const why = [];
+  const kw = KIND_WORDS[sv.kind] || (/חתן/.test(sv.title) ? KIND_WORDS['שבת חתן'] : /חתונ|אולמ/.test(sv.title) ? KIND_WORDS['חתונה'] : []);
+  let kindPts = 0;
+  for (const [w, p] of kw) if (t.includes(w)) { kindPts += p; if (p >= 3) why.push(w); }
+  score += Math.min(kindPts, 6);
+  for (const w of flat(sv.title + ' ' + (sv.area || '')).split(/[\s,.\-/]+/)) if (w.length >= 3 && !CARD_SKIP.has(w) && t.includes(w)) { score += 2; if (!why.includes(w)) why.push(w); }
+  if (h && hotels && findHotel(hotels, h)) { score += 4; why.push('המקום כבר בכרטיסייה'); }
+  return { surveyId: sv.id, title: sv.title, score, why: why.slice(0, 4) };
+}
+/** The best card, or null when it is not clear. */
+function bestCard(scores) {
+  const s = [...scores].sort((a, b) => b.score - a.score);
+  if (!s.length) return null;
+  if (s.length === 1) return s[0];
+  return s[0].score >= 3 && s[0].score - s[1].score >= 2 ? s[0] : null;
+}
+const callText = r => [r.hotel?.name, r.summary, ...(Array.isArray(r.places) ? r.places.map(p => (p?.name || '') + ' ' + (p?.note || '')) : []), str(r.transcript, 12000)].filter(Boolean).join('\n');
+const hotelText = h => [h.name, h.summary, h.availText, h.notes, ...(h.log || []).map(l => [l.summary, l.text, str(l.transcript, 6000), l.subject, l.body].filter(Boolean).join(' '))].filter(Boolean).join('\n');
+async function waitList(s) {
+  const own = isOwner(s), uid = meId(s);
+  return (await allJ(K.wait)).filter(w => own || w.userId === uid).sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 60)
+    .map(w => ({ id: w.id, type: w.type, at: w.at, name: w.name, summary: w.summary, transcript: str(w.transcript, 4000), cards: w.cards, from: w.from, hotelId: w.hotelId, fromTitle: w.fromTitle, to: w.to, toTitle: w.toTitle, why: w.why }));
+}
+
+async function moveHotel(res, s, fromId, hotelId, toId) {
+  const from = await getJ(K.surveys, fromId), to = await getJ(K.surveys, toId);
+  if (!canManage(s, from) || !canManage(s, to) || from.id === to.id) return send(res, 404, { error: 'not-found' });
+  const ho = await getJ(K.hotels(from.id), hotelId);
+  if (!ho) return send(res, 404, { error: 'not-found' });
+  ho.log = [...(ho.log || []), { t: 'note', at: now(), by: s.n || '', text: 'הועבר מהכרטיסייה "' + (from.title || '') + '" לכרטיסייה "' + (to.title || '') + '".' }].slice(-80);
+  ho.updatedAt = now();
+  await setJ(K.hotels(to.id), ho.id, ho);   // same id: the calls that point to it still find it
+  await kv.hdel(K.hotels(from.id), ho.id);
+  for (const w of await allJ(K.wait)) if (w.type === 'move' && w.hotelId === ho.id) await kv.hdel(K.wait, w.id);
+  return send(res, 200, { ok: true, moved: true, to: to.id, toTitle: to.title, id: ho.id });
+}
 
 /* ---------- merging what Gemini heard into a hotel ---------- */
 function findHotel(hotels, h) {
@@ -546,7 +602,7 @@ export default async function hotelsHandler(req, res) {
           count: hs.length, avail: hs.filter(h => h.avail === 'available' || h.avail === 'partial').length, follow: hs.filter(h => h.status === 'followup').length };
       }));
       const managers = await managerList(req);
-      return send(res, 200, { me: { id: uid, name: s.n, role: s.r }, mode: u.mode || { on: false }, windows: (u.windows || []).slice(-60), wa: await (async () => { const w = []; for (const sv of all) w.push(...robotJobs(sv, await allJ(K.hotels(sv.id))).wa); return w.slice(0, 300); })(), watch: await (async () => { const w = []; for (const sv of all) w.push(...robotJobs(sv, await allJ(K.hotels(sv.id))).watch.map(x => ({ phone: x.phone, from: x.from, to: x.to }))); return w.slice(0, 300); })(), connection: await (async () => { const r = (await robotOf(uid)).u; return { connected: !!r.keyHash, ping: r.ping || null, last: r.lastCall || null, skipped: r.skipped || 0, app: !!r.app?.url, appLast: r.app?.last || null }; })(), surveys, managers });
+      return send(res, 200, { me: { id: uid, name: s.n, role: s.r }, wait: await waitList(s), mode: u.mode || { on: false }, windows: (u.windows || []).slice(-60), wa: await (async () => { const w = []; for (const sv of all) w.push(...robotJobs(sv, await allJ(K.hotels(sv.id))).wa); return w.slice(0, 300); })(), watch: await (async () => { const w = []; for (const sv of all) w.push(...robotJobs(sv, await allJ(K.hotels(sv.id))).watch.map(x => ({ phone: x.phone, from: x.from, to: x.to }))); return w.slice(0, 300); })(), connection: await (async () => { const r = (await robotOf(uid)).u; return { connected: !!r.keyHash, ping: r.ping || null, last: r.lastCall || null, skipped: r.skipped || 0, app: !!r.app?.url, appLast: r.app?.last || null }; })(), surveys, managers });
     }
 
     // "חיבור האפליקציה": the robot's address + the app secret, handed only to the logged-in owner of that robot
@@ -661,6 +717,52 @@ export default async function hotelsHandler(req, res) {
         await setJ(K.out, m.id, m);
         return send(res, 200, { ok: true, mail: m });
       }
+    }
+
+    // owner 24.11: a call from the waiting area → into the card the owner chose (or "not for any card")
+    if (op === 'place') {
+      const w = await getJ(K.wait, str(body.id, 40));
+      if (!w || !(isOwner(s) || w.userId === uid)) return send(res, 404, { error: 'not-found' });
+      if (w.type === 'move') {
+        await kv.hdel(K.wait, w.id);
+        if (!body.surveyId || body.surveyId === w.from) return send(res, 200, { ok: true, kept: true });
+        return moveHotel(res, s, w.from, w.hotelId, str(body.surveyId, 40));
+      }
+      const fid = str(w.b?.file?.id, 120);
+      if (!body.surveyId) {   // not for any card: the call stays on the calls page only
+        await kv.hdel(K.wait, w.id); if (fid) await kv.hset(K.files, fid, 'skip');
+        return send(res, 200, { ok: true, skipped: true });
+      }
+      const sv = await getJ(K.surveys, str(body.surveyId, 40));
+      if (!canManage(s, sv) || !mine(sv, w.userId)) return send(res, 404, { error: 'not-found' });
+      await kv.hdel(K.wait, w.id); if (fid) await kv.hdel(K.files, fid);
+      return script(req, res, 'call', w.userId, { ...w.b, surveyId: sv.id, placed: true });
+    }
+
+    // owner 24.11: move a place (with all its history) from one card to another, e.g. from the שבת חתן to the wedding
+    if (op === 'move') return moveHotel(res, s, str(body.surveyId, 40), str(body.id, 40), str(body.toSurvey, 40));
+
+    // owner 24.11: check the places already in the cards: one that was talked about for another event → the waiting area, to move
+    if (op === 'recheck') {
+      const cards = (await openCards(isOwner(s) ? 'owner' : uid)).filter(c => canManage(s, c));
+      const found = [];
+      if (cards.length > 1) {
+        const old = await allJ(K.wait);
+        for (const c of cards) for (const ho of await allJ(K.hotels(c.id))) {
+          const text = hotelText(ho);
+          const scores = cards.map(x => cardScore(x, text));
+          const best = bestCard(scores);
+          if (!best || best.surveyId === c.id) continue;
+          const mineScore = scores.find(x => x.surveyId === c.id)?.score || 0;
+          if (best.score - mineScore < 2) continue;
+          const id = 'm' + sha(c.id + ho.id).slice(0, 14);
+          if (old.some(x => x.id === id)) { found.push(id); continue; }
+          await setJ(K.wait, id, { id, type: 'move', userId: isOwner(s) ? 'owner' : uid, at: now(), name: ho.name || '', summary: str(ho.summary, 600), from: c.id, fromTitle: c.title, hotelId: ho.id, to: best.surveyId, toTitle: best.title, why: best.why,
+            cards: scores.map(x => ({ surveyId: x.surveyId, title: x.title, score: x.score, why: x.why })) });
+          found.push(id);
+        }
+      }
+      return send(res, 200, { ok: true, cards: cards.length, found: found.length, wait: await waitList(s) });
     }
 
     // A hotel already checked in another card → copy it into this card, with its whole history (proof stays with it)
@@ -824,8 +926,25 @@ async function script(req, res, what, userId, b) {
       await kv.hset(K.files, file.id, 'skip');
       return send(res, 200, { ok: true, skipped: true });
     }
-    const sv = await getJ(K.surveys, b.surveyId);
+    let sv = await getJ(K.surveys, b.surveyId);
     if (!mine(sv, userId)) return send(res, 400, { error: 'survey' });
+    if (!b.replace && !b.placed) {
+      const cards = await openCards(userId);
+      if (cards.length > 1) {
+        const text = callText(r);
+        const scores = await Promise.all(cards.map(async c => cardScore(c, text, await allJ(K.hotels(c.id)), r.hotel || {})));
+        const best = bestCard(scores);
+        if (best) sv = cards.find(c => c.id === best.surveyId) || sv;
+        else {
+          const id = 'w' + sha(file.id).slice(0, 14);
+          await setJ(K.wait, id, { id, type: 'call', userId, at: str(b.at, 40) || now(), name: str(r.hotel?.name, 160) || file.name, summary: str(r.summary, 1500), transcript: str(r.transcript, 30000),
+            cards: scores.map(x => ({ surveyId: x.surveyId, title: x.title, score: x.score, why: x.why })), b: { ...b, result: { ...r, transcript: str(r.transcript, 30000) } } });
+          await kv.hset(K.files, file.id, 'wait');
+          u.lastCall = now(); await saveUser(userId, u);
+          return send(res, 200, { ok: true, waiting: true });
+        }
+      }
+    }
     const key = K.hotels(sv.id);
     // read again: take back what the old reading of this call wrote on that hotel
     let old = b.replace ? await getJ(key, str(b.replace, 40)) : null;

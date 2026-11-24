@@ -401,3 +401,16 @@ mark { background: #FCE7A8; color: inherit; padding: 0 2px; border-radius: 3px; 
 .sm-call__txt { margin-top: 6px; }
 .sm-call__txt summary { cursor: pointer; font-size: .85rem; color: var(--ink-3, #5b6678); }
 .sm-call__txt pre { white-space: pre-wrap; font: inherit; font-size: .9rem; line-height: 1.6; margin: 6px 0 0; max-height: 320px; overflow: auto; background: #f6f7fa; padding: 8px 10px; border-radius: 8px; }
+
+/* owner 24.11: the waiting area (several events at the same time) + moving a place to another card */
+.hs-wait { border: 1px solid var(--gold); }
+.hs-wait__list { display: grid; gap: 10px; }
+.hs-wait__it { padding: 12px 14px; border-radius: 12px; border: 1px solid var(--line); background: #fff; }
+.hs-wait__it header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
+.hs-wait__it header b { font: 700 1.05rem/1.3 "Frank Ruhl Libre", serif; }
+.hs-wait__it header small { color: var(--ink-3); }
+.hs-wait__it p { margin: 6px 0 0; color: var(--ink-2); line-height: 1.55; }
+.hs-wait__btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.hs-move { margin-top: 12px; padding: 12px 14px; border-radius: 12px; background: #f6f7fa; }
+.hs-move p { margin: 0; }
+@media (max-width: 560px) { .hs-wait__btns .btn { flex: 1 1 100%; } }
