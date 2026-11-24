@@ -729,19 +729,20 @@ function surveyView(pg) {
       ${sv.manage && hotels.length ? `<button class="btn btn--${compareOpen ? 'gold' : 'line'} btn--sm" type="button" data-cmp>השוואה ללקוח</button>` : ''}
       <button class="btn btn--gold btn--sm" type="button" data-wa>סיכום לוואטסאפ</button>
       ${safeUrl(sv.sheetUrl) ? `<a class="btn btn--line btn--sm" href="${esc(sv.sheetUrl)}" target="_blank" rel="noopener">הגיליון בגוגל</a>` : ''}
-      <button class="btn btn--line btn--sm" type="button" data-csv>ייצוא לגיליון</button>
+      <button class="btn btn--${exportOpen ? 'gold' : 'line'} btn--sm" type="button" data-csv>ייצוא לגיליון</button>
       ${sv.manage ? '<button class="btn btn--line btn--sm" type="button" data-share>שיתוף</button><button class="btn btn--line btn--sm" type="button" data-edit>עריכה</button>' : ''}
     </div>
   </section>`);
   $('[data-cmp]', head)?.addEventListener('click', () => { compareOpen = !compareOpen; offerLink = null; openHotel = null; again(); });
-  $('[data-back]', head).addEventListener('click', () => { compareOpen = false; offerLink = null; openSurvey = null; cur = null; openHotel = null; addOpen = false; lookOpen = false; look = { text: '', results: null, open: null }; again(); });
+  $('[data-back]', head).addEventListener('click', () => { compareOpen = false; exportOpen = false; offerLink = null; openSurvey = null; cur = null; openHotel = null; addOpen = false; lookOpen = false; look = { text: '', results: null, open: null }; again(); });
   $('[data-wa]', head).addEventListener('click', () => { const t = waSummary(sv, hotels); window.open('https://wa.me/?text=' + encodeURIComponent(t), '_blank'); });
-  $('[data-csv]', head).addEventListener('click', () => downloadCsv(sv, hotels));
+  $('[data-csv]', head).addEventListener('click', () => { exportOpen = !exportOpen; again(); });
   $('[data-share]', head)?.addEventListener('click', () => { shareOpen = !shareOpen; again(); });
   $('[data-edit]', head)?.addEventListener('click', () => { editSurvey = !editSurvey; again(); });
   pg.append(head);
   if (editSurvey) pg.append(surveyForm(sv));
   if (shareOpen && sv.manage) pg.append(shareCard(sv));
+  if (exportOpen) pg.append(exportCard(sv, hotels));
   if (compareOpen && sv.manage) { pg.append(compareCard(sv, hotels)); return; }
 
   if (openHotel) { const ho = hotels.find(x => x.id === openHotel); if (ho) return pg.append(hotelView(sv, ho)); openHotel = null; }
@@ -1090,12 +1091,62 @@ function waSummary(sv, hotels) {
   if (no.length) lines.push('', 'לא רלוונטי: ' + no.join(', '));
   return lines.join('\n');
 }
-function downloadCsv(sv, hotels) {
-  // owner 24.11: short and clear, the same columns as the Google sheet
-  const head = ['מקום', 'עיר', 'זמינות', 'הכי זול', 'המחירים', 'מה חשוב לדעת', 'איש קשר וטלפון', 'לחזור אליהם', 'סטטוס'];
-  const order = ['available', 'partial', 'unknown', 'full'];
-  const list = [...hotels].sort((a, b) => (a.status === 'no') - (b.status === 'no') || order.indexOf(a.avail || 'unknown') - order.indexOf(b.avail || 'unknown') || (a.min ?? 1e12) - (b.min ?? 1e12));
-  const rows = list.map(x => [x.name, x.city, (AV[x.avail] || AV.unknown)[0], x.min ?? '',
+/** owner 24.11: what the place said about each date, read from its availability text ("25.03.2027 תפוס, 24.03.2027 פנוי").
+ *  { '2027-03-25': 'taken', '2027-03-24': 'free' }. A date with no word near it is 'said' (mentioned, status unclear). */
+function datesSaid(text, year) {
+  const t = String(text || ''), out = {}, re = /(\d{1,2})[./](\d{1,2})(?:[./](\d{2,4}))?/g, hits = [];
+  let m;
+  while ((m = re.exec(t))) {
+    const d = +m[1], mo = +m[2]; let y = m[3] ? +m[3] : +year || new Date().getFullYear(); if (y < 100) y += 2000;
+    if (d < 1 || d > 31 || mo < 1 || mo > 12) continue;
+    hits.push({ iso: y + '-' + String(mo).padStart(2, '0') + '-' + String(d).padStart(2, '0'), s: m.index, e: m.index + m[0].length });
+  }
+  const word = s => /בספק|אולי|בבדיקה|לבדוק|ממתינ|יבדוק|יבדקו|לא בטוח|maybe/i.test(s) ? 'maybe' : /לא פנוי|אין מקום|תפוס|תפוסה|מלא|סגור|complet|booked|not available/i.test(s) ? 'taken' : /פנוי|פנויה|יש מקום|זמין|אפשרי|libre|available|free/i.test(s) ? 'free' : '';
+  hits.forEach((x, i) => {
+    const after = t.slice(x.e, i + 1 < hits.length ? hits[i + 1].s : t.length).split(/[.;\n]/)[0];
+    const before = t.slice(i ? hits[i - 1].e : 0, x.s).split(/[.;\n,]/).pop();
+    const st = word(after) || word(before) || 'said';
+    if (!out[x.iso] || out[x.iso] === 'said') out[x.iso] = st;
+  });
+  return out;
+}
+/** The place on the preferred date: from the text, or (when the text names no date and the card has this one date) from its availability. */
+function onDate(x, pref, svFrom, svTo) {
+  const said = datesSaid(x.availText, (pref || svFrom || '').slice(0, 4));
+  let st = said[pref] || '';
+  if ((!st || st === 'said') && pref && pref === svFrom && (!svTo || svTo === svFrom || !Object.keys(said).length)) st = { available: 'free', partial: 'maybe', full: 'taken' }[x.avail] || st;
+  const other = Object.keys(said).filter(d => d !== pref && said[d] === 'free').sort();
+  return { st: st === 'said' ? '' : st, other };
+}
+const PREF_HE = { free: 'פנוי', maybe: 'בספק', taken: 'תפוס', '': 'לא ידוע' };
+/** owner 24.11: which date the client prefers: every date of the card and every date the places talked about. */
+function cardDates(sv, hotels) {
+  const all = new Set([sv.from, sv.to].filter(Boolean));
+  for (const x of hotels) for (const d of Object.keys(datesSaid(x.availText, (sv.from || '').slice(0, 4)))) all.add(d);
+  return [...all].sort();
+}
+let exportOpen = false, exportPref = '';
+function exportCard(sv, hotels) {
+  const ds = cardDates(sv, hotels);
+  if (!ds.includes(exportPref)) exportPref = sv.from && ds.includes(sv.from) ? sv.from : ds[0] || '';
+  const c = h(`<section class="card hs-exp">
+    <div class="card__head"><div><h2>ייצוא לגיליון</h2><p>איזה תאריך הלקוח מעדיף? המקומות שפנויים בו יופיעו ראשונים. מקומות שפנויים רק בתאריך אחר יופיעו אחריהם, עם התאריך בעמודה בצד.</p></div></div>
+    ${ds.length ? `<div class="hs-chips" role="radiogroup" aria-label="התאריך המועדף">${ds.map(d => `<button type="button" role="radio" aria-checked="${d === exportPref}" class="chip ${d === exportPref ? 'on' : ''}" data-d="${d}">${dmy(d)}${d === sv.from ? ' (התאריך של הכרטיסייה)' : ''}</button>`).join('')}</div>` : '<p>בכרטיסייה אין תאריכים, הגיליון יסודר לפי זמינות ומחיר.</p>'}
+    <div class="hs-exp__foot"><button class="btn btn--gold" type="button" data-go>הורדת הגיליון</button><button class="btn btn--line" type="button" data-x>סגירה</button></div>
+  </section>`);
+  c.querySelectorAll('[data-d]').forEach(b => b.addEventListener('click', () => { exportPref = b.dataset.d; again(); }));
+  $('[data-go]', c).addEventListener('click', () => downloadCsv(sv, hotels, exportPref));
+  $('[data-x]', c).addEventListener('click', () => { exportOpen = false; again(); });
+  return c;
+}
+function downloadCsv(sv, hotels, pref) {
+  // owner 24.11: short and clear, the same columns as the Google sheet; the preferred date first, other dates on the side
+  pref = pref || sv.from || '';
+  const head = ['מקום', 'עיר', pref ? 'ב-' + dmy(pref) : 'זמינות', 'תאריכים חלופיים', 'הכי זול', 'המחירים', 'מה חשוב לדעת', 'איש קשר וטלפון', 'לחזור אליהם', 'סטטוס'];
+  const info = new Map(hotels.map(x => [x, onDate(x, pref, sv.from || '', sv.to || '')]));
+  const rank = x => { const o = info.get(x); return x.status === 'no' ? 9 : o.st === 'free' ? 0 : o.st === 'maybe' ? 1 : o.other.length ? 2 : o.st === '' ? 3 : 4; };
+  const list = [...hotels].sort((a, b) => rank(a) - rank(b) || (a.min ?? 1e12) - (b.min ?? 1e12));
+  const rows = list.map(x => [x.name, x.city, pref ? PREF_HE[info.get(x).st] : (AV[x.avail] || AV.unknown)[0], info.get(x).other.map(dmy).join(', '), x.min ?? '',
     (x.prices || []).filter(p => p.price > 0).map(p => ([p.level, p.board].filter(Boolean).join(', ') || 'מחיר') + ': ' + money(p.price, p.currency) + (p.per ? ' ' + p.per : '')).join('\n'),
     x.availText, [x.contact, [x.phone, x.phone2].filter(Boolean).join(' / ')].filter(Boolean).join(' · '),
     [dmy(x.followUp), x.followWhat].filter(Boolean).join(': '), ST[x.status] || '']);

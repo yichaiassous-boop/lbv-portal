@@ -520,14 +520,46 @@ export function mailDraft(sv, h) {
 /* ---------- the table for Google Sheets / CSV ---------- */
 const AV_HE = { unknown: 'לא ידוע', available: 'יש מקום', partial: 'מקום חלקי', full: 'תפוס' };
 const ST_HE = { new: 'חדש', followup: 'לחזור אליהם', waiting: 'מחכים להצעה', good: 'מתאים', closed: 'נסגר', no: 'לא רלוונטי' };
-/** owner 24.11: the sheet is short and clear: one row per place, the ones with room and the cheapest first, all its prices in one cell. */
-export function tableRows(sv, hotels) {
-  const head = ['מקום', 'עיר', 'זמינות', 'הכי זול', 'המחירים', 'מה חשוב לדעת', 'איש קשר וטלפון', 'לחזור אליהם', 'סטטוס'];
-  const order = ['available', 'partial', 'unknown', 'full'];
-  const list = [...hotels].sort((a, b) => (a.status === 'no') - (b.status === 'no') || order.indexOf(a.avail || 'unknown') - order.indexOf(b.avail || 'unknown') || (minPrice(a) ?? 1e12) - (minPrice(b) ?? 1e12));
+/** owner 24.11: what the place said about each date, read from its availability text ("25.03.2027 תפוס, 24.03.2027 פנוי").
+ *  { '2027-03-25': 'taken', '2027-03-24': 'free' }. A date with no word near it is 'said' (mentioned, status unclear). */
+function datesSaid(text, year) {
+  const t = String(text || ''), out = {}, re = /(\d{1,2})[./](\d{1,2})(?:[./](\d{2,4}))?/g, hits = [];
+  let m;
+  while ((m = re.exec(t))) {
+    const d = +m[1], mo = +m[2]; let y = m[3] ? +m[3] : +year || new Date().getFullYear(); if (y < 100) y += 2000;
+    if (d < 1 || d > 31 || mo < 1 || mo > 12) continue;
+    hits.push({ iso: y + '-' + String(mo).padStart(2, '0') + '-' + String(d).padStart(2, '0'), s: m.index, e: m.index + m[0].length });
+  }
+  const word = s => /בספק|אולי|בבדיקה|לבדוק|ממתינ|יבדוק|יבדקו|לא בטוח|maybe/i.test(s) ? 'maybe' : /לא פנוי|אין מקום|תפוס|תפוסה|מלא|סגור|complet|booked|not available/i.test(s) ? 'taken' : /פנוי|פנויה|יש מקום|זמין|אפשרי|libre|available|free/i.test(s) ? 'free' : '';
+  hits.forEach((x, i) => {
+    const after = t.slice(x.e, i + 1 < hits.length ? hits[i + 1].s : t.length).split(/[.;\n]/)[0];
+    const before = t.slice(i ? hits[i - 1].e : 0, x.s).split(/[.;\n,]/).pop();
+    const st = word(after) || word(before) || 'said';
+    if (!out[x.iso] || out[x.iso] === 'said') out[x.iso] = st;
+  });
+  return out;
+}
+/** The place on the preferred date: from the text, or (when the text names no date and the card has this one date) from its availability. */
+function onDate(x, pref, svFrom, svTo) {
+  const said = datesSaid(x.availText, (pref || svFrom || '').slice(0, 4));
+  let st = said[pref] || '';
+  if ((!st || st === 'said') && pref && pref === svFrom && (!svTo || svTo === svFrom || !Object.keys(said).length)) st = { available: 'free', partial: 'maybe', full: 'taken' }[x.avail] || st;
+  const other = Object.keys(said).filter(d => d !== pref && said[d] === 'free').sort();
+  return { st: st === 'said' ? '' : st, other };
+}
+const PREF_HE = { free: 'פנוי', maybe: 'בספק', taken: 'תפוס', '': 'לא ידוע' };
+export { datesSaid, onDate };
+/** owner 24.11: the sheet is short and clear: one row per place. The places free on the preferred date first (cheapest first),
+ *  then the ones free only on another date (those dates in a column on the side), then unknown, then taken. */
+export function tableRows(sv, hotels, pref) {
+  pref = /^\d{4}-\d{2}-\d{2}$/.test(pref || '') ? pref : sv.from || '';
+  const head = ['מקום', 'עיר', pref ? 'ב-' + dmy(pref) : 'זמינות', 'תאריכים חלופיים', 'הכי זול', 'המחירים', 'מה חשוב לדעת', 'איש קשר וטלפון', 'לחזור אליהם', 'סטטוס'];
+  const info = new Map(hotels.map(h => [h, onDate(h, pref, sv.from || '', sv.to || '')]));
+  const rank = h => { const o = info.get(h); return h.status === 'no' ? 9 : o.st === 'free' ? 0 : o.st === 'maybe' ? 1 : o.other.length ? 2 : o.st === '' ? 3 : 4; };
+  const list = [...hotels].sort((a, b) => rank(a) - rank(b) || (minPrice(a) ?? 1e12) - (minPrice(b) ?? 1e12));
   const sym = c => ({ ILS: '₪', USD: '$', EUR: '€' }[c] || (c ? ' ' + c : '₪'));
   const rows = list.map(h => [
-    h.name || '', h.city || '', AV_HE[h.avail] || 'עוד לא ידוע', minPrice(h) ?? '',
+    h.name || '', h.city || '', pref ? PREF_HE[info.get(h).st] : AV_HE[h.avail] || 'לא ידוע', info.get(h).other.map(dmy).join(', '), minPrice(h) ?? '',
     (h.prices || []).filter(p => p.price > 0).map(p => ([p.level, p.board].filter(Boolean).join(', ') || 'מחיר') + ': ' + Number(p.price).toLocaleString('he-IL') + ' ' + sym(p.currency).trim() + (p.per ? ' ' + p.per : '')).join('\n'),
     str(h.availText || '', 300),
     [h.contact, [h.phone, h.phone2].filter(Boolean).join(' / ')].filter(Boolean).join(' · '),
@@ -1563,7 +1595,7 @@ async function script(req, res, what, userId, b) {
   if (what === 'export') {
     const sv = await getJ(K.surveys, url(req).get('survey'));
     if (!mine(sv, userId)) return send(res, 404, { error: 'not-found' });
-    return send(res, 200, { title: sv.title, rows: tableRows(sv, await allJ(K.hotels(sv.id))) });
+    return send(res, 200, { title: sv.title, rows: tableRows(sv, await allJ(K.hotels(sv.id)), sv.prefDate) });
   }
 
   if (what === 'sheet') {
