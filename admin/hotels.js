@@ -729,7 +729,7 @@ function surveyView(pg) {
       ${sv.manage && hotels.length ? `<button class="btn btn--${compareOpen ? 'gold' : 'line'} btn--sm" type="button" data-cmp>השוואה ללקוח</button>` : ''}
       <button class="btn btn--gold btn--sm" type="button" data-wa>סיכום לוואטסאפ</button>
       ${safeUrl(sv.sheetUrl) ? `<a class="btn btn--line btn--sm" href="${esc(sv.sheetUrl)}" target="_blank" rel="noopener">הגיליון בגוגל</a>` : ''}
-      <button class="btn btn--line btn--sm" type="button" data-csv>הורדה לגוגל שיטס / אקסל</button>
+      <button class="btn btn--line btn--sm" type="button" data-csv>ייצוא לגיליון</button>
       ${sv.manage ? '<button class="btn btn--line btn--sm" type="button" data-share>שיתוף</button><button class="btn btn--line btn--sm" type="button" data-edit>עריכה</button>' : ''}
     </div>
   </section>`);
@@ -898,7 +898,7 @@ function hotelView(sv, x) {
     <div class="hs-hhead__t"><h2>${esc(x.name || 'בלי שם')}</h2><span class="pill pill--${ac}">${an}</span><span class="st st--${x.status}">${ST[x.status]}</span></div>
     <p>${esc(x.city)}${x.contact ? ' · ' + esc(x.contact) : ''}${x.availText ? ' · ' + esc(x.availText) : ''}</p>
     ${x.about ? `<p class="hs-about">${esc(x.about)}</p>` : ''}
-    ${safeUrl(x.website) ? `<p class="hs-site">האתר של המלון: <a href="${esc(x.website)}" target="_blank" rel="noopener"><bdi>${esc(siteName(x.website))}</bdi></a></p>` : ''}
+    ${safeUrl(x.website) ? `<p class="hs-site">האתר של המקום: <a href="${esc(x.website)}" target="_blank" rel="noopener"><bdi>${esc(siteName(x.website))}</bdi></a></p>` : ''}
     ${x.rating || x.reviewsText ? `<div class="hs-rev">${x.rating ? `<b class="hs-rate">${rateTxt(x)}</b><span>${x.reviewsCount ? x.reviewsCount.toLocaleString('he-IL') + ' ביקורות' : 'דירוג'} ב${esc(x.reviewsSource || 'גוגל')}</span>` : ''}${x.reviewsText ? `<p>${esc(x.reviewsText)}</p>` : ''}${safeUrl(x.reviewsUrl) ? `<a href="${esc(x.reviewsUrl)}" target="_blank" rel="noopener">לכל הביקורות</a>` : ''}</div>` : ''}
     <div class="hs-photos">${[...(x.myPhotos || []), ...(x.photos || []).filter(safeUrl)].map(u => `<figure class="hs-ph"><a href="${esc(photoSrc(u))}" target="_blank" rel="noopener"><img src="${esc(photoSrc(u))}" alt="" loading="lazy" referrerpolicy="no-referrer"></a><button type="button" class="hs-ph__x" data-rm="${esc(u)}" aria-label="להסיר את התמונה">×</button></figure>`).join('')}
       <label class="hs-ph hs-ph--add"><input type="file" accept="image/*" multiple hidden><span>+ להוסיף תמונות</span></label></div>
@@ -1091,12 +1091,14 @@ function waSummary(sv, hotels) {
   return lines.join('\n');
 }
 function downloadCsv(sv, hotels) {
-  const combos = [];
-  for (const x of hotels) for (const p of x.prices || []) { const k = [p.level, p.board].filter(Boolean).join(' · ') || 'מחיר'; if (!combos.includes(k)) combos.push(k); }
-  const head = ['מלון', 'עיר / אזור', 'איש קשר', 'טלפון', 'מייל', 'זמינות', 'פירוט זמינות', ...combos, 'הכי זול', 'סטטוס', 'לחזור בתאריך', 'מה לבדוק', 'סיכום', 'הערות'];
-  const rows = hotels.map(x => [x.name, x.city, x.contact, x.phone, x.email, (AV[x.avail] || AV.unknown)[0], x.availText,
-    ...combos.map(k => { const p = (x.prices || []).find(p => ([p.level, p.board].filter(Boolean).join(' · ') || 'מחיר') === k); return p ? `${p.price ?? ''} ${p.per || ''}`.trim() : ''; }),
-    x.min ?? '', ST[x.status] || '', dmy(x.followUp), x.followWhat, x.summary, x.notes]);
+  // owner 24.11: short and clear, the same columns as the Google sheet
+  const head = ['מקום', 'עיר', 'זמינות', 'הכי זול', 'המחירים', 'מה חשוב לדעת', 'איש קשר וטלפון', 'לחזור אליהם', 'סטטוס'];
+  const order = ['available', 'partial', 'unknown', 'full'];
+  const list = [...hotels].sort((a, b) => (a.status === 'no') - (b.status === 'no') || order.indexOf(a.avail || 'unknown') - order.indexOf(b.avail || 'unknown') || (a.min ?? 1e12) - (b.min ?? 1e12));
+  const rows = list.map(x => [x.name, x.city, (AV[x.avail] || AV.unknown)[0], x.min ?? '',
+    (x.prices || []).filter(p => p.price > 0).map(p => ([p.level, p.board].filter(Boolean).join(', ') || 'מחיר') + ': ' + money(p.price, p.currency) + (p.per ? ' ' + p.per : '')).join('\n'),
+    x.availText, [x.contact, [x.phone, x.phone2].filter(Boolean).join(' / ')].filter(Boolean).join(' · '),
+    [dmy(x.followUp), x.followWhat].filter(Boolean).join(': '), ST[x.status] || '']);
   const csv = '﻿' + [head, ...rows].map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\r\n');
   if (window.LBVApp?.share) { window.LBVApp.share(`${sv.title}.csv`, csv); return; }   // inside the phone app: share / save the file
   const a = document.createElement('a');

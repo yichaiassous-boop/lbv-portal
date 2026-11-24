@@ -610,7 +610,8 @@ function ddg(q) {
 }
 /** Look a hotel up for free: two web searches, then Gemini picks ONLY from what was found. null when it could not run. */
 function freeLook(w) {
-  const base = w.name + (w.city ? ' ' + w.city : '');
+  // owner 24.11: a hall is searched as a hall ("האגם" alone finds a lake)
+  const base = w.name + (w.city ? ' ' + w.city : '') + (w.hall && !/אולם|גן אירועים|אירועים|מלון|hotel/i.test(w.name) ? ' אולם אירועים' : '');
   const res = ddg(base);
   Utilities.sleep(1200);
   const rev = ddg(base + ' ביקורות');
@@ -936,11 +937,12 @@ function tidySheet(sh, rows, w) {
   sh.setFrozenRows(1); sh.setFrozenColumns(1);
   if (n > 1) sh.getRange(2, 1, n - 1, 1).setFontWeight('bold');
   const col = t => head.indexOf(t) + 1;
-  const long = ['פירוט זמינות', 'סיכום', 'הערות', 'מה לבדוק'];
+  const long = ['המחירים', 'מה חשוב לדעת', 'לחזור אליהם', 'פירוט זמינות', 'סיכום', 'הערות', 'מה לבדוק'];
   for (let c = 1; c <= w; c++) {
     const t = head[c - 1];
-    if (long.indexOf(t) >= 0) { sh.setColumnWidth(c, t === 'סיכום' ? 420 : 260); if (n > 1) sh.getRange(2, c, n - 1, 1).setWrap(true); }
-    else if (t === 'מלון') sh.setColumnWidth(c, 190);
+    if (long.indexOf(t) >= 0) { sh.setColumnWidth(c, t === 'סיכום' || t === 'מה חשוב לדעת' ? 340 : 240); if (n > 1) sh.getRange(2, c, n - 1, 1).setWrap(true); }
+    else if (t === 'מלון' || t === 'מקום') sh.setColumnWidth(c, 190);
+    else if (t === 'איש קשר וטלפון') sh.setColumnWidth(c, 200);
     else if (t === 'מייל') sh.setColumnWidth(c, 200);
     else if (t === 'טלפון' || t === 'שיחה אחרונה') sh.setColumnWidth(c, 140);
     else sh.setColumnWidth(c, 120);

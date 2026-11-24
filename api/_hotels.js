@@ -362,7 +362,7 @@ function robotJobs(sv, hotels) {
     if ((h.photosCand || []).length && h.website) photoCheck.unshift({ surveyId: sv.id, hotelId: h.id, name: h.name || '', city: h.city || '', website: h.website, photos: h.photosCand.slice(0, 12), cand: true });
     else if (((h.photos || []).length || h.website || h.about) && (h.photosOk || 0) < 2) photoCheck.push({ surveyId: sv.id, hotelId: h.id, name: h.name || '', city: h.city || '', website: h.website || '', photos: (h.photos || []).slice(0, 12) });
     // a new hotel: the robot looks it up on the web once (website, photos, missing details) - owner 19.11
-    if (h.name && !/ללא שם/.test(h.name) && (h.webV || 0) < 6 && (h.webTries6 || 0) < 4 && !(h.webDone && h.website && ((h.photos || []).length || (h.photosCand || []).length))) webLook.push({ surveyId: sv.id, hotelId: h.id, name: h.name, city: h.city || '', website: h.website || '', avoid: h.webBad || [] });
+    if (h.name && !/ללא שם/.test(h.name) && (h.webV || 0) < 6 && (h.webTries6 || 0) < 4 && !(h.webDone && h.website && ((h.photos || []).length || (h.photosCand || []).length))) webLook.push({ surveyId: sv.id, hotelId: h.id, name: h.name, city: h.city || '', website: h.website || '', avoid: h.webBad || [], hall: /אולם/.test((sv.title || '') + ' ' + (sv.kind || '') + ' ' + h.name) || /^אולם/.test(h.name || '') });
     // looked up without a real web search (no reviews yet): again once the robot can search (Claude key)
     if (h.name && h.webNoSearch && !h.webGrounded && (h.webRedoTries || 0) < 2) webRedo.push({ surveyId: sv.id, hotelId: h.id, name: h.name, city: h.city || '', website: h.website || '', redo: true });
   }
@@ -520,15 +520,19 @@ export function mailDraft(sv, h) {
 /* ---------- the table for Google Sheets / CSV ---------- */
 const AV_HE = { unknown: 'לא ידוע', available: 'יש מקום', partial: 'מקום חלקי', full: 'תפוס' };
 const ST_HE = { new: 'חדש', followup: 'לחזור אליהם', waiting: 'מחכים להצעה', good: 'מתאים', closed: 'נסגר', no: 'לא רלוונטי' };
+/** owner 24.11: the sheet is short and clear: one row per place, the ones with room and the cheapest first, all its prices in one cell. */
 export function tableRows(sv, hotels) {
-  const combos = [];
-  for (const h of hotels) for (const p of h.prices || []) { const c = [p.level, p.board].filter(Boolean).join(' · ') || 'מחיר'; if (!combos.includes(c)) combos.push(c); }
-  const head = ['מלון', 'עיר / אזור', 'איש קשר', 'טלפון', 'מייל', 'זמינות', 'פירוט זמינות', ...combos, 'הכי זול', 'סטטוס', 'לחזור בתאריך', 'מה לבדוק', 'שיחה אחרונה', 'סיכום', 'הערות'];
-  const rows = hotels.map(h => {
-    const price = c => { const p = (h.prices || []).find(x => ([x.level, x.board].filter(Boolean).join(' · ') || 'מחיר') === c); return p ? [p.price ?? '', p.per].filter(x => x !== '').join(' ') + (p.note ? ` (${p.note})` : '') : ''; };
-    const lastCall = (h.log || []).filter(x => x.t === 'call').map(x => x.at).sort().pop();
-    return [h.name, h.city, h.contact, [h.phone, h.phone2].filter(Boolean).join(' / '), h.email, AV_HE[h.avail] || '', h.availText, ...combos.map(price), minPrice(h) ?? '', ST_HE[h.status] || '', dmy(h.followUp), h.followWhat, lastCall ? new Date(lastCall).toLocaleString('he-IL', { timeZone: 'Asia/Jerusalem' }) : '', h.summary, h.notes];
-  });
+  const head = ['מקום', 'עיר', 'זמינות', 'הכי זול', 'המחירים', 'מה חשוב לדעת', 'איש קשר וטלפון', 'לחזור אליהם', 'סטטוס'];
+  const order = ['available', 'partial', 'unknown', 'full'];
+  const list = [...hotels].sort((a, b) => (a.status === 'no') - (b.status === 'no') || order.indexOf(a.avail || 'unknown') - order.indexOf(b.avail || 'unknown') || (minPrice(a) ?? 1e12) - (minPrice(b) ?? 1e12));
+  const sym = c => ({ ILS: '₪', USD: '$', EUR: '€' }[c] || (c ? ' ' + c : '₪'));
+  const rows = list.map(h => [
+    h.name || '', h.city || '', AV_HE[h.avail] || 'עוד לא ידוע', minPrice(h) ?? '',
+    (h.prices || []).filter(p => p.price > 0).map(p => ([p.level, p.board].filter(Boolean).join(', ') || 'מחיר') + ': ' + Number(p.price).toLocaleString('he-IL') + ' ' + sym(p.currency).trim() + (p.per ? ' ' + p.per : '')).join('\n'),
+    str(h.availText || '', 300),
+    [h.contact, [h.phone, h.phone2].filter(Boolean).join(' / ')].filter(Boolean).join(' · '),
+    [dmy(h.followUp), h.followWhat].filter(Boolean).join(': '),
+    ST_HE[h.status] || '']);
   return [head, ...rows];
 }
 
