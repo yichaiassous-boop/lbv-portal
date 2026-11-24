@@ -587,8 +587,22 @@ function claudeWeb(prompt) {
   }
   return null;
 }
-/** Free web search (DuckDuckGo's plain page): [{url, title, snippet}]. */
+/** owner 24.11: web search through Tavily (script property TAVILY_KEY, 1,000 free searches a month): DuckDuckGo blocks Google's servers.
+ *  [{url, title, snippet}], or null when there is no key / it failed (then DuckDuckGo is tried). */
+function tavily(q) {
+  const key = P('TAVILY_KEY');
+  if (!key) return null;
+  try {
+    const r = UrlFetchApp.fetch('https://api.tavily.com/search', { method: 'post', contentType: 'application/json', muteHttpExceptions: true,
+      headers: { Authorization: 'Bearer ' + key }, payload: JSON.stringify({ query: q, max_results: 8, search_depth: 'basic' }) });
+    if (r.getResponseCode() >= 300) { console.log('tavily ' + r.getResponseCode() + ' ' + r.getContentText().slice(0, 160)); return null; }
+    return (JSON.parse(r.getContentText()).results || []).filter(x => /^https?:\/\//i.test(x.url || '')).map(x => ({ url: x.url, title: String(x.title || ''), snippet: String(x.content || '').slice(0, 400) }));
+  } catch (e) { console.log('tavily ' + e); return null; }
+}
+/** Free web search (DuckDuckGo's plain page): [{url, title, snippet}]. Tavily first when there is a key. */
 function ddg(q) {
+  const tv = tavily(q);
+  if (tv && tv.length) return tv;
   const r = UrlFetchApp.fetch('https://html.duckduckgo.com/html/?q=' + encodeURIComponent(q) + '&kl=il-he', { muteHttpExceptions: true, followRedirects: true,
     headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36', 'Accept-Language': 'he,en;q=0.8' } });
   if (r.getResponseCode() === 202) { console.log('ddg 202 (busy): ' + q); }
