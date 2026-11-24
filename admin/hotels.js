@@ -358,6 +358,7 @@ function homeView(pg) {
   const list = h(`<section class="card"><div class="card__head"><div><h2>הכרטיסיות שלי</h2><p>כרטיסייה לכל אירוע: שם, סוג ותאריך. בפנים מוסיפים מלונות. רואים רק אתם ומי שבחרתם לשתף.</p></div>
     <div class="row-tools">${home.surveys.filter(s => s.manage).length > 1 ? '<button class="btn btn--line" type="button" data-recheck>לבדוק לאיזה אירוע שייך כל מקום</button>' : ''}<button class="btn btn--gold" type="button" data-new>+ כרטיסייה חדשה</button></div></div><div class="hs-surveys"></div></section>`);
   const box = $('.hs-surveys', list);
+  if ((home.follow || []).length) pg.append(followCard());
   if ((home.wait || []).length) pg.append(waitCard());
   $('[data-recheck]', list)?.addEventListener('click', async e => {
     e.currentTarget.disabled = true; e.currentTarget.textContent = 'בודק…';
@@ -383,6 +384,130 @@ function homeView(pg) {
   pg.append(list);
   if (newOpen) list.after(surveyForm());
   pg.append(connectCard());
+  if (home.robot) pg.append(robotCard(home.robot));
+}
+
+/** owner 24.11: the places of a card side by side; you choose which ones the client sees, the price for him and what to tell him,
+ *  and get a page in the La Belle Vie look (a link for WhatsApp, or print it as a PDF). Our cost and the places' phones never go there. */
+function compareCard(sv, hotels) {
+  const order = ['available', 'partial', 'unknown', 'full'];
+  const rows = [...hotels].filter(x => x.status !== 'no').sort((a, b) => order.indexOf(a.avail) - order.indexOf(b.avail) || (a.min ?? 1e12) - (b.min ?? 1e12));
+  const kept = compareCard.state?.sv === sv.id ? compareCard.state : (compareCard.state = { sv: sv.id, pick: {}, price: {}, per: {}, note: {}, intro: '' });
+  const minTxt = x => { const p = (x.prices || []).filter(p => p.price > 0).sort((a, b) => a.price - b.price)[0]; return p ? money(p.price, p.currency) + (p.per ? ' ' + p.per : '') : 'עוד אין מחיר'; };
+  const c = h(`<section class="card hs-cmp">
+    <div class="card__head"><div><h2>השוואה ללקוח</h2><p>מסמנים את המקומות שהלקוח יראה, כותבים לו מחיר ומה חשוב לדעת. המחיר שקיבלנו, הטלפונים והשיחות לא מופיעים אצלו.</p></div></div>
+    <label class="field"><span>פתיח ללקוח</span><textarea rows="2" data-intro placeholder="למשל: בחרנו עבורכם שלושה מקומות שמתאימים לחתונה ב-25.3, עם כל הפרטים"></textarea></label>
+    <div class="hs-cmp__list"></div>
+    <div class="hs-cmp__foot"><span class="hs-cmp__n"></span><button class="btn btn--gold" type="button" data-make>יצירת דף ללקוח</button></div>
+    <div class="hs-cmp__out"></div>
+  </section>`);
+  $('[data-intro]', c).value = kept.intro;
+  $('[data-intro]', c).addEventListener('input', e => { kept.intro = e.target.value; });
+  const list = $('.hs-cmp__list', c), nEl = $('.hs-cmp__n', c);
+  const count = () => { const n = rows.filter(x => kept.pick[x.id]).length; nEl.textContent = n ? (n === 1 ? 'נבחר מקום אחד' : 'נבחרו ' + n + ' מקומות') : 'עוד לא נבחר מקום'; };
+  for (const x of rows) {
+    const [an, ac] = AV[x.avail] || AV.unknown;
+    if (kept.note[x.id] == null) kept.note[x.id] = x.availText || '';
+    const it = h(`<article class="hs-cmp__it">
+      <label class="hs-cmp__pick"><input type="checkbox" data-pick><span><b>${esc(x.name || 'בלי שם')}</b><small>${esc(x.city || '')}</small></span></label>
+      <div class="hs-cmp__facts"><span class="pill pill--${ac}">${an}</span><span>מה שקיבלנו: <b>${esc(minTxt(x))}</b></span>${x.summary ? `<p>${esc(x.summary)}</p>` : ''}</div>
+      <div class="hs-cmp__fill">
+        <label class="field"><span>מחיר ללקוח (₪)</span><input type="number" min="0" inputmode="numeric" data-price placeholder="לא חובה"></label>
+        <label class="field"><span>על מה המחיר</span><input data-per placeholder="למשל: לאורח, כולל אולם"></label>
+        <label class="field hs-cmp__note"><span>מה לכתוב ללקוח</span><textarea rows="2" data-note></textarea></label>
+      </div>
+    </article>`);
+    const pick = $('[data-pick]', it);
+    pick.checked = !!kept.pick[x.id]; it.classList.toggle('on', pick.checked);
+    pick.addEventListener('change', () => { kept.pick[x.id] = pick.checked; it.classList.toggle('on', pick.checked); count(); });
+    $('[data-price]', it).value = kept.price[x.id] || ''; $('[data-price]', it).addEventListener('input', e => { kept.price[x.id] = e.target.value; });
+    $('[data-per]', it).value = kept.per[x.id] || ''; $('[data-per]', it).addEventListener('input', e => { kept.per[x.id] = e.target.value; });
+    $('[data-note]', it).value = kept.note[x.id]; $('[data-note]', it).addEventListener('input', e => { kept.note[x.id] = e.target.value; });
+    list.append(it);
+  }
+  count();
+  const out = $('.hs-cmp__out', c);
+  const showLink = url => {
+    const full = location.origin + url;
+    out.innerHTML = `<div class="hs-cmp__link"><p>הדף מוכן. רק מי שיש לו את הקישור יכול לראות אותו.</p><div class="hs-wait__btns">
+      <a class="btn btn--gold btn--sm" href="${esc(url)}" target="_blank" rel="noopener">לפתוח את הדף</a>
+      <button class="btn btn--line btn--sm" type="button" data-copy>להעתיק קישור</button>
+      <a class="btn btn--line btn--sm" href="https://wa.me/?text=${encodeURIComponent(full)}" target="_blank" rel="noopener">לשלוח בוואטסאפ</a>
+      <a class="btn btn--line btn--sm" href="${esc(url)}&print=1" target="_blank" rel="noopener">PDF להדפסה</a></div></div>`;
+    $('[data-copy]', out).addEventListener('click', () => copy(full, 'הקישור הועתק'));
+  };
+  if (offerLink) showLink(offerLink);
+  $('[data-make]', c).addEventListener('click', async e => {
+    const items = rows.filter(x => kept.pick[x.id]).map(x => ({ hotelId: x.id, price: kept.price[x.id] || '', per: kept.per[x.id] || '', note: kept.note[x.id] || '' }));
+    if (!items.length) { ctx.toast('מסמנים לפחות מקום אחד'); return; }
+    const b = e.currentTarget; b.disabled = true; b.textContent = 'יוצר…';
+    try {
+      const r = await api('POST', '', { op: 'offer', surveyId: sv.id, intro: kept.intro, title: sv.title, date: sv.from ? dmy(sv.from) + (sv.to && sv.to !== sv.from ? ' – ' + dmy(sv.to) : '') : '', items });
+      offerLink = r.url; showLink(r.url); ctx.toast('הדף ללקוח מוכן');
+    } catch (e2) { fail(e2); }
+    b.disabled = false; b.textContent = 'יצירת דף ללקוח';
+  });
+  return c;
+}
+
+/** owner 24.11: is the robot working? When it last ran, how Gemini answered today, what waits in line, and the last errors. */
+function robotCard(r) {
+  const mins = r.last ? Math.round((Date.now() - Date.parse(r.last.at)) / 60000) : null;
+  const ago = mins == null ? 'עוד לא דיווח' : mins < 1 ? 'עכשיו' : mins < 60 ? 'לפני ' + mins + ' דק\'' : 'ב-' + when(r.last.at);
+  const g = r.gem || {}, tries = (g.ok || 0) + (g.busy || 0) + (g.quota || 0);
+  const crowded = tries > 0 && (g.busy + g.quota) > g.ok;
+  const st = mins == null || mins > 15 ? ['bad', mins == null ? 'הרובוט עוד לא דיווח' : 'הרובוט לא רץ מאז ' + when(r.last.at)]
+    : crowded ? ['warn', 'הרובוט עובד, אבל Gemini עמוס היום. דברים לוקחים יותר זמן']
+    : ['ok', 'הרובוט עובד כרגיל'];
+  const q = r.queue || {}, line = [];
+  if (q.sort) line.push(q.sort === 1 ? 'שיחה אחת לזיהוי' : q.sort + ' שיחות לזיהוי');
+  if (q.photos) line.push(q.photos === 1 ? 'מקום אחד לבדיקת תמונות' : q.photos + ' מקומות לבדיקת תמונות');
+  if (q.web) line.push(q.web === 1 ? 'מקום אחד לחיפוש באתר שלו' : q.web + ' מקומות לחיפוש באתר שלהם');
+  if (q.mail) line.push(q.mail === 1 ? 'תיבת מייל אחת לבדיקה' : q.mail + ' בדיקות מייל');
+  if (q.ilanMerge) line.push('איחוד המטלות של אילן');
+  const plain = e => /\b(429|RESOURCE_EXHAUSTED)\b/.test(e) ? 'Gemini: נגמרה המכסה היומית של אחד המפתחות' : /\b(503|UNAVAILABLE|overloaded)\b|out of time/.test(e) ? 'Gemini עמוס, ננסה בריצה הבאה' : e;
+  const errs = [];
+  for (const e of r.errors || []) { const t = plain(e.text); if (!errs.some(x => x.t === t)) errs.push({ t, at: e.at }); }
+  const c = h(`<section class="card hs-bot hs-bot--${st[0]}">
+    <div class="card__head"><div><h2>מצב הרובוט</h2><p><i class="hs-bot__dot"></i>${esc(st[1])}</p></div></div>
+    <dl class="hs-bot__grid">
+      <div><dt>ריצה אחרונה</dt><dd>${esc(ago)}${r.last ? ' · ' + r.last.secs + ' שניות' : ''}</dd></div>
+      <div><dt>ריצות היום</dt><dd>${r.runsToday || 0}</dd></div>
+      <div><dt>Gemini היום</dt><dd>${g.ok || 0} תשובות${g.busy ? ' · ' + g.busy + ' פעמים עמוס' : ''}${g.quota ? ' · ' + g.quota + ' בלי מכסה' : ''}</dd></div>
+      <div><dt>מחכה בתור</dt><dd>${line.length ? esc(line.join(', ')) : 'כלום, הכול מעודכן'}</dd></div>
+    </dl>
+    ${errs.length ? `<details class="hs-bot__err"><summary>תקלות אחרונות (${errs.length})</summary><ul>${errs.map(e => `<li><small>${esc(when(e.at))}</small> ${esc(e.t)}</li>`).join('')}</ul></details>` : ''}
+  </section>`);
+  return c;
+}
+
+/** owner 24.11: places to call back today. A place that said "I'll check and call you back" and did not, within a day, shows here by itself. */
+function followCard() {
+  const list = home.follow || [];
+  const c = h(`<section class="card hs-fol"><div class="card__head"><div><h2>לחזור אליהם היום</h2><p>${list.length === 1 ? 'מקום אחד' : list.length + ' מקומות'} שאמרו שיחזרו או שצריך לחזור אליהם, ועוד לא נסגר.</p></div></div><div class="hs-fol__list"></div></section>`);
+  const box = $('.hs-fol__list', c);
+  for (const f of list) {
+    const tel = String(f.phone || '').replace(/[^\d+]/g, '');
+    const it = h(`<article class="hs-fol__it${f.late ? ' late' : ''}">
+      <div class="hs-fol__t"><b>${esc(f.name || 'בלי שם')}</b><small>${esc(f.title)} · ${f.late ? 'מחכה מ-' + dmy(f.due) : 'להיום'}</small></div>
+      ${f.what ? `<p>${esc(f.what)}</p>` : ''}
+      <div class="hs-wait__btns">
+        ${tel ? `<a class="btn btn--gold btn--sm" href="tel:${esc(tel)}">להתקשר <bdi>${esc(f.phone)}</bdi></a>` : ''}
+        <button class="btn btn--line btn--sm" type="button" data-done>טופל</button>
+        <button class="btn btn--line btn--sm" type="button" data-tom>להזכיר מחר</button>
+        <button class="btn btn--line btn--sm" type="button" data-open>לפתוח את המקום</button>
+      </div></article>`);
+    const act = async (a, msg) => {
+      it.querySelectorAll('button').forEach(b => { b.disabled = true; });
+      try { const r = await api('POST', '', { op: 'follow', surveyId: f.surveyId, id: f.hotelId, act: a }); home.follow = r.follow || []; ctx.toast(msg); again(); }
+      catch (e) { fail(e); it.querySelectorAll('button').forEach(b => { b.disabled = false; }); }
+    };
+    $('[data-done]', it).addEventListener('click', () => act('done', 'סומן שטופל'));
+    $('[data-tom]', it).addEventListener('click', () => act('tomorrow', 'אזכיר מחר'));
+    $('[data-open]', it).addEventListener('click', () => { openSurvey = f.surveyId; openHotel = f.hotelId; again(); scrollTo({ top: 0 }); });
+    box.append(it);
+  }
+  return c;
 }
 
 /** owner 24.11: calls and places the system was not sure about (several events at the same time). The owner says where they go. */
@@ -587,6 +712,7 @@ function startPolling() {
 async function copy(text, ok) { try { await navigator.clipboard.writeText(text); ctx.toast(ok); } catch (e) { prompt('העתיקו:', text); } }
 
 /* ---------- one survey ---------- */
+let compareOpen = false, offerLink = null;   // owner 24.11: the comparison for a client opens only on request
 let editSurvey = false, shareOpen = false, addOpen = false, addPrefill = null, lookOpen = false;
 function surveyView(pg) {
   const { survey: sv, hotels } = cur;
@@ -595,13 +721,15 @@ function surveyView(pg) {
     <div class="hs-head__t"><h2>${esc(sv.title)}</h2>
       <p>${sv.kind ? esc(sv.kind) + ' · ' : ''}${sv.from ? 'תאריך: ' + dmy(sv.from) + (sv.to && sv.to !== sv.from ? ' – ' + dmy(sv.to) : '') : 'בלי תאריכים'}${sv.area ? ' · ' + esc(sv.area) : ''}${sv.need ? ' · ' + esc(sv.need) : ''}</p></div>
     <div class="hs-tools">
+      ${sv.manage && hotels.length ? `<button class="btn btn--${compareOpen ? 'gold' : 'line'} btn--sm" type="button" data-cmp>השוואה ללקוח</button>` : ''}
       <button class="btn btn--gold btn--sm" type="button" data-wa>סיכום לוואטסאפ</button>
       ${safeUrl(sv.sheetUrl) ? `<a class="btn btn--line btn--sm" href="${esc(sv.sheetUrl)}" target="_blank" rel="noopener">הגיליון בגוגל</a>` : ''}
       <button class="btn btn--line btn--sm" type="button" data-csv>הורדה לגוגל שיטס / אקסל</button>
       ${sv.manage ? '<button class="btn btn--line btn--sm" type="button" data-share>שיתוף</button><button class="btn btn--line btn--sm" type="button" data-edit>עריכה</button>' : ''}
     </div>
   </section>`);
-  $('[data-back]', head).addEventListener('click', () => { openSurvey = null; cur = null; openHotel = null; addOpen = false; lookOpen = false; look = { text: '', results: null, open: null }; again(); });
+  $('[data-cmp]', head)?.addEventListener('click', () => { compareOpen = !compareOpen; offerLink = null; openHotel = null; again(); });
+  $('[data-back]', head).addEventListener('click', () => { compareOpen = false; offerLink = null; openSurvey = null; cur = null; openHotel = null; addOpen = false; lookOpen = false; look = { text: '', results: null, open: null }; again(); });
   $('[data-wa]', head).addEventListener('click', () => { const t = waSummary(sv, hotels); window.open('https://wa.me/?text=' + encodeURIComponent(t), '_blank'); });
   $('[data-csv]', head).addEventListener('click', () => downloadCsv(sv, hotels));
   $('[data-share]', head)?.addEventListener('click', () => { shareOpen = !shareOpen; again(); });
@@ -609,6 +737,7 @@ function surveyView(pg) {
   pg.append(head);
   if (editSurvey) pg.append(surveyForm(sv));
   if (shareOpen && sv.manage) pg.append(shareCard(sv));
+  if (compareOpen && sv.manage) { pg.append(compareCard(sv, hotels)); return; }
 
   if (openHotel) { const ho = hotels.find(x => x.id === openHotel); if (ho) return pg.append(hotelView(sv, ho)); openHotel = null; }
 

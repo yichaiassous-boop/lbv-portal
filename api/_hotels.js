@@ -119,7 +119,43 @@ function fixSort(sort) {
   if (x.cat === 'hotel' && !/מלון|אולם|גן|וילה|מתחם|קיבוץ|כפר|רשת/.test(x.sub || '')) x.sub = 'מקום שבדקנו (מלון / אולם)';   // not 'חתונה' / 'שיחה פנימית'
   return x;
 }
-const SORT_V = 2;   // owner 24.11: calls read with older rules are read again
+const SORT_V = 2;
+/** owner 24.11: how the robot is doing (each run reports itself), for the "מצב הרובוט" card. */
+const HEALTH = 'hs:health';
+async function robotHealth() {
+  const runs = (await getJ(HEALTH, 'runs')) || [], queue = (await getJ(HEALTH, 'queue')) || {};
+  const today = jDay(Date.now()), td = runs.filter(r => jDay(Date.parse(r.at) || 0) === today);
+  const sum = k => td.reduce((n, r) => n + ((r.gem || {})[k] || 0), 0);
+  const errs = [];
+  for (const r of runs.slice(-24).reverse()) for (const e of r.errors || []) if (!errs.some(x => x.text === e) && errs.length < 8) errs.push({ at: r.at, text: e });
+  return { last: runs[runs.length - 1] || null, runsToday: td.length, gem: { ok: sum('ok'), busy: sum('busy'), quota: sum('quota') }, queue, errors: errs };
+}
+/** owner 24.11: the robot learns from the owner: calls a person tagged by hand are examples for the next readings. */
+async function sortExamples() {
+  const book = await kv.hgetall(K.book) || {}, out = [];
+  for (const c of (await allJ(K.calls)).sort((a, b) => String(b.at).localeCompare(String(a.at)))) {
+    const d = digits(c.phone).slice(-9), raw = book[d] || book['0' + d] || book[digits(c.phone)];
+    const tag = raw && (typeof raw === 'string' ? (() => { try { return JSON.parse(raw); } catch (e) { return null; } })() : raw);
+    if (!tag || tag.by === 'המערכת' || !c.sort?.summary || ['hide', 'ilan'].includes(tag.cat)) continue;
+    out.push({ summary: str(c.sort.summary, 300), cat: tag.cat, who: tag.name || '' });
+    if (out.length >= 12) break;
+  }
+  return out;
+}
+/** The date in Israel, YYYY-MM-DD. */
+const jDay = t => new Date(t).toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' });
+/** owner 24.11: places to call back today: a reminder that is due (its day came), or a "we'll call you back" that nobody answered for a day. */
+async function followList(svs) {
+  const today = jDay(Date.now()), out = [];
+  for (const sv of svs) for (const ho of await allJ(K.hotels(sv.id))) {
+    if (['closed', 'no'].includes(ho.status) || !(ho.followUp || ho.followWhat || ho.status === 'followup')) continue;
+    const last = (ho.log || []).map(l => l.at).filter(Boolean).sort().pop() || ho.updatedAt || ho.createdAt || '';
+    const due = ho.followUp || (last ? jDay((Date.parse(last) || Date.now()) + 864e5) : today);
+    if (due > today) continue;
+    out.push({ surveyId: sv.id, title: sv.title || '', hotelId: ho.id, name: ho.name || '', phone: ho.phone || '', what: ho.followWhat || '', due, last, late: due < today });
+  }
+  return out.sort((a, b) => a.due.localeCompare(b.due)).slice(0, 40);
+}   // owner 24.11: calls read with older rules are read again
 const SORT_CATS = ['hotel', 'artist', 'client', 'supplier', 'attraction', 'team', 'private', 'other'];
 async function whoMap() {
   const book = Object.fromEntries(Object.entries(await kv.hgetall(K.book) || {}).map(([k, v]) => { try { return [k, JSON.parse(v)]; } catch (e) { return [k, null]; } }));
@@ -229,6 +265,8 @@ const same = (a, b) => { const x = Buffer.from(String(a ?? '')), y = Buffer.from
 /** The robot of userId may touch this survey only if it belongs to that user (the owner's robot: every survey). */
 const mine = (sv, userId) => !!sv && (userId === 'owner' || sv.by?.id === userId);
 const secret = () => process.env.ADMIN_SECRET || process.env.ADMIN_PASSWORD || 'local';
+/** owner 24.11: the link of a page for a client (the places we chose for him), with its own token. */
+export const offerToken = id => crypto.createHmac('sha256', secret()).update('offer:' + id).digest('base64url').slice(0, 22);
 export const viewToken = id => crypto.createHmac('sha256', secret()).update('hotels:' + id).digest('base64url').slice(0, 22);
 
 const STATUS = ['new', 'followup', 'waiting', 'good', 'closed', 'no'];
@@ -442,7 +480,16 @@ function mergeCall(hotel, r, call) {
     const keep = (hotel.prices || []).filter(p => !fresh.some(f => key(f) === key(p)));
     hotel.prices = [...keep, ...fresh];
   }
-  if (r.followUp?.needed) { if (r.followUp.date) hotel.followUp = str(r.followUp.date, 10); hotel.followWhat = str(r.followUp.what, 300); if (hotel.status === 'new') hotel.status = 'followup'; }
+  if (r.followUp?.needed) {
+    // owner 24.11: "I'll check and call you back" → if nobody came back within a day, it shows in "לחזור אליהם היום"
+    const base = Date.parse(call?.at || '') || Date.now();
+    hotel.followUp = /^\d{4}-\d{2}-\d{2}$/.test(str(r.followUp.date, 10)) ? str(r.followUp.date, 10) : jDay(base + 864e5);
+    hotel.followWhat = str(r.followUp.what, 300) || 'לוודא שחזרו אלינו';
+    hotel.followAt = now();
+    if (['new', 'waiting', 'followup'].includes(hotel.status || 'new')) hotel.status = 'followup';
+  } else if (r.followUp && r.followUp.needed === false && hotel.status === 'followup') {
+    hotel.followUp = ''; hotel.followWhat = ''; hotel.status = 'new';   // they came back: nothing is open any more
+  }
   if (r.summary) hotel.summary = str(r.summary, 1500);
   hotel.log = [...(hotel.log || []), call].slice(-80);
   return hotel;
@@ -495,6 +542,24 @@ export default async function hotelsHandler(req, res) {
   if (req.method === 'POST' || req.method === 'PUT') { try { body = (await readBody(req)) || {}; } catch (e) { return send(res, 400, { error: 'bad-json' }); } }
 
   try {
+    /* ----- owner 24.11: the page for the client: only the places we chose, the price and the words we wrote for him.
+       Never the place's phone, our cost, the calls or anything internal. ----- */
+    if (q('offer')) {
+      const o = await getJ('hs:offers', q('offer'));
+      if (!o || !same(q('t'), offerToken(o.id))) return send(res, 404, { error: 'not-found' });
+      const sv = await getJ(K.surveys, o.surveyId);
+      const items = [];
+      for (const it of o.items || []) {
+        const ho = sv && await getJ(K.hotels(sv.id), it.hotelId);
+        if (!ho) continue;
+        const own = ho.website && !notOwnSite(ho.website);
+        items.push({ name: ho.name || '', city: ho.city || '', website: own ? ho.website : '', about: own ? str(ho.about || '', 400) : '',
+          photos: own && (ho.photosOk || 0) >= 2 ? (ho.photos || []).slice(0, 4) : [], mine: (ho.myPhotos || []).slice(0, 4),
+          price: it.price || null, per: it.per || '', note: it.note || '' });
+      }
+      return send(res, 200, { title: o.title || sv?.title || '', date: o.date || '', intro: o.intro || '', items, at: o.at });
+    }
+
     /* ----- read-only link for the team ----- */
     if (q('view')) {
       const sv = await getJ(K.surveys, q('view'));
@@ -739,7 +804,7 @@ export default async function hotelsHandler(req, res) {
           count: hs.length, avail: hs.filter(h => h.avail === 'available' || h.avail === 'partial').length, follow: hs.filter(h => h.status === 'followup').length };
       }));
       const managers = await managerList(req);
-      return send(res, 200, { me: { id: uid, name: s.n, role: s.r }, wait: await waitList(s), mode: u.mode || { on: false }, windows: (u.windows || []).slice(-60), wa: await (async () => { const w = []; for (const sv of all) w.push(...robotJobs(sv, await allJ(K.hotels(sv.id))).wa); return w.slice(0, 300); })(), watch: await (async () => { const w = []; for (const sv of all) w.push(...robotJobs(sv, await allJ(K.hotels(sv.id))).watch.map(x => ({ phone: x.phone, from: x.from, to: x.to }))); return w.slice(0, 300); })(), connection: await (async () => { const r = (await robotOf(uid)).u; return { connected: !!r.keyHash, ping: r.ping || null, last: r.lastCall || null, skipped: r.skipped || 0, app: !!r.app?.url, appLast: r.app?.last || null }; })(), surveys, managers });
+      return send(res, 200, { me: { id: uid, name: s.n, role: s.r }, robot: isOwner(s) ? await robotHealth() : undefined, follow: await followList(all), wait: await waitList(s), mode: u.mode || { on: false }, windows: (u.windows || []).slice(-60), wa: await (async () => { const w = []; for (const sv of all) w.push(...robotJobs(sv, await allJ(K.hotels(sv.id))).wa); return w.slice(0, 300); })(), watch: await (async () => { const w = []; for (const sv of all) w.push(...robotJobs(sv, await allJ(K.hotels(sv.id))).watch.map(x => ({ phone: x.phone, from: x.from, to: x.to }))); return w.slice(0, 300); })(), connection: await (async () => { const r = (await robotOf(uid)).u; return { connected: !!r.keyHash, ping: r.ping || null, last: r.lastCall || null, skipped: r.skipped || 0, app: !!r.app?.url, appLast: r.app?.last || null }; })(), surveys, managers });
     }
 
     // "חיבור האפליקציה": the robot's address + the app secret, handed only to the logged-in owner of that robot
@@ -857,6 +922,35 @@ export default async function hotelsHandler(req, res) {
     }
 
     // owner 24.11: a call from the waiting area → into the card the owner chose (or "not for any card")
+    // owner 24.11: a reminder to call back: done (they came back / I called), or again tomorrow
+    if (op === 'follow') {
+      const sv = await getJ(K.surveys, str(body.surveyId, 40));
+      if (!canSee(s, sv)) return send(res, 404, { error: 'not-found' });
+      const ho = await getJ(K.hotels(sv.id), str(body.id, 40));
+      if (!ho) return send(res, 404, { error: 'not-found' });
+      if (body.act === 'tomorrow') { ho.followUp = jDay(Date.now() + 864e5); ho.log = [...(ho.log || []), { t: 'note', at: now(), by: s.n || '', text: 'תזכורת: לחזור אליהם מחר.' }].slice(-80); }
+      else { ho.log = [...(ho.log || []), { t: 'note', at: now(), by: s.n || '', text: 'טופל: ' + (ho.followWhat || 'לחזור אליהם') }].slice(-80); ho.followUp = ''; ho.followWhat = ''; if (ho.status === 'followup') ho.status = 'new'; }
+      ho.updatedAt = now();
+      await setJ(K.hotels(sv.id), ho.id, ho);
+      return send(res, 200, { ok: true, follow: await followList((await allJ(K.surveys)).filter(x => canSee(s, x))) });
+    }
+
+    // owner 24.11: a page for the client with the places we chose (on request), the price for him and what to tell him
+    if (op === 'offer') {
+      const sv = await getJ(K.surveys, str(body.surveyId, 40));
+      if (!canManage(s, sv)) return send(res, 404, { error: 'not-found' });
+      const ids = new Set((await allJ(K.hotels(sv.id))).map(x => x.id));
+      const items = (Array.isArray(body.items) ? body.items : []).filter(it => ids.has(str(it.hotelId, 40))).slice(0, 10)
+        .map(it => ({ hotelId: str(it.hotelId, 40), price: Number(it.price) > 0 ? Math.round(Number(it.price)) : null, per: str(it.per, 40), note: str(it.note, 600) }));
+      if (!items.length) return send(res, 400, { error: 'no-places' });
+      const id = rid('o');
+      const o = { id, surveyId: sv.id, title: str(body.title, 120) || sv.title || '', date: str(body.date, 80), intro: str(body.intro, 800), items, by: s.n || '', at: now() };
+      await setJ('hs:offers', id, o);
+      sv.offers = [...(sv.offers || []), { id, at: o.at, n: items.length }].slice(-10);
+      await setJ(K.surveys, sv.id, sv);
+      return send(res, 200, { ok: true, id, url: '/offer/?o=' + id + '&t=' + offerToken(id) });
+    }
+
     if (op === 'place') {
       const w = await getJ(K.wait, str(body.id, 40));
       // owner 24.11: whoever sees it in the waiting area (manages one of its cards, e.g. on another computer / account) may place it
@@ -1030,7 +1124,7 @@ async function script(req, res, what, userId, b) {
         jobs.watch.unshift(...c.phones.map(p => ({ ilan: true, phone: p, from: c.since, to })));
       }
     }
-    let sortCalls = [], funMail = [], funRead = [];
+    let sortCalls = [], funMail = [], funRead = [], sortExamplesOut = [];
     if (userId === 'owner') {
       // owner 24.11: the attractions like the hotels: their mail and WhatsApp are read too
       for (const f of await allJ('fn:all')) {
@@ -1046,11 +1140,14 @@ async function script(req, res, what, userId, b) {
       const { whoOf } = await whoMap();
       const since = Date.now() - 365 * 864e5;   // every unknown call from the last year
       const sysOnly = k => !k || k.auto;   // a number a person tagged is never read again
-      sortCalls = (await allJ(K.calls)).filter(c => c.owner === userId && !c.dup && (!c.sort || (c.sort.v || 1) < SORT_V) && (c.sortFails || 0) < 3 && (Date.parse(c.at) || 0) >= since && sysOnly(whoOf(c).k))
+      const sortAll = (await allJ(K.calls)).filter(c => c.owner === userId && !c.dup && (!c.sort || (c.sort.v || 1) < SORT_V) && (c.sortFails || 0) < 3 && (Date.parse(c.at) || 0) >= since && sysOnly(whoOf(c).k));
+      await setJ(HEALTH, 'queue', { at: now(), sort: sortAll.length, web: jobs.webLook.length, photos: jobs.photoCheck.length, relisten: jobs.relisten.length, mail: jobs.mailScan.length + jobs.mailAuto.length, ilanMerge: !!ilan.merge });
+      sortExamplesOut = await sortExamples();
+      sortCalls = sortAll
         .sort((a2, b2) => String(b2.at).localeCompare(String(a2.at))).slice(0, 3)
         .map(c => ({ id: c.id, at: c.at, name: c.name || '', phone: whoOf(c).d, local: !!c.local, text: c.local ? str(c.sum?.transcript || '', 30000) : '' }));
     }
-    return send(res, 200, { sortCalls, funMail, funRead, ilan, windows, mode, surveys: active, outbox, threads, asks, watch: jobs.watch.slice(0, 300), parses: jobs.parses.slice(0, 5), mailScan: jobs.mailScan.concat(jobs.mailAuto).slice(0, 5), photoCheck: jobs.photoCheck.slice(0, 4), webLook: jobs.webLook.slice(0, 3), webRedo: jobs.webRedo.slice(0, 2), relisten: jobs.relisten.slice(0, 1), wa: jobs.wa.slice(0, 300) });
+    return send(res, 200, { sortCalls, sortExamples: sortExamplesOut, funMail, funRead, ilan, windows, mode, surveys: active, outbox, threads, asks, watch: jobs.watch.slice(0, 300), parses: jobs.parses.slice(0, 5), mailScan: jobs.mailScan.concat(jobs.mailAuto).slice(0, 5), photoCheck: jobs.photoCheck.slice(0, 4), webLook: jobs.webLook.slice(0, 3), webRedo: jobs.webRedo.slice(0, 2), relisten: jobs.relisten.slice(0, 1), wa: jobs.wa.slice(0, 300) });
   }
 
   // The robot's web-app address (for the phone app) + when the app last sent a recording
@@ -1085,6 +1182,14 @@ async function script(req, res, what, userId, b) {
     if (pendChanged) await setJ(K.pend, 'list', pend);
     u.indexedAt = now(); await saveUser(userId, u);
     return send(res, 200, { ok: true, added: n });
+  }
+  // owner 24.11: each robot run reports how it went (seconds, Gemini answers / busy / no quota, errors)
+  if (what === 'health') {
+    if (userId !== 'owner') return send(res, 403, { error: 'owner' });
+    const g = b.gem || {}, n = v => Math.max(0, Math.min(999, Number(v) || 0));
+    const runs = ((await getJ(HEALTH, 'runs')) || []).concat([{ at: now(), secs: n(b.secs), gem: { ok: n(g.ok), busy: n(g.busy), quota: n(g.quota) }, errors: (Array.isArray(b.errors) ? b.errors : []).slice(0, 12).map(e => str(e, 200)) }]).slice(-320);
+    await setJ(HEALTH, 'runs', runs);
+    return send(res, 200, { ok: true });
   }
   if (what === 'sorted') {
     if (userId !== 'owner') return send(res, 403, { error: 'owner' });

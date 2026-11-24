@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>La Belle Vie – הצעה עבורכם</title>
+<meta name="robots" content="noindex, nofollow">
+<meta name="color-scheme" content="only light">
+<meta name="theme-color" content="#FFFFFF">
+<link rel="icon" type="image/png" href="/media/icon-gold.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700&family=Frank+Ruhl+Libre:wght@500;700;900&display=swap" rel="stylesheet">
+<style>
+  /* owner 24.11: the page a client gets: the places we chose for him, in the La Belle Vie look (the logo's blue) */
+  :root { --ink: #1D2559; --ink-2: #4A5384; --ink-3: #8088AE; --blue: #1170B8; --deep: #2E3A8C; --line: #E4E8F2; --paper: #FFFFFF; --mist: #F3F6FB; }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--mist); color: var(--ink); font: 400 17px/1.6 "Assistant", "Segoe UI", sans-serif; }
+  img { display: block; max-width: 100%; }
+  a { color: var(--blue); }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 0 16px; }
+  .top { background: var(--paper); border-bottom: 1px solid var(--line); }
+  .top .wrap { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-block: 18px; }
+  .top img { height: 64px; width: auto; }
+  .top small { color: var(--ink-3); font-weight: 600; letter-spacing: .02em; }
+  .hero { padding: 44px 0 26px; }
+  .hero h1 { margin: 0; font: 900 clamp(2rem, 5.4vw, 3.3rem)/1.08 "Frank Ruhl Libre", serif; color: var(--deep); }
+  .hero .date { margin: 10px 0 0; font-weight: 700; color: var(--blue); font-size: 1.08rem; }
+  .hero .intro { margin: 16px 0 0; max-width: 62ch; color: var(--ink-2); font-size: 1.12rem; white-space: pre-line; }
+  .list { display: grid; gap: 22px; padding-bottom: 40px; }
+  .pl { background: var(--paper); border-radius: 18px; overflow: hidden; box-shadow: 0 1px 0 var(--line), 0 18px 40px -28px rgba(29, 37, 89, .35); display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); break-inside: avoid; }
+  .pl.nophoto { grid-template-columns: 1fr; }
+  .ph { position: relative; background: var(--mist); min-height: 260px; display: grid; grid-template-rows: 1fr auto; }
+  .ph .main { width: 100%; height: 100%; min-height: 260px; object-fit: cover; }
+  .ph .thumbs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; padding-top: 3px; background: var(--paper); }
+  .ph .thumbs img { width: 100%; height: 78px; object-fit: cover; cursor: pointer; }
+  .tx { padding: 24px 26px 26px; display: flex; flex-direction: column; gap: 12px; }
+  .num { color: var(--blue); font: 700 .95rem/1 "Frank Ruhl Libre", serif; }
+  .tx h2 { margin: 0; font: 700 1.75rem/1.15 "Frank Ruhl Libre", serif; color: var(--deep); }
+  .city { color: var(--ink-3); font-weight: 600; margin-top: -6px; }
+  .price { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; padding: 12px 16px; border-radius: 12px; background: var(--mist); }
+  .price b { font: 900 1.9rem/1 "Frank Ruhl Libre", serif; color: var(--deep); }
+  .price span { color: var(--ink-2); font-weight: 600; }
+  .note { margin: 0; white-space: pre-line; color: var(--ink); }
+  .about { margin: 0; color: var(--ink-2); font-size: .98rem; }
+  .site { font-weight: 600; text-decoration: none; border-bottom: 1px solid currentColor; align-self: flex-start; }
+  .foot { border-top: 1px solid var(--line); background: var(--paper); }
+  .foot .wrap { padding-block: 26px 34px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; color: var(--ink-2); }
+  .foot b { font: 700 1.15rem/1.3 "Frank Ruhl Libre", serif; color: var(--deep); }
+  .msg { padding: 80px 0; text-align: center; color: var(--ink-2); font-size: 1.15rem; }
+  .print { position: fixed; inset-inline-start: 16px; bottom: 16px; z-index: 5; border: 0; border-radius: 999px; padding: 12px 20px; background: var(--deep); color: #fff; font: 700 1rem "Assistant", sans-serif; cursor: pointer; box-shadow: 0 10px 24px -10px rgba(29, 37, 89, .6); }
+  .print:focus-visible, .ph .thumbs img:focus-visible, a:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; }
+  @media (max-width: 760px) {
+    .pl { grid-template-columns: 1fr; }
+    .ph, .ph .main { min-height: 220px; }
+    .ph .main { height: 230px; }
+    .tx { padding: 20px 18px 22px; }
+    .top img { height: 52px; }
+    .hero { padding: 30px 0 20px; }
+  }
+  @media print {
+    @page { size: A4; margin: 12mm; }
+    body { background: #fff; font-size: 12pt; }
+    .print { display: none; }
+    .top { border: 0; }
+    .hero { padding: 6mm 0 4mm; }
+    .list { gap: 8mm; }
+    .pl { box-shadow: none; border: 1px solid var(--line); grid-template-columns: 0.9fr 1.1fr; }
+    .ph .main { height: 62mm; min-height: 0; }
+    .ph .thumbs img { height: 18mm; }
+    .foot { border: 0; }
+    a { color: var(--ink); text-decoration: none; }
+  }
+  @media (prefers-reduced-motion: no-preference) { .pl { animation: up .5s ease both; } @keyframes up { from { opacity: 0; transform: translateY(14px); } } }
+</style>
+</head>
+<body>
+<header class="top"><div class="wrap"><img src="/media/logo-color.png" alt="La Belle Vie" width="70" height="66"><small>הפקת אירועים ונופש</small></div></header>
+<main class="wrap" id="app"><p class="msg">טוען…</p></main>
+<footer class="foot"><div class="wrap"><b>La Belle Vie · לה בל וי</b><span>נשמח לענות על כל שאלה ולסגור איתכם את הפרטים</span></div></footer>
+<script>
+(async () => {
+  const app = document.getElementById('app');
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const src = u => /^https:\/\//i.test(u) ? u : /^media\//.test(u) ? '/' + u : '';
+  const p = new URLSearchParams(location.search);
+  let d;
+  try {
+    const r = await fetch('/api/hotels?offer=' + encodeURIComponent(p.get('o') || '') + '&t=' + encodeURIComponent(p.get('t') || ''));
+    if (!r.ok) throw new Error(r.status);
+    d = await r.json();
+  } catch (e) { app.innerHTML = '<p class="msg">הקישור לא נמצא. אפשר לבקש מאיתנו קישור חדש.</p>'; return; }
+  document.title = 'La Belle Vie – ' + (d.title || 'הצעה עבורכם');
+  const items = d.items || [];
+  app.innerHTML = `<section class="hero"><h1>${esc(d.title || 'הצעה עבורכם')}</h1>${d.date ? `<p class="date">${esc(d.date)}</p>` : ''}${d.intro ? `<p class="intro">${esc(d.intro)}</p>` : `<p class="intro">${items.length === 1 ? 'המקום שבחרנו עבורכם' : 'המקומות שבחרנו עבורכם'}, עם כל מה שחשוב לדעת.</p>`}</section>
+    <section class="list">${items.map((x, i) => {
+      const ph = [...(x.mine || []), ...(x.photos || [])].map(src).filter(Boolean).filter((u, j, a) => a.indexOf(u) === j).slice(0, 4);
+      return `<article class="pl${ph.length ? '' : ' nophoto'}">
+        ${ph.length ? `<div class="ph"><img class="main" src="${esc(ph[0])}" alt="${esc(x.name)}" loading="lazy" referrerpolicy="no-referrer">${ph.length > 1 ? `<div class="thumbs">${ph.slice(1).map(u => `<img src="${esc(u)}" alt="" loading="lazy" tabindex="0" referrerpolicy="no-referrer">`).join('')}</div>` : ''}</div>` : ''}
+        <div class="tx">
+          ${items.length > 1 ? `<span class="num">אפשרות ${i + 1}</span>` : ''}
+          <h2>${esc(x.name)}</h2>${x.city ? `<div class="city">${esc(x.city)}</div>` : ''}
+          ${x.price ? `<div class="price"><b>${Number(x.price).toLocaleString('he-IL')} ₪</b>${x.per ? `<span>${esc(x.per)}</span>` : ''}</div>` : ''}
+          ${x.note ? `<p class="note">${esc(x.note)}</p>` : ''}
+          ${x.about ? `<p class="about">${esc(x.about)}</p>` : ''}
+          ${x.website ? `<a class="site" href="${esc(x.website)}" target="_blank" rel="noopener">לאתר של המקום</a>` : ''}
+        </div></article>`;
+    }).join('')}</section>`;
+  // a small photo goes big on click
+  app.querySelectorAll('.thumbs img').forEach(t => {
+    const swap = () => { const m = t.closest('.ph').querySelector('.main'); const a = m.src; m.src = t.src; t.src = a; };
+    t.addEventListener('click', swap); t.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); swap(); } });
+  });
+  // a photo that does not load is removed (never a broken picture in front of the client)
+  app.querySelectorAll('.ph img').forEach(im => im.addEventListener('error', () => {
+    const ph = im.closest('.ph');
+    if (im.classList.contains('main')) { const nx = ph.querySelector('.thumbs img'); if (nx) { im.src = nx.src; nx.remove(); return; } ph.closest('.pl').classList.add('nophoto'); ph.remove(); return; }
+    im.remove();
+  }));
+  const b = document.createElement('button'); b.className = 'print'; b.type = 'button'; b.textContent = 'שמירה כ-PDF'; b.addEventListener('click', () => print()); document.body.append(b);
+  if (p.get('print')) setTimeout(() => print(), 900);
+})();
+</script>
+</body>
+</html>

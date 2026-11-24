@@ -61,10 +61,15 @@ function site(method, what, payload, extra) {
 /** Google stops a run after 6 minutes: long steps check the time and wait for the next run instead of being cut. */
 let T0 = Date.now();
 const elapsed = () => (Date.now() - T0) / 1000;
+/** owner 24.11: what this run did, sent to the site at the end (the "מצב הרובוט" card). */
+var HEALTH = { gem: { ok: 0, busy: 0, quota: 0 }, errors: [] };
 function tick() {
   T0 = Date.now();
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(1000)) return;
+  HEALTH = { gem: { ok: 0, busy: 0, quota: 0 }, errors: [] };
+  const ce = console.error;
+  try { console.error = function () { try { HEALTH.errors.push(Array.prototype.slice.call(arguments).map(String).join(' ').slice(0, 200)); } catch (e) {} return ce.apply(console, arguments); }; } catch (e) {}
   try {
     try { site('post', 'app', { url: P('APP_URL') || ScriptApp.getService().getUrl() || '', secret: P('APP_SECRET'), last: P('APP_LAST') }); } catch (e) { console.error('app', e); }
     const st = site('get', 'status');
@@ -86,7 +91,11 @@ function tick() {
     try { funMails(st); } catch (e) { console.error('funMails', e); }   // owner 24.11: the attractions' mail (with the files) and WhatsApp, like the hotels
     try { funReads(st); } catch (e) { console.error('funReads', e); }
     try { sheets(st); } catch (e) { console.error('sheets', e); }
-  } finally { lock.releaseLock(); }
+  } finally {
+    try { console.error = ce; } catch (e) {}
+    try { site('post', 'health', { secs: Math.round(elapsed()), gem: HEALTH.gem, errors: HEALTH.errors.slice(-12) }); } catch (e) {}
+    lock.releaseLock();
+  }
 }
 
 /* ---------- 1–4: call recordings ---------- */
@@ -234,7 +243,7 @@ function listen(file, sv, at, question) {
     'availability.text: rooms AND the hall/meals if mentioned (e.g. "12 חדרים פנויים, אולם לשבת פנוי, אין מניין במלון"). Put kashrut, minimum rooms/guests and other conditions in prices[].note or the summary.',
     'keyQuotes: the sentences that matter as proof later — especially anything said about availability ("we are full", "there are rooms"), prices, conditions, promises — with the time in the recording (mm:ss) and who said it (הנציג / המלון).',
     'prices: one row per room type + board, or per event package (e.g. level "חבילת שבת" / "אולם" / "סעודת שבת"), the number only in price (no currency sign), per = per what (לזוג ללילה / לאדם לשבת / לחדר לכל השבת / לאורח ...).',
-    'followUp: whether someone has to call back / send something, by when (YYYY-MM-DD if a date was said), and what.',
+    'followUp: needed = true whenever something is still open after the call: the place said it will check / call back / send an offer or prices, or we have to call back / send something. date = YYYY-MM-DD only if a day was said. what (Hebrew, short) = what is still open (e.g. "אמרו שיבדקו זמינות ל-25.3 ויחזרו אלינו"). needed = false only if nothing is left open.',
     'transcript: the whole conversation, each turn on its own line (separated by a newline), "mm:ss הנציג:" / "mm:ss המלון:".',
     'duration: how long the call is, mm:ss.',
     '',
@@ -401,6 +410,7 @@ function sortCalls(st) {
         'The file name / contact: "' + String(x.name || '') + '". The call was on ' + String(x.at || '') + '.',
         'Our own people (La Belle Vie): Ilan (אילן) and Maayan (מעיין, works for us and calls places for our clients), and whoever answers this work phone. Our side of the call is always one of us. The other side is never one of them: never write their names in who.',
         'The most common call: one of us calls (or calls back) a hotel, a hall (אולם), an events garden or a villa to ask about a date, availability, rooms, prices, the minimum number of guests, for an event of one of our clients. Then the other side is the PLACE: cat = hotel (also for a hall / events garden / villa), even if the place only says it will check and call back, even if a client and a wedding are talked about.',
+        (st.sortExamples || []).length ? 'Calls the owner already sorted by hand (learn from them, the owner is always right): ' + st.sortExamples.map(function (e) { return '[' + e.cat + (e.who ? ', ' + e.who : '') + '] ' + e.summary; }).join(' | ') : '',
         'Say who the other side is, from what was said (never guess from nothing):',
         'cat: client (only someone who asks US for an event or a quote for himself: not a place we called about a client), supplier (sells us a service that is not the place of the event: sound, catering, flowers, transport, music...), attraction (an attraction or activity for groups / fun days: a show, a workshop, a tour, sport, an escape room, a park...), hotel (a hotel, a hall, an events garden, a villa: a place where an event or a stay happens), artist (a singer / band / performer or their manager), team (only a person who works for La Belle Vie, not a person at a place we called), private (a personal call, not about work), other (cannot tell).',
         'who: the name of the other side\'s business as said (e.g. "אולם הגן", "מלון רמדה"), else the person\'s name with the place if said; empty if no name of the other side was said (never one of our names, never a word that is not a name). sub: what they are in 2-5 words (e.g. "אולם אירועים", "מלון"). sure: true only if who the other side is (its kind and its name) is clear from the call.',
@@ -542,6 +552,7 @@ function genWeb(payload) {
         method: 'post', contentType: 'application/json', muteHttpExceptions: true, headers: { 'x-goog-api-key': keys[k] }, payload: textFor(keys[k]),
       });
       code = r.getResponseCode(); body = r.getContentText();
+      if (code < 300) HEALTH.gem.ok++; else if (code === 429) HEALTH.gem.quota++; else if (code === 503) HEALTH.gem.busy++;
       if (code < 300 || (code !== 429 && code !== 503 && code !== 404)) return { code: code, body: body };
       console.log('gemini key ' + (k + 1) + ': ' + m + ' ' + code + (payload.tools ? ' (search)' : ''));
     }
