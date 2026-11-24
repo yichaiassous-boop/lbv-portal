@@ -839,7 +839,11 @@ export default async function hotelsHandler(req, res) {
     // owner 24.11: a call from the waiting area → into the card the owner chose (or "not for any card")
     if (op === 'place') {
       const w = await getJ(K.wait, str(body.id, 40));
-      if (!w || !(isOwner(s) || w.userId === uid)) return send(res, 404, { error: 'not-found' });
+      // owner 24.11: whoever sees it in the waiting area (manages one of its cards, e.g. on another computer / account) may place it
+      const mayM = async id => { const x = id && await getJ(K.surveys, String(id)); return !!x && canManage(s, x); };
+      let mayW = !!w && (isOwner(s) || w.userId === uid);
+      if (w && !mayW) for (const id of [w.from, w.to, ...(w.cards || []).map(c => c.surveyId || c.id || c)]) if (await mayM(id)) { mayW = true; break; }
+      if (!w || !mayW) return send(res, 404, { error: 'not-found' });
       if (w.type === 'move') {
         await kv.hdel(K.wait, w.id);
         if (!body.surveyId || body.surveyId === w.from) return send(res, 200, { ok: true, kept: true });
