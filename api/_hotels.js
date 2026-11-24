@@ -92,7 +92,7 @@ const callKey = (name, at) => String(name || '').split(' · ').pop().trim() + '|
 /** owner 24.11: a recording's file name ("שיחה *6426_261124.m4a") is never the name of a place. */
 const fileLike = n => /\.(m4a|mp3|amr|wav|ogg|3gp|aac|opus)\s*$/i.test(String(n || '')) || /^\s*(הקלטת שיחה|שיחה)[\s\u200e\u200f\u202a-\u202e]*[*+\d]/.test(String(n || ''));
 const noName = (h, title) => (/אולם|אולמות/.test(title || '') ? 'אולם' : 'מקום') + ' ללא שם' + (digits(h.phone) || String(h.phone || '').trim() ? ' (' + String(h.phone || '').trim() + ')' : '');
-const NOT_OWN_SITE = /(^|\.)(booking|hotel4u|tripadvisor|moovit|wikipedia|wikiwand|google|facebook|instagram|tiktok|youtube|easy\.co|gogo|hotels\.com|expedia|agoda|trivago|kayak|zimmer|zimmeril|rest\.co|mapcarta|waze|ynet|walla|mako|haaretz|maariv|historyistold|yad2|madlan|b144|d\.co\.il|dapei|lametayel|pinterest|linkedin)/i;
+const NOT_OWN_SITE = /(^|\.)(gov\.[a-z]{2}|gov|service\.gov|booking|hotel4u|tripadvisor|moovit|wikipedia|wikiwand|google|facebook|instagram|tiktok|youtube|easy\.co|gogo|hotels\.com|expedia|agoda|trivago|kayak|zimmer|zimmeril|rest\.co|mapcarta|waze|ynet|walla|mako|haaretz|maariv|historyistold|yad2|madlan|b144|d\.co\.il|dapei|lametayel|pinterest|linkedin)/i;
 const hostOf = u => String(u || '').replace(/^https?:\/\/(www\.)?/i, '').split(/[/?#]/)[0].toLowerCase();
 const notOwnSite = u => !!u && NOT_OWN_SITE.test(hostOf(u) + String(u).replace(/^https?:\/\/[^/]+/, ''));
 /** owner 24.11: who a call is with by name, for calls with no number ("הקלטת שיחה יצחק מנהל ראש העין_260531_131447.m4a" → "יצחק מנהל ראש העין"). */

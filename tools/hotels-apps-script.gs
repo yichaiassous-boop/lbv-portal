@@ -674,7 +674,7 @@ function webLooks(st) {
   const list = (st.webLook || []).slice(0, 2).concat((st.webRedo || []).slice(0, 1));
   for (const w of list) {
     if (elapsed() > 200) return;   // the rest next run
-    let found = false, hotel = {}, photos = [], grounded = true, answered = false;
+    let found = false, hotel = {}, photos = [], grounded = true, answered = false, unsure = false;
     try {
       const prompt = 'Find the hotel / venue "' + w.name + '"' + (w.city ? ' in ' + w.city : '') + (w.website ? ' (website ' + w.website + ')' : '') + ' on the web. Answer ONLY one JSON object, no text around it: {"found": true|false, "website": "official https site, not a booking site", "city": "", "phone": "", "email": "", "about": "one short line in Hebrew: what kind of place, stars, area", "rating": the Google Maps rating as a number (or null), "reviews": how many Google reviews (number or null), "reviewsSummary": "in Hebrew, 2-3 short sentences: what guests praise and what they complain about (food, cleanliness, rooms, service, Shabbat), from real reviews only", "reviewsUrl": "https link to the reviews (Google Maps / TripAdvisor / Booking) or empty"}. found=false if you are not sure it is this place. Never guess a phone or e-mail: leave it empty if it is not written on an official page.';
       // Claude (real web search) first when there is a key
@@ -703,13 +703,13 @@ function webLooks(st) {
       let siteUrl = String(hotel.website || w.website || '');
       // owner 24.11: only a site that is really this place (never one already found wrong)
       const host = u => String(u || '').replace(/^https?:\/\/(www\.)?/i, '').split('/')[0].toLowerCase();
-      if (found && /^https?:\/\//i.test(siteUrl) && ((w.avoid || []).some(x => host(x) === host(siteUrl)) || siteIsPlace(siteUrl, w.name, hotel.city || w.city) === false)) { console.log('webLook: not the site of ' + w.name + ': ' + siteUrl); hotel.website = ''; siteUrl = ''; }
+      if (found && /^https?:\/\//i.test(siteUrl) && siteUrl !== w.website && ((w.avoid || []).some(x => host(x) === host(siteUrl)) || (unsure = siteIsPlace(siteUrl, w.name, hotel.city || w.city)) !== true)) { console.log('webLook: not confirmed as the site of ' + w.name + ': ' + siteUrl); hotel.website = ''; siteUrl = ''; if (unsure === null) found = false; }   // owner 24.11: only a site checked to be this place; could not check (no Gemini) = not found this time, tried again later
       if (found && /^https?:\/\//i.test(siteUrl)) {
         photos = sitePhotos(siteUrl);
         if (photos === null) { photos = []; if (!grounded) hotel.website = ''; }   // the site does not open: do not keep a guessed address
       }
       // the site blocks robots / has no pictures: the main picture of other pages about this place
-      if (found && !photos.length && hotel._pages) {
+      if (found && !photos.length && hotel._pages && siteUrl) {
         for (const pu of hotel._pages) {
           if (photos.length >= 6) break;
           const ph = sitePhotos(pu);
@@ -900,7 +900,7 @@ function goodPhotos(urls, name) {
   return keep.filter(i => cand[i]).map(i => cand[i].url).filter((x, i, a) => a.indexOf(x) === i);
 }
 /** Is this page really the site of this hotel / venue? false = surely not, true = yes, null = could not tell (kept). */
-var NOT_OWN_SITE = /(^|\.)(booking|hotel4u|tripadvisor|moovit|wikipedia|wikiwand|google|facebook|instagram|tiktok|youtube|easy\.co|gogo|hotels\.com|expedia|agoda|trivago|kayak|zimmer|zimmeril|rest\.co|mapcarta|waze|ynet|walla|mako|haaretz|maariv|historyistold|yad2|madlan|b144|d\.co\.il|dapei|lametayel|pinterest|linkedin)/i;
+var NOT_OWN_SITE = /(^|\.)(gov\.[a-z]{2}|gov|service\.gov|booking|hotel4u|tripadvisor|moovit|wikipedia|wikiwand|google|facebook|instagram|tiktok|youtube|easy\.co|gogo|hotels\.com|expedia|agoda|trivago|kayak|zimmer|zimmeril|rest\.co|mapcarta|waze|ynet|walla|mako|haaretz|maariv|historyistold|yad2|madlan|b144|d\.co\.il|dapei|lametayel|pinterest|linkedin)/i;
 function siteIsPlace(url, name, city) {
   if (NOT_OWN_SITE.test(String(url || '').replace(/^https?:\/\/(www\.)?/i, ''))) return false;   // owner 24.11: booking / reviews / maps / news / history: never the place's own site
   let r;
