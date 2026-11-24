@@ -396,11 +396,15 @@ function compareCard(sv, hotels) {
   const minTxt = x => { const p = (x.prices || []).filter(p => p.price > 0).sort((a, b) => a.price - b.price)[0]; return p ? money(p.price, p.currency) + (p.per ? ' ' + p.per : '') : 'עוד אין מחיר'; };
   const c = h(`<section class="card hs-cmp">
     <div class="card__head"><div><h2>השוואה ללקוח</h2><p>מסמנים את המקומות שהלקוח יראה, כותבים לו מחיר ומה חשוב לדעת. המחיר שקיבלנו, הטלפונים והשיחות לא מופיעים אצלו.</p></div></div>
+    <label class="field"><span>כותרת הדף (מה שהלקוח רואה למעלה)</span><input data-title placeholder="למשל: חתונה של משפחת כהן"></label>
     <label class="field"><span>פתיח ללקוח</span><textarea rows="2" data-intro placeholder="למשל: בחרנו עבורכם שלושה מקומות שמתאימים לחתונה ב-25.3, עם כל הפרטים"></textarea></label>
     <div class="hs-cmp__list"></div>
     <div class="hs-cmp__foot"><span class="hs-cmp__n"></span><button class="btn btn--gold" type="button" data-make>יצירת דף ללקוח</button></div>
     <div class="hs-cmp__out"></div>
   </section>`);
+  if (kept.title == null) kept.title = sv.title || '';
+  $('[data-title]', c).value = kept.title;
+  $('[data-title]', c).addEventListener('input', e => { kept.title = e.target.value; });
   $('[data-intro]', c).value = kept.intro;
   $('[data-intro]', c).addEventListener('input', e => { kept.intro = e.target.value; });
   const list = $('.hs-cmp__list', c), nEl = $('.hs-cmp__n', c);
@@ -442,7 +446,7 @@ function compareCard(sv, hotels) {
     if (!items.length) { ctx.toast('מסמנים לפחות מקום אחד'); return; }
     const b = e.currentTarget; b.disabled = true; b.textContent = 'יוצר…';
     try {
-      const r = await api('POST', '', { op: 'offer', surveyId: sv.id, intro: kept.intro, title: sv.title, date: sv.from ? dmy(sv.from) + (sv.to && sv.to !== sv.from ? ' – ' + dmy(sv.to) : '') : '', items });
+      const r = await api('POST', '', { op: 'offer', surveyId: sv.id, intro: kept.intro, title: (kept.title || '').trim() || sv.title, date: sv.from ? dmy(sv.from) + (sv.to && sv.to !== sv.from ? ' – ' + dmy(sv.to) : '') : '', items });
       offerLink = r.url; showLink(r.url); ctx.toast('הדף ללקוח מוכן');
     } catch (e2) { fail(e2); }
     b.disabled = false; b.textContent = 'יצירת דף ללקוח';
