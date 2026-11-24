@@ -196,7 +196,7 @@ function textHits(h, words) {
 /** Calls with a hotel's number join it by themselves: from 2 weeks before it was added until 2 weeks after (owner 19.11). */
 const WATCH_DAYS = 14;
 function robotJobs(sv, hotels) {
-  const watch = [], parses = [], mailScan = [], webLook = [], wa = [], webRedo = [], relisten = [];
+  const watch = [], parses = [], mailScan = [], webLook = [], wa = [], webRedo = [], relisten = [], mailAuto = [], photoCheck = [];
   for (const h of hotels) {
     const t = Date.parse(h.createdAt || h.updatedAt || 0) || 0;
     for (const ph of [h.phone, h.phone2]) { const d = digits(ph); if (d.length >= 8 && Date.now() < t + WATCH_DAYS * 864e5) watch.push({ surveyId: sv.id, hotelId: h.id, phone: d, from: new Date(t - WATCH_DAYS * 864e5).toISOString(), to: new Date(t + WATCH_DAYS * 864e5).toISOString() }); }
@@ -206,8 +206,13 @@ function robotJobs(sv, hotels) {
     const em = String(h.email || '').trim().toLowerCase();
     if (h.mailAsk) mailScan.unshift({ surveyId: sv.id, hotelId: h.id, email: /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(em) ? em : '', name: h.name || '', phone: digits(h.phone).slice(-9), ask: true });
     else if (/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(em) && h.mailScan !== em) mailScan.push({ surveyId: sv.id, hotelId: h.id, email: em, name: h.name });
+    // owner 24.11: the mail is checked by itself, every few hours, for every place (by its address, or by its name / number)
+    else if (cardLive(sv) && Date.now() - (Date.parse(h.mailAt || 0) || 0) > MAIL_EVERY && (/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(em) || norm(h.name).length >= 4 || digits(h.phone).length >= 8))
+      mailAuto.push({ surveyId: sv.id, hotelId: h.id, email: /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(em) ? em : '', name: h.name || '', phone: digits(h.phone).slice(-9), auto: true, at: h.mailAt || '' });
+    // owner 24.11: only real photos of the place (no logos, icons, flags, banners): the photos already on a card are checked once
+    if (((h.photos || []).length || h.website) && (h.photosOk || 0) < 1) photoCheck.push({ surveyId: sv.id, hotelId: h.id, name: h.name || '', city: h.city || '', website: h.website || '', photos: (h.photos || []).slice(0, 12) });
     // a new hotel: the robot looks it up on the web once (website, photos, missing details) - owner 19.11
-    if (h.name && (h.webV || 0) < 5 && (h.webTries5 || 0) < 3 && !(h.webDone && h.website && (h.photos || []).length)) webLook.push({ surveyId: sv.id, hotelId: h.id, name: h.name, city: h.city || '', website: h.website || '' });
+    if (h.name && (h.webV || 0) < 5 && (h.webTries5 || 0) < 3 && !(h.webDone && h.website && (h.photos || []).length)) webLook.push({ surveyId: sv.id, hotelId: h.id, name: h.name, city: h.city || '', website: h.website || '', avoid: h.webBad || [] });
     // looked up without a real web search (no reviews yet): again once the robot can search (Claude key)
     if (h.name && h.webNoSearch && !h.webGrounded && (h.webRedoTries || 0) < 2) webRedo.push({ surveyId: sv.id, hotelId: h.id, name: h.name, city: h.city || '', website: h.website || '', redo: true });
   }
@@ -216,8 +221,15 @@ function robotJobs(sv, hotels) {
     const files = (h.log || []).filter(l => l.t === 'call' && l.file?.id).map(l => ({ id: l.file.id, at: l.at }));
     if (files.length) relisten.push({ surveyId: sv.id, hotelId: h.id, files: files.slice(-3) });
   }
-  return { watch, parses, mailScan, webLook, wa, webRedo, relisten };
+  // the mail already in the card is not read again: only new messages
+  const seenOf = id => { const h = hotels.find(x => x.id === id); return (h?.log || []).filter(l => l.msgId).map(l => l.msgId).slice(-200); };
+  for (const m of mailScan) m.seen = seenOf(m.hotelId);
+  mailAuto.sort((a, b) => String(a.at).localeCompare(String(b.at)));
+  for (const m of mailAuto) { m.seen = seenOf(m.hotelId); delete m.at; }
+  return { watch, parses, mailScan, webLook, wa, webRedo, relisten, mailAuto, photoCheck };
 }
+const MAIL_EVERY = 4 * 3600e3;   // owner 24.11: each place's mail is checked by itself every 4 hours
+const cardLive = sv => !cardEnd(sv) || cardEnd(sv) >= new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);   // events that did not pass (a month back)
 
 async function userRec(id) { return (await getJ(K.users, id)) || { mode: { on: false }, windows: [] }; }
 /** The robot this person's phone works with: his own if he installed one, otherwise the company's (the owner's). */
@@ -863,8 +875,8 @@ async function script(req, res, what, userId, b) {
       windows = windows.concat(...riders.map(([, x]) => x.windows || [])).sort((a2, b2) => String(a2.from).localeCompare(String(b2.from))).slice(-600);
       if (!mode.on) mode = (riders.map(([, x]) => x.mode).find(x => x?.on)) || mode;
     }
-    const jobs = { watch: [], parses: [], mailScan: [], webLook: [], wa: [], webRedo: [], relisten: [] };
-    for (const sv of surveys) { const j = robotJobs(sv, await allJ(K.hotels(sv.id))); jobs.watch.push(...j.watch); jobs.parses.push(...j.parses); jobs.mailScan.push(...j.mailScan); jobs.webLook.push(...j.webLook); jobs.wa.push(...j.wa); jobs.webRedo.push(...j.webRedo); jobs.relisten.push(...j.relisten); }
+    const jobs = { watch: [], parses: [], mailScan: [], webLook: [], wa: [], webRedo: [], relisten: [], mailAuto: [], photoCheck: [] };
+    for (const sv of surveys) { const j = robotJobs(sv, await allJ(K.hotels(sv.id))); jobs.watch.push(...j.watch); jobs.parses.push(...j.parses); jobs.mailScan.push(...j.mailScan); jobs.webLook.push(...j.webLook); jobs.wa.push(...j.wa); jobs.webRedo.push(...j.webRedo); jobs.relisten.push(...j.relisten); jobs.mailAuto.push(...j.mailAuto); jobs.photoCheck.push(...j.photoCheck); }
     let ilan = { phones: [] };
     if (userId === 'owner') {
       const c = await ilanCfg();
@@ -878,7 +890,7 @@ async function script(req, res, what, userId, b) {
         jobs.watch.unshift(...c.phones.map(p => ({ ilan: true, phone: p, from: c.since, to })));
       }
     }
-    return send(res, 200, { ilan, windows, mode, surveys: active, outbox, threads, asks, watch: jobs.watch.slice(0, 300), parses: jobs.parses.slice(0, 5), mailScan: jobs.mailScan.slice(0, 5), webLook: jobs.webLook.slice(0, 3), webRedo: jobs.webRedo.slice(0, 2), relisten: jobs.relisten.slice(0, 1), wa: jobs.wa.slice(0, 300) });
+    return send(res, 200, { ilan, windows, mode, surveys: active, outbox, threads, asks, watch: jobs.watch.slice(0, 300), parses: jobs.parses.slice(0, 5), mailScan: jobs.mailScan.concat(jobs.mailAuto).slice(0, 5), photoCheck: jobs.photoCheck.slice(0, 2), webLook: jobs.webLook.slice(0, 3), webRedo: jobs.webRedo.slice(0, 2), relisten: jobs.relisten.slice(0, 1), wa: jobs.wa.slice(0, 300) });
   }
 
   // The robot's web-app address (for the phone app) + when the app last sent a recording
@@ -1078,7 +1090,7 @@ async function script(req, res, what, userId, b) {
     const r = b.result || {};
     if (!b.error && r && (r.summary || (r.prices || []).length || r.availability || r.hotel)) {
       const src = pick(b.src, ['paste', 'mail', 'wa'], 'paste');
-      mergeCall(h, { ...r, hotel: r.hotel || {} }, { t: 'text', src, at: now(), summary: str(r.summary, 1500), avail: pick(r.availability?.status, AVAIL, 'unknown'), availText: str(r.availability?.text, 400), quotes: (Array.isArray(r.keyQuotes) ? r.keyQuotes : []).slice(0, 8).map(x => ({ time: '', who: str(x.speaker, 40), text: str(x.text, 500) })) });
+      mergeCall(h, { ...r, hotel: r.hotel || {} }, { t: 'text', src, at: now(), files: (Array.isArray(b.files) ? b.files : []).slice(0, 10).map(f => ({ name: str(f.name, 160), url: link(f.url, 400) })).filter(f => f.name), summary: str(r.summary, 1500), avail: pick(r.availability?.status, AVAIL, 'unknown'), availText: str(r.availability?.text, 400), quotes: (Array.isArray(r.keyQuotes) ? r.keyQuotes : []).slice(0, 8).map(x => ({ time: '', who: str(x.speaker, 40), text: str(x.text, 500) })) });
     } else if (b.error) h.log = [...(h.log || []), { t: 'note', at: now(), by: 'המערכת', text: 'לא הצלחתי לקרוא את הטקסט: ' + str(b.error, 200) }].slice(-80);
     h.updatedAt = now();
     await setJ(key, h.id, h);
@@ -1128,7 +1140,7 @@ async function script(req, res, what, userId, b) {
       for (const k of (b.grounded === false ? ['city'] : ['city', 'phone', 'email'])) if (!h[k] && g[k]) h[k] = str(g[k], 160);
       if (!safe(h.website) && safe(g.website)) h.website = safe(g.website);
       const ph = (Array.isArray(b.photos) ? b.photos : []).map(safe).filter(Boolean);
-      if (ph.length) h.photos = [...new Set(ph)].slice(0, 8);
+      if (ph.length) { h.photos = [...new Set(ph)].slice(0, 8); if (b.photosChecked) h.photosOk = 1; }
       if (g.about && !h.about) h.about = str(g.about, 400);
       if (b.grounded === false) { h.webV = 3; await setJ(key, h.id, h); return send(res, 200, { ok: true }); }   // no search: no ratings / phone / e-mail
       h.webV = 5;
@@ -1143,12 +1155,35 @@ async function script(req, res, what, userId, b) {
     return send(res, 200, { ok: true });
   }
 
+  if (what === 'photoscheck') {
+    const sv = await getJ(K.surveys, str(b.surveyId, 40));
+    if (!mine(sv, userId)) return send(res, 404, { error: 'not-found' });
+    const key = K.hotels(sv.id), h = await getJ(key, str(b.hotelId, 40));
+    if (!h) return send(res, 404, { error: 'not-found' });
+    // owner 24.11: the site on the card is not this place: it goes, with its photos and what was taken from it, and the place is looked up again (never that site again)
+    if (b.siteBad && h.website) {
+      h.webBad = [...new Set([...(h.webBad || []), h.website])].slice(-10);
+      h.log = [...(h.log || []), { t: 'note', at: now(), by: 'המערכת', text: 'האתר ' + h.website + ' לא שייך למקום הזה. הוא והתמונות ממנו הוסרו, והמקום נחפש שוב ברשת.' }].slice(-80);
+      h.website = ''; h.photos = []; delete h.about; h.webDone = false; h.webV = 0; h.webTries5 = 0; h.photosOk = 1;
+      await setJ(key, h.id, h);
+      return send(res, 200, { ok: true, siteRemoved: true });
+    }
+    const keep = new Set((Array.isArray(b.keep) ? b.keep : []).map(x => String(x)));
+    const before = (h.photos || []).length;
+    h.photos = (h.photos || []).filter(u => keep.has(u));
+    h.photosOk = 1;
+    if (before !== h.photos.length) h.log = [...(h.log || []), { t: 'note', at: now(), by: 'המערכת', text: 'נבדקו התמונות מהרשת: ' + (before - h.photos.length) + ' שלא מראות את המקום (סמלים, לוגו, דגלים, מודעות) הוסרו.' }].slice(-80);
+    await setJ(key, h.id, h);
+    return send(res, 200, { ok: true, kept: h.photos.length });
+  }
+
   if (what === 'mailscan') {
     const sv = await getJ(K.surveys, str(b.surveyId, 40));
     if (!mine(sv, userId)) return send(res, 404, { error: 'not-found' });
     const key = K.hotels(sv.id), h = await getJ(key, str(b.hotelId, 40));
     if (!h) return send(res, 404, { error: 'not-found' });
     if (b.email) h.mailScan = str(b.email, 160).toLowerCase();
+    h.mailAt = now();
     if (b.ask) {
       delete h.mailAsk;
       h.mailAskDone = { at: now(), found: Math.max(0, Math.round(Number(b.found) || 0)), by: b.email ? 'email' : 'name' };

@@ -79,6 +79,7 @@ function tick() {
     try { parses(st); } catch (e) { console.error('parses', e); }
     try { mailScans(st); } catch (e) { console.error('mailScans', e); }
     try { webLooks(st); } catch (e) { console.error('webLooks', e); }
+    try { photoChecks(st); } catch (e) { console.error('photoChecks', e); }   // owner 24.11: only real photos of the place
     try { sheets(st); } catch (e) { console.error('sheets', e); }
   } finally { lock.releaseLock(); }
 }
@@ -373,20 +374,28 @@ function mailScans(st) {
       const q = m.email ? '(from:' + m.email + ' OR to:' + m.email + ')'
         : '(' + [nm.length >= 3 ? '"' + nm + '"' : '', String(m.phone || '').length >= 8 ? '"' + m.phone + '"' : ''].filter(Boolean).join(' OR ') + ')';
       if (q === '()') { site('post', 'mailscan', { surveyId: m.surveyId, hotelId: m.hotelId, email: '', ask: true, found: 0 }); continue; }
-      const threads = GmailApp.search(q + ' newer_than:365d', 0, m.email ? 10 : 6);
+      const threads = GmailApp.search(q + ' newer_than:365d' + (m.auto && !m.email ? ' -category:promotions -category:social' : ''), 0, m.email ? 10 : 6);
+      const seen = {}; (m.seen || []).forEach(id => { seen[id] = 1; });
       const senders = {};
-      const items = [], incoming = [];
+      const items = [], incoming = [], files = [];
+      const nameRe = String(m.name || '').replace(/^(מלון|hotel)\s+/i, '').trim();
       for (const t of threads) for (const msg of t.getMessages()) {
+        if (seen[msg.getId()]) continue;   // already in the card
         const out = msg.getFrom().toLowerCase().indexOf(me) >= 0;
-        items.push({ surveyId: m.surveyId, hotelId: m.hotelId, threadId: t.getId(), msgId: msg.getId(), at: msg.getDate().toISOString(), from: msg.getFrom(), to: msg.getTo(), out: out, subject: msg.getSubject(), body: msg.getPlainBody().slice(0, 12000), files: [] });
+        const body = msg.getPlainBody();
+        // owner 24.11: a check by name / number brings only mail that really talks about this place (not newsletters that name it)
+        if (!m.email && m.auto && !(/[^\s<>"]+@[^\s<>"]+/.test(msg.getFrom()) && ((nameRe.length >= 3 && (msg.getSubject() + ' ' + body).indexOf(nameRe) >= 0) || (String(m.phone || '').length >= 8 && body.replace(/\D/g, '').indexOf(String(m.phone).slice(-8)) >= 0)))) continue;
+        if (!out && /noreply|no-reply|newsletter|mailer-daemon/i.test(msg.getFrom())) continue;
+        const fl = out ? [] : mailFiles(msg);
+        items.push({ surveyId: m.surveyId, hotelId: m.hotelId, threadId: t.getId(), msgId: msg.getId(), at: msg.getDate().toISOString(), from: msg.getFrom(), to: msg.getTo(), out: out, subject: msg.getSubject(), body: body.slice(0, 12000), files: fl.map(f => ({ name: f.name, url: f.url })) });
         if (!out) { const fm = (msg.getFrom().match(/[^\s<>"]+@[^\s<>"]+/) || [''])[0].toLowerCase(); if (fm) senders[fm] = (senders[fm] || 0) + 1; }
-        if (!out) incoming.push('From: ' + msg.getFrom() + '\nDate: ' + msg.getDate().toISOString() + '\nSubject: ' + msg.getSubject() + '\n' + msg.getPlainBody().slice(0, 6000));
+        if (!out) { incoming.push('From: ' + msg.getFrom() + '\nDate: ' + msg.getDate().toISOString() + '\nSubject: ' + msg.getSubject() + (fl.length ? '\nAttached files: ' + fl.map(f => f.name).join(', ') : '') + '\n' + body.slice(0, 6000)); files.push.apply(files, fl); }
       }
       if (items.length) site('post', 'replies', { items: items.slice(-40) });
       if (incoming.length) {
         let result = null, error = '';
-        try { result = readText(incoming.slice(-6).join('\n\n----\n\n'), surveyOf(st, m.surveyId), m.name, 'mail'); } catch (e) { error = String(e).slice(0, 280); }
-        site('post', 'parsed', { surveyId: m.surveyId, hotelId: m.hotelId, src: 'mail', result: result, error: error });
+        try { result = readMail(incoming.slice(-6).join('\n\n----\n\n'), files.slice(-6), surveyOf(st, m.surveyId), m.name); } catch (e) { error = String(e).slice(0, 280); }
+        site('post', 'parsed', { surveyId: m.surveyId, hotelId: m.hotelId, src: 'mail', result: result, error: error, files: files.map(f => ({ name: f.name, url: f.url })) });
       }
       const top = Object.keys(senders).sort((a, b) => senders[b] - senders[a])[0] || '';
       site('post', 'mailscan', { surveyId: m.surveyId, hotelId: m.hotelId, email: m.email, ask: !!m.ask, found: items.length, hotelEmail: !m.email && !/noreply|no-reply|mailer-daemon|booking\.com|google\.com/i.test(top) ? top : '' });
@@ -533,7 +542,10 @@ function webLooks(st) {
         if (m) { hotel = JSON.parse(m[0]); found = !!hotel.found; }
       } else if (!answered) console.error('webLook: gemini ' + code);
       if (!grounded) hotel = { found: hotel.found, website: hotel.website, city: hotel.city, about: hotel.about };
-      const siteUrl = String(hotel.website || w.website || '');
+      let siteUrl = String(hotel.website || w.website || '');
+      // owner 24.11: only a site that is really this place (never one already found wrong)
+      const host = u => String(u || '').replace(/^https?:\/\/(www\.)?/i, '').split('/')[0].toLowerCase();
+      if (found && /^https?:\/\//i.test(siteUrl) && ((w.avoid || []).some(x => host(x) === host(siteUrl)) || siteIsPlace(siteUrl, w.name, hotel.city || w.city) === false)) { console.log('webLook: not the site of ' + w.name + ': ' + siteUrl); hotel.website = ''; siteUrl = ''; }
       if (found && /^https?:\/\//i.test(siteUrl)) {
         photos = sitePhotos(siteUrl);
         if (photos === null) { photos = []; if (!grounded) hotel.website = ''; }   // the site does not open: do not keep a guessed address
@@ -551,7 +563,9 @@ function webLooks(st) {
       delete hotel._pages;
     } catch (e) { console.error('webLook', e); }
     if (!answered) continue;   // Gemini did not answer at all: try again next run, not counted as a try
-    site('post', 'web', { surveyId: w.surveyId, hotelId: w.hotelId, found: found, grounded: grounded, hotel: hotel, photos: photos, redo: !!w.redo });
+    let checked = false;
+    if (photos.length) { try { photos = goodPhotos(photos, w.name).slice(0, 8); checked = true; } catch (e) { console.error('goodPhotos', e); photos = []; } }   // owner 24.11: only real photos of the place
+    site('post', 'web', { surveyId: w.surveyId, hotelId: w.hotelId, found: found, grounded: grounded, hotel: hotel, photos: photos, photosChecked: checked, redo: !!w.redo });
   }
 }
 /** The site's own share image + its pictures (absolute https links only). */
@@ -565,8 +579,8 @@ function sitePhotos(url) {
   const og = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)/i) || html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image/i);
   if (og) out.push(abs(og[1]));
   const re = /<img[^>]+(?:data-src|src)=["']([^"']+\.(?:jpe?g|webp|png)(?:\?[^"']*)?)["']/gi; let m;
-  while ((m = re.exec(html)) && out.length < 12) { const u = abs(m[1]); if (u && !/logo|icon|sprite|flag|pixel|avatar|badge/i.test(u)) out.push(u); }
-  return [...new Set(out.filter(Boolean))].slice(0, 8);
+  while ((m = re.exec(html)) && out.length < 20) { const u = abs(m[1]); if (u && !/logo|icon|sprite|flag|pixel|avatar|badge|banner|button|arrow|check|thumb_?\d{2}\b|\b\d{2}x\d{2}\b/i.test(u)) out.push(u); }
+  return [...new Set(out.filter(Boolean))].slice(0, 12);
 }
 /** Calls with a watched hotel number (2 weeks around when it was added) join that hotel even without check mode. */
 function watchFor(st, f, at) {
@@ -632,17 +646,127 @@ function replies(st) {
     for (const msg of thread.getMessages()) {
       if (t.seen.indexOf(msg.getId()) >= 0) continue;
       if (msg.getFrom().toLowerCase().indexOf(me) >= 0) continue;
-      const files = msg.getAttachments().slice(0, 5).map(a => {
-        try { const f = savedFolder().createFile(a); return { name: a.getName(), url: f.getUrl() }; } catch (e) { return { name: a.getName(), url: '' }; }
-      });
-      items.push({ surveyId: t.surveyId, hotelId: t.hotelId, threadId: t.threadId, msgId: msg.getId(), at: msg.getDate().toISOString(), from: msg.getFrom(), subject: msg.getSubject(), body: msg.getPlainBody().slice(0, 12000), files: files });
+      const fl = mailFiles(msg);
+      items.push({ surveyId: t.surveyId, hotelId: t.hotelId, threadId: t.threadId, msgId: msg.getId(), at: msg.getDate().toISOString(), from: msg.getFrom(), subject: msg.getSubject(), body: msg.getPlainBody().slice(0, 12000), files: fl.map(f => ({ name: f.name, url: f.url })), _files: fl });
     }
   }
-  if (items.length) site('post', 'replies', { items: items });
+  if (items.length) site('post', 'replies', { items: items.map(it => { const x = Object.assign({}, it); delete x._files; return x; }) });
   for (const it of items.slice(0, 3)) {
     let result = null, error = '';
-    try { result = readText('From: ' + it.from + '\nSubject: ' + it.subject + '\n' + it.body, surveyOf(st, it.surveyId), '', 'mail'); } catch (e) { error = String(e).slice(0, 280); }
-    try { site('post', 'parsed', { surveyId: it.surveyId, hotelId: it.hotelId, src: 'mail', result: result, error: error }); } catch (e) {}
+    try { result = readMail('From: ' + it.from + '\nSubject: ' + it.subject + (it.files.length ? '\nAttached files: ' + it.files.map(f => f.name).join(', ') : '') + '\n' + it.body, it._files, surveyOf(st, it.surveyId), ''); } catch (e) { error = String(e).slice(0, 280); }
+    try { site('post', 'parsed', { surveyId: it.surveyId, hotelId: it.hotelId, src: 'mail', result: result, error: error, files: it.files }); } catch (e) {}
+  }
+}
+/* ---------- owner 24.11: the files that come with a hotel's mail (a price quote in PDF / Word / Excel / a photo of it) ----------
+   Saved once in Drive ("סקר מלונות - קבצים מהמלונות"), linked on the card, and read by Gemini with the mail.
+   Small pictures (signatures, logos, icons) are not files: they are skipped. */
+function mailFiles(msg) {
+  const out = [];
+  let list = [];
+  try { list = msg.getAttachments({ includeInlineImages: false, includeAttachments: true }); } catch (e) { return out; }
+  for (const a of list.slice(0, 6)) {
+    try {
+      const name = a.getName() || 'קובץ', mime = (a.getContentType() || '').toLowerCase(), size = a.getSize();
+      if (/^image\//.test(mime) && size < 40 * 1024) continue;   // a signature / logo / icon
+      if (!/pdf|image\/|word|officedocument|msword|excel|spreadsheet|text\/plain|text\/csv/.test(mime) && !/\.(pdf|docx?|xlsx?|csv|txt|jpe?g|png|heic)$/i.test(name)) continue;
+      const fname = msg.getId() + ' - ' + name;
+      const same = savedFolder().getFilesByName(fname);
+      const f = same.hasNext() ? same.next() : savedFolder().createFile(a.copyBlob().setName(fname));
+      out.push({ name: name, url: f.getUrl(), mime: mime, size: size, blob: a.copyBlob() });
+    } catch (e) { console.error('mailFile', e); }
+  }
+  return out;
+}
+/** The text of a Word / Excel file (they are zip files of XML). */
+function officeText(blob, name) {
+  try {
+    const parts = Utilities.unzip(blob.setContentType('application/zip'));
+    const xml = parts.filter(p => /word\/document\.xml|xl\/sharedStrings\.xml|xl\/worksheets\/sheet\d+\.xml/.test(p.getName())).map(p => p.getDataAsString('UTF-8')).join('\n');
+    return xml.replace(/<\/(w:p|row)>/g, '\n').replace(/<\/(w:tc|c)>/g, ' | ').replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/[ \t]+/g, ' ').slice(0, 20000);
+  } catch (e) { return ''; }
+}
+/** A mail (and the files that came with it) → the hotel's details, prices, availability, and a summary that says what each file is. */
+function readMail(text, files, sv, hotelName) {
+  const parts = [];
+  let extra = '';
+  for (const f of (files || []).slice(0, 4)) {
+    if ((/pdf/.test(f.mime) || /\.pdf$/i.test(f.name)) && f.size < 15 * 1024 * 1024) parts.push({ inline_data: { mime_type: 'application/pdf', data: Utilities.base64Encode(f.blob.getBytes()) } });
+    else if (/^image\//.test(f.mime) && f.size < 8 * 1024 * 1024 && !/heic/.test(f.mime)) parts.push({ inline_data: { mime_type: f.mime, data: Utilities.base64Encode(f.blob.getBytes()) } });
+    else if (/word|officedocument|excel|spreadsheet|msword/.test(f.mime) || /\.(docx|xlsx)$/i.test(f.name)) { const t = officeText(f.blob, f.name); if (t) extra += '\n\n==== The file "' + f.name + '" ====\n' + t; }
+    else if (/text\//.test(f.mime)) extra += '\n\n==== The file "' + f.name + '" ====\n' + f.blob.getDataAsString('UTF-8').slice(0, 20000);
+  }
+  if (!parts.length && !extra) return readText(text, sv, hotelName, 'mail');
+  const prompt = [
+    'This is an e-mail exchange between La Belle Vie (לה בל וי, an Israeli events and holiday company) and a hotel / venue, WITH the files the hotel attached (a price quote, a menu, a contract, a photo of a quote). Read the files completely: they usually hold the prices.',
+    'The hotel in La Belle Vie\'s list: "' + (hotelName || '') + '". Survey: "' + (sv ? sv.title : '') + '". Dates needed: ' + (sv ? (sv.from || '?') + ' to ' + (sv.to || '?') : '?') + '. What is needed: ' + (sv ? sv.need || '-' : '-') + '.',
+    'Price levels used in this survey: ' + ((sv && sv.levels) || []).join(', ') + '. Use one of these names for "level" when it fits, otherwise the hotel\'s own room name.',
+    'Today is ' + Utilities.formatDate(new Date(), 'Asia/Jerusalem', 'EEEE yyyy-MM-dd') + ' (Israel). Turn relative days into a date.',
+    'Answer in JSON only. Write summary, availability text and notes in Hebrew. relevant = true if the mail or the files are about rooms, a hall, meals, availability, prices or conditions.',
+    'summary: start with what the hotel sent (e.g. "הצעת מחיר בקובץ PDF:"), then the main points of the quote: what is included, the prices per room / per person / per package, the dates it is for, the conditions (deposit, cancellation, until when the offer is valid), and what is missing or must be answered.',
+    'availability: rooms AND hall/meals if mentioned; rooms = how many rooms. prices: one row per room type + board or per package, the number only in price, per = per what. Hours and conditions go into prices[].note or the summary.',
+    'hotel: name, city, contact person, phone, email, website if written. followUp: whether something has to be sent / answered, by when and what.',
+    'keyQuotes: the sentences that matter as proof later, the exact words written (from the mail or the file), speaker = who wrote them.',
+    '',
+    String(text).slice(0, 30000) + extra,
+  ].join('\n');
+  const r = genWeb({ contents: [{ role: 'user', parts: parts.concat([{ text: prompt }]) }], generationConfig: { responseMimeType: 'application/json', responseSchema: hotelSchema(), temperature: 0.1 } });
+  if (r.code >= 300) throw new Error('gemini ' + r.code + ' ' + String(r.body).slice(0, 300));
+  const j = JSON.parse(r.body);
+  return JSON.parse((((j.candidates || [])[0] || {}).content || { parts: [] }).parts.map(p => p.text || '').join(''));
+}
+
+/* ---------- owner 24.11: only photos that show the place (rooms, hall, dining room, pool, building, view) ----------
+   Every picture from the web is looked at by Gemini; logos, icons, flags, check marks, banners with text, maps,
+   phone numbers and ads are dropped. Tiny files are not photos at all. */
+function goodPhotos(urls, name) {
+  const cand = [];
+  for (const u of (urls || []).slice(0, 12)) {
+    if (cand.length >= 10 || elapsed() > 240) break;
+    try {
+      const r = UrlFetchApp.fetch(u, { muteHttpExceptions: true, followRedirects: true, headers: { 'User-Agent': 'Mozilla/5.0' } });
+      if (r.getResponseCode() >= 300) continue;
+      const b = r.getBlob(), mime = String(b.getContentType() || '').toLowerCase().split(';')[0];
+      const n = b.getBytes().length;
+      if (!/^image\/(jpeg|jpg|png|webp)$/.test(mime) || n < 25 * 1024 || n > 6 * 1024 * 1024) continue;   // an icon is a few KB
+      cand.push({ url: u, part: { inline_data: { mime_type: mime === 'image/jpg' ? 'image/jpeg' : mime, data: Utilities.base64Encode(b.getBytes()) } } });
+    } catch (e) {}
+  }
+  if (!cand.length) return [];
+  const prompt = 'These ' + cand.length + ' pictures (numbered 0 to ' + (cand.length - 1) + ' in order) were found on the web for the hotel / venue "' + (name || '') + '". Keep ONLY real photographs of the place itself: guest rooms, suites, lobby, event hall, dining room, synagogue, pool, spa, garden, the building, the view from it, a set table at the place. Drop everything else: logos, icons, symbols, check marks, flags, arrows, buttons, banners or images that are mostly text, phone numbers or opening hours, maps, ads, booking-site graphics, people portraits, food close-ups without the place, and photos of a different place. Answer JSON: {"keep": [the numbers to keep]}.';
+  const parts = [];
+  cand.forEach((c, i) => { parts.push({ text: 'Picture ' + i + ':' }); parts.push(c.part); });
+  const r = genWeb({ contents: [{ role: 'user', parts: parts.concat([{ text: prompt }]) }], generationConfig: { responseMimeType: 'application/json', responseSchema: { type: 'OBJECT', properties: { keep: { type: 'ARRAY', items: { type: 'INTEGER' } } }, required: ['keep'] }, temperature: 0 } });
+  if (r.code >= 300) throw new Error('gemini ' + r.code);
+  const j = JSON.parse(r.body);
+  const keep = (JSON.parse((((j.candidates || [])[0] || {}).content || { parts: [] }).parts.map(p => p.text || '').join('')).keep || []);
+  return keep.filter(i => cand[i]).map(i => cand[i].url).filter((x, i, a) => a.indexOf(x) === i);
+}
+/** Is this page really the site of this hotel / venue? false = surely not, true = yes, null = could not tell (kept). */
+function siteIsPlace(url, name, city) {
+  let r;
+  try { r = UrlFetchApp.fetch(url, { muteHttpExceptions: true, followRedirects: true, headers: { 'User-Agent': 'Mozilla/5.0' } }); } catch (e) { return null; }
+  if (r.getResponseCode() >= 400) return null;
+  const html = r.getContentText().slice(0, 400000);
+  const pick = re => ((html.match(re) || [])[1] || '');
+  const text = [pick(/<title[^>]*>([\s\S]*?)<\/title>/i), pick(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)/i), pick(/<h1[^>]*>([\s\S]*?)<\/h1>/i),
+    html.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 3000)].join(' \n ');
+  // a hotel / venue site talks about rooms, stays or events somewhere at the top
+  if (!/hotel|מלון|rooms?|חדר|suite|resort|אירוח|לינה|אולם|אירוע|event|venue|kibbutz|קיבוץ|spa|guest\s?house|צימר|נופש|vacation|hôtel|chambre|salle/i.test(text)) return false;
+  try {
+    const g = genWeb({ contents: [{ role: 'user', parts: [{ text: 'Hotel / venue: "' + name + '"' + (city ? ', ' + city : '') + '. Web page ' + url + ':\n' + text.slice(0, 3500) + '\n\nIs this page the official site of exactly this place (or of the hotel / kibbutz / chain it belongs to)? A booking site, a directory, a news / history / blog site, or a different place = false. Answer JSON {"same": true|false}.' }] }], generationConfig: { responseMimeType: 'application/json', responseSchema: { type: 'OBJECT', properties: { same: { type: 'BOOLEAN' } }, required: ['same'] }, temperature: 0 } });
+    if (g.code >= 300) return null;
+    const j = JSON.parse(g.body);
+    return !!JSON.parse((((j.candidates || [])[0] || {}).content || { parts: [] }).parts.map(p => p.text || '').join('')).same;
+  } catch (e) { return null; }
+}
+/** The photos (and the site) already on the cards: checked once each, the wrong ones removed. */
+function photoChecks(st) {
+  for (const p of (st.photoCheck || []).slice(0, 2)) {
+    if (elapsed() > 220) return;
+    try {
+      if (p.website && siteIsPlace(p.website, p.name, p.city) === false) { site('post', 'photoscheck', { surveyId: p.surveyId, hotelId: p.hotelId, siteBad: true, keep: [] }); continue; }
+      site('post', 'photoscheck', { surveyId: p.surveyId, hotelId: p.hotelId, keep: goodPhotos(p.photos, p.name) });
+    } catch (e) { console.error('photoCheck', e); }   // Gemini busy: again next run
   }
 }
 function savedFolder() {
@@ -652,6 +776,38 @@ function savedFolder() {
 }
 
 /* ---------- 6: Google Sheets ---------- */
+/** owner 24.11: the sheet neat to read: a dark header, the hotel name fixed on the side, wrapped long texts,
+    colours for availability and status, prices as numbers, widths that fit, light stripes. */
+function tidySheet(sh, rows, w) {
+  const head = rows[0].map(String), n = rows.length;
+  const all = sh.getRange(1, 1, n, w);
+  sh.getBandings().forEach(b => b.remove());
+  all.clearFormat();
+  all.setFontFamily('Arial').setFontSize(11).setVerticalAlignment('top').setHorizontalAlignment('right').setWrap(false);
+  sh.getRange(1, 1, 1, w).setFontWeight('bold').setFontColor('#ffffff').setBackground('#1f2a44').setVerticalAlignment('middle').setWrap(true);
+  sh.setRowHeight(1, 42);
+  if (n > 1) sh.getRange(1, 1, n, w).applyRowBanding(SpreadsheetApp.BandingTheme.LIGHT_GREY, true, false);
+  sh.getRange(1, 1, 1, w).setBackground('#1f2a44').setFontColor('#ffffff');
+  sh.setFrozenRows(1); sh.setFrozenColumns(1);
+  if (n > 1) sh.getRange(2, 1, n - 1, 1).setFontWeight('bold');
+  const col = t => head.indexOf(t) + 1;
+  const long = ['פירוט זמינות', 'סיכום', 'הערות', 'מה לבדוק'];
+  for (let c = 1; c <= w; c++) {
+    const t = head[c - 1];
+    if (long.indexOf(t) >= 0) { sh.setColumnWidth(c, t === 'סיכום' ? 420 : 260); if (n > 1) sh.getRange(2, c, n - 1, 1).setWrap(true); }
+    else if (t === 'מלון') sh.setColumnWidth(c, 190);
+    else if (t === 'מייל') sh.setColumnWidth(c, 200);
+    else if (t === 'טלפון' || t === 'שיחה אחרונה') sh.setColumnWidth(c, 140);
+    else sh.setColumnWidth(c, 120);
+  }
+  if (n > 1 && col('הכי זול')) sh.getRange(2, col('הכי זול'), n - 1, 1).setNumberFormat('#,##0 "₪"').setFontWeight('bold');
+  const rules = [];
+  const paint = (c, text, bg, fg) => { if (c && n > 1) rules.push(SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo(text).setBackground(bg).setFontColor(fg).setRanges([sh.getRange(2, c, n - 1, 1)]).build()); };
+  paint(col('זמינות'), 'יש מקום', '#d9f2e3', '#0b5d2a'); paint(col('זמינות'), 'מקום חלקי', '#fff1c9', '#7a5600'); paint(col('זמינות'), 'תפוס', '#fbdcdc', '#8a1c1c');
+  paint(col('סטטוס'), 'מתאים', '#d9f2e3', '#0b5d2a'); paint(col('סטטוס'), 'לחזור אליהם', '#fff1c9', '#7a5600'); paint(col('סטטוס'), 'לא רלוונטי', '#eeeeee', '#666666'); paint(col('סטטוס'), 'נסגר', '#dbe6ff', '#1f3d8a');
+  sh.setConditionalFormatRules(rules);
+  all.setBorder(true, true, true, true, true, true, '#d9d9d9', SpreadsheetApp.BorderStyle.SOLID);
+}
 function sheets(st) {
   for (const sv of st.surveys || []) {
     if (!sv.sheet) continue;
@@ -671,8 +827,7 @@ function sheets(st) {
     if (!rows.length) continue;
     const w = Math.max.apply(null, rows.map(r => r.length));
     sh.getRange(1, 1, rows.length, w).setValues(rows.map(r => { const x = r.slice(); while (x.length < w) x.push(''); return x.map(v => v == null ? '' : v); }));
-    sh.getRange(1, 1, 1, w).setFontWeight('bold').setBackground('#f3ead7');
-    sh.setFrozenRows(1);
+    tidySheet(sh, rows, w);
   }
 }
 
