@@ -74,6 +74,7 @@ function tick() {
     try { ilanOld(st); } catch (e) { console.error('ilanOld', e); }   // owner 19.11: Ilan's calls first
     try { ilanMerge(st); } catch (e) { console.error('ilanMerge', e); }   // owner 24.11: the same request from several calls = one task (once)
     try { sortCalls(st); } catch (e) { console.error('sortCalls', e); }   // owner 24.11 (early, so a long run never skips it): who an unknown call is with
+    try { photoChecks(st); } catch (e) { console.error('photoChecks', e); }   // owner 24.11 (early): only the place's own site and real photos of it
     try { recordings(st); } catch (e) { console.error('recordings', e); }
     try { relistens(st); } catch (e) { console.error('relistens', e); }   // early: it needs minutes
     try { answerAsks(st); } catch (e) { console.error('asks', e); }
@@ -82,7 +83,6 @@ function tick() {
     try { parses(st); } catch (e) { console.error('parses', e); }
     try { mailScans(st); } catch (e) { console.error('mailScans', e); }
     try { webLooks(st); } catch (e) { console.error('webLooks', e); }
-    try { photoChecks(st); } catch (e) { console.error('photoChecks', e); }   // owner 24.11: only real photos of the place
     try { funMails(st); } catch (e) { console.error('funMails', e); }   // owner 24.11: the attractions' mail (with the files) and WhatsApp, like the hotels
     try { funReads(st); } catch (e) { console.error('funReads', e); }
     try { sheets(st); } catch (e) { console.error('sheets', e); }
@@ -861,7 +861,9 @@ function goodPhotos(urls, name) {
   return keep.filter(i => cand[i]).map(i => cand[i].url).filter((x, i, a) => a.indexOf(x) === i);
 }
 /** Is this page really the site of this hotel / venue? false = surely not, true = yes, null = could not tell (kept). */
+var NOT_OWN_SITE = /(^|\.)(booking|hotel4u|tripadvisor|moovit|wikipedia|wikiwand|google|facebook|instagram|tiktok|youtube|easy\.co|gogo|hotels\.com|expedia|agoda|trivago|kayak|zimmer|zimmeril|rest\.co|mapcarta|waze|ynet|walla|mako|haaretz|maariv|historyistold|yad2|madlan|b144|d\.co\.il|dapei|lametayel|pinterest|linkedin)/i;
 function siteIsPlace(url, name, city) {
+  if (NOT_OWN_SITE.test(String(url || '').replace(/^https?:\/\/(www\.)?/i, ''))) return false;   // owner 24.11: booking / reviews / maps / news / history: never the place's own site
   let r;
   try { r = UrlFetchApp.fetch(url, { muteHttpExceptions: true, followRedirects: true, headers: { 'User-Agent': 'Mozilla/5.0' } }); } catch (e) { return null; }
   if (r.getResponseCode() >= 400) return null;
@@ -880,8 +882,8 @@ function siteIsPlace(url, name, city) {
 }
 /** The photos (and the site) already on the cards: checked once each, the wrong ones removed. */
 function photoChecks(st) {
-  for (const p of (st.photoCheck || []).slice(0, 2)) {
-    if (elapsed() > 220) return;
+  for (const p of (st.photoCheck || []).slice(0, 4)) {
+    if (elapsed() > 150) return;
     try {
       if (p.website && siteIsPlace(p.website, p.name, p.city) === false) { site('post', 'photoscheck', { surveyId: p.surveyId, hotelId: p.hotelId, siteBad: true, keep: [] }); continue; }
       site('post', 'photoscheck', { surveyId: p.surveyId, hotelId: p.hotelId, keep: goodPhotos(p.photos, p.name) });

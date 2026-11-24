@@ -88,6 +88,10 @@ const ILAN_BACK_DAYS = 7;            // when his number is saved, his calls of t
 /** owner 24.11: the same recording uploaded twice to Drive is one call: same file name (without the contact) + same time. */
 const callKey = (name, at) => String(name || '').split(' · ').pop().trim() + '|' + String(at || '').slice(0, 19);
 /** owner 22.11 + 24.11: who a call is with, by its number (the tags, Ilan, the hotels, the artists, the clients). */
+/** owner 24.11: sites that are never a place's own site (booking, reviews, maps, news, encyclopedias, history blogs, directories). */
+const NOT_OWN_SITE = /(^|\.)(booking|hotel4u|tripadvisor|moovit|wikipedia|wikiwand|google|facebook|instagram|tiktok|youtube|easy\.co|gogo|hotels\.com|expedia|agoda|trivago|kayak|zimmer|zimmeril|rest\.co|mapcarta|waze|ynet|walla|mako|haaretz|maariv|historyistold|yad2|madlan|b144|d\.co\.il|dapei|lametayel|pinterest|linkedin)/i;
+const hostOf = u => String(u || '').replace(/^https?:\/\/(www\.)?/i, '').split(/[/?#]/)[0].toLowerCase();
+const notOwnSite = u => !!u && NOT_OWN_SITE.test(hostOf(u) + String(u).replace(/^https?:\/\/[^/]+/, ''));
 /** owner 24.11: who a call is with by name, for calls with no number ("הקלטת שיחה יצחק מנהל ראש העין_260531_131447.m4a" → "יצחק מנהל ראש העין"). */
 export const contactOf = name => {
   const s = String(name || '');
@@ -292,7 +296,7 @@ function robotJobs(sv, hotels) {
     else if (cardLive(sv) && Date.now() - (Date.parse(h.mailAt || 0) || 0) > MAIL_EVERY && (/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(em) || norm(h.name).length >= 4 || digits(h.phone).length >= 8))
       mailAuto.push({ surveyId: sv.id, hotelId: h.id, email: /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(em) ? em : '', name: h.name || '', phone: digits(h.phone).slice(-9), auto: true, at: h.mailAt || '' });
     // owner 24.11: only real photos of the place (no logos, icons, flags, banners): the photos already on a card are checked once
-    if (((h.photos || []).length || h.website) && (h.photosOk || 0) < 1) photoCheck.push({ surveyId: sv.id, hotelId: h.id, name: h.name || '', city: h.city || '', website: h.website || '', photos: (h.photos || []).slice(0, 12) });
+    if (((h.photos || []).length || h.website || h.about) && (h.photosOk || 0) < 2) photoCheck.push({ surveyId: sv.id, hotelId: h.id, name: h.name || '', city: h.city || '', website: h.website || '', photos: (h.photos || []).slice(0, 12) });
     // a new hotel: the robot looks it up on the web once (website, photos, missing details) - owner 19.11
     if (h.name && (h.webV || 0) < 5 && (h.webTries5 || 0) < 3 && !(h.webDone && h.website && (h.photos || []).length)) webLook.push({ surveyId: sv.id, hotelId: h.id, name: h.name, city: h.city || '', website: h.website || '', avoid: h.webBad || [] });
     // looked up without a real web search (no reviews yet): again once the robot can search (Claude key)
@@ -991,7 +995,7 @@ async function script(req, res, what, userId, b) {
         .sort((a2, b2) => String(b2.at).localeCompare(String(a2.at))).slice(0, 2)
         .map(c => ({ id: c.id, at: c.at, name: c.name || '', phone: whoOf(c).d, local: !!c.local, text: c.local ? str(c.sum?.transcript || '', 30000) : '' }));
     }
-    return send(res, 200, { sortCalls, funMail, funRead, ilan, windows, mode, surveys: active, outbox, threads, asks, watch: jobs.watch.slice(0, 300), parses: jobs.parses.slice(0, 5), mailScan: jobs.mailScan.concat(jobs.mailAuto).slice(0, 5), photoCheck: jobs.photoCheck.slice(0, 2), webLook: jobs.webLook.slice(0, 3), webRedo: jobs.webRedo.slice(0, 2), relisten: jobs.relisten.slice(0, 1), wa: jobs.wa.slice(0, 300) });
+    return send(res, 200, { sortCalls, funMail, funRead, ilan, windows, mode, surveys: active, outbox, threads, asks, watch: jobs.watch.slice(0, 300), parses: jobs.parses.slice(0, 5), mailScan: jobs.mailScan.concat(jobs.mailAuto).slice(0, 5), photoCheck: jobs.photoCheck.slice(0, 4), webLook: jobs.webLook.slice(0, 3), webRedo: jobs.webRedo.slice(0, 2), relisten: jobs.relisten.slice(0, 1), wa: jobs.wa.slice(0, 300) });
   }
 
   // The robot's web-app address (for the phone app) + when the app last sent a recording
@@ -1285,10 +1289,10 @@ async function script(req, res, what, userId, b) {
       const safe = u => /^https:\/\/[^\s"'<>]+$/i.test(String(u || '')) ? String(u).slice(0, 500) : null;
       // only fills what is empty: what LBV typed always wins
       for (const k of (b.grounded === false ? ['city'] : ['city', 'phone', 'email'])) if (!h[k] && g[k]) h[k] = str(g[k], 160);
-      if (!safe(h.website) && safe(g.website)) h.website = safe(g.website);
+      if (!safe(h.website) && safe(g.website) && !notOwnSite(g.website) && !(h.webBad || []).some(x => hostOf(x) === hostOf(g.website))) h.website = safe(g.website);
       const ph = (Array.isArray(b.photos) ? b.photos : []).map(safe).filter(Boolean);
-      if (ph.length) { h.photos = [...new Set(ph)].slice(0, 8); if (b.photosChecked) h.photosOk = 1; }
-      if (g.about && !h.about) h.about = str(g.about, 400);
+      if (ph.length && b.photosChecked) { h.photos = [...new Set(ph)].slice(0, 8); h.photosOk = 2; }   // owner 24.11: only photos the robot checked
+      if (g.about && !h.about && h.website) h.about = str(g.about, 400);   // only from the place's own site
       if (b.grounded === false) { h.webV = 3; await setJ(key, h.id, h); return send(res, 200, { ok: true }); }   // no search: no ratings / phone / e-mail
       h.webV = 5;
       const rt = Number(g.rating), rc = Number(g.reviews), sc = Number(g.ratingScale) === 10 || rt > 5 ? 10 : 5;
@@ -1337,17 +1341,18 @@ async function script(req, res, what, userId, b) {
     const key = K.hotels(sv.id), h = await getJ(key, str(b.hotelId, 40));
     if (!h) return send(res, 404, { error: 'not-found' });
     // owner 24.11: the site on the card is not this place: it goes, with its photos and what was taken from it, and the place is looked up again (never that site again)
-    if (b.siteBad && h.website) {
+    if ((b.siteBad || notOwnSite(h.website)) && h.website) {
       h.webBad = [...new Set([...(h.webBad || []), h.website])].slice(-10);
       h.log = [...(h.log || []), { t: 'note', at: now(), by: 'המערכת', text: 'האתר ' + h.website + ' לא שייך למקום הזה. הוא והתמונות ממנו הוסרו, והמקום נחפש שוב ברשת.' }].slice(-80);
-      h.website = ''; h.photos = []; delete h.about; h.webDone = false; h.webV = 0; h.webTries5 = 0; h.photosOk = 1;
+      h.website = ''; h.photos = []; delete h.about; h.webDone = false; h.webV = 0; h.webTries5 = 0; h.photosOk = 2;
       await setJ(key, h.id, h);
       return send(res, 200, { ok: true, siteRemoved: true });
     }
     const keep = new Set((Array.isArray(b.keep) ? b.keep : []).map(x => String(x)));
     const before = (h.photos || []).length;
     h.photos = (h.photos || []).filter(u => keep.has(u));
-    h.photosOk = 1;
+    h.photosOk = 2;
+    if (!h.website && h.about) delete h.about;   // owner 24.11: text from a search result (Wikipedia, a store, a map) is not about this place
     if (before !== h.photos.length) h.log = [...(h.log || []), { t: 'note', at: now(), by: 'המערכת', text: 'נבדקו התמונות מהרשת: ' + (before - h.photos.length) + ' שלא מראות את המקום (סמלים, לוגו, דגלים, מודעות) הוסרו.' }].slice(-80);
     await setJ(key, h.id, h);
     return send(res, 200, { ok: true, kept: h.photos.length });
