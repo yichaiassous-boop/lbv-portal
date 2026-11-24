@@ -206,3 +206,138 @@ function statSheet(ac, net) {
   document.body.append(w);
   w.querySelector('input').focus();
 }
+
+/* ---------------- מאגר האטרקציות (owner 24.11) ----------------
+   Every attraction / activity for fun days, saved once: what, where, for how many, how much, who to call.
+   Search by area or name, filter by kind, max price and group size. Adding and editing from the same page. */
+const FK = { show: 'הופעה', workshop: 'סדנה', sport: 'ספורט ואתגר', team: 'גיבוש ומשחקי צוות', food: 'אוכל ושתייה', tour: 'סיור', kids: 'לילדים', party: 'מסיבה וערב', other: 'אחר' };
+const FPER = { person: 'לאדם', group: 'לקבוצה', hour: 'לשעה', event: 'לאירוע' };
+const FPLACE = { in: 'בפנים', out: 'בחוץ', both: 'בפנים ובחוץ' };
+let fun = null, fq = '', fkind = 'all', fmax = '', fsize = '';
+async function funApi(method, body, qs = '') {
+  const r = await fetch('/api/fun' + qs, { method, cache: 'no-store', headers: body ? { 'Content-Type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined });
+  if (r.status === 401) { ctx.toast('פג תוקף הכניסה. היכנסו שוב', 'err'); ctx.showLogin(); throw new Error('login'); }
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || String(r.status));
+  return j;
+}
+const kindsUsed = all => { const n = {}; all.forEach(x => { n[x.kind] = (n[x.kind] || 0) + 1; }); return Object.keys(FK).filter(k => n[k]).map(k => [k, n[k]]); };
+
+export async function funPage(pg, c) {
+  ctx = c;
+  pg.append(h('<p class="hint">טוען…</p>'));
+  try { fun = await funApi('GET'); } catch (e) { pg.innerHTML = ''; fail(e); return; }
+  pg.innerHTML = '';
+  const all = fun.list || [];
+  const add = h('<div class="sm-add"><button type="button" class="btn btn--gold">להוסיף אטרקציה</button></div>');
+  add.querySelector('button').addEventListener('click', () => funSheet(null));
+  pg.append(add);
+  if (!all.length) { pg.append(h('<section class="card"><h2>עוד אין אטרקציות במאגר</h2><p class="hint">מוסיפים כל אטרקציה פעם אחת: מה זה, איפה, לכמה אנשים, כמה זה עולה ולמי מתקשרים. בפעם הבאה שמתכננים יום כיף, מחפשים כאן לפי אזור, מחיר וגודל הקבוצה.</p></section>')); return; }
+  const bar = h(`<form class="sm-bar sm-bar--cat" role="search">
+    <input class="input" name="q" type="search" placeholder="אזור, שם או ספק" value="${esc(fq)}" aria-label="חיפוש לפי אזור, שם או ספק">
+    <label class="sm-max">עד <input class="input" name="max" type="number" inputmode="numeric" min="0" step="10" value="${esc(fmax)}" placeholder="מחיר" aria-label="מחיר מקסימלי"> ₪</label>
+    <label class="sm-max">קבוצה של <input class="input" name="size" type="number" inputmode="numeric" min="0" step="5" value="${esc(fsize)}" placeholder="כמה" aria-label="כמה אנשים"></label>
+  </form>`);
+  const chips = h(`<div class="sm-chips" role="group" aria-label="סוג אטרקציה">
+    <button type="button" data-k="all"${fkind === 'all' ? ' aria-pressed="true"' : ''}>הכול <small>${all.length}</small></button>
+    ${kindsUsed(all).map(([k, n]) => `<button type="button" data-k="${k}"${fkind === k ? ' aria-pressed="true"' : ''}>${FK[k]} <small>${n}</small></button>`).join('')}
+  </div>`);
+  const box = h('<div class="sm-cat"></div>'), sum = h('<p class="hint sm-note"></p>');
+  bar.addEventListener('submit', e => e.preventDefault());
+  bar.addEventListener('input', () => { fq = bar.q.value; fmax = bar.max.value; fsize = bar.size.value; draw(); });
+  chips.querySelectorAll('[data-k]').forEach(b => b.addEventListener('click', () => {
+    fkind = b.dataset.k;
+    chips.querySelectorAll('[data-k]').forEach(o => (o === b ? o.setAttribute('aria-pressed', 'true') : o.removeAttribute('aria-pressed')));
+    draw();
+  }));
+  pg.append(bar, chips, sum, box);
+  function draw() {
+    const words = fq.trim().toLowerCase().split(/\s+/).filter(Boolean), max = Number(fmax) || 0, size = Number(fsize) || 0;
+    const rows = all.filter(x => (fkind === 'all' || x.kind === fkind)
+      && words.every(w => [x.name, x.area, x.supplier, x.notes, FK[x.kind]].join(' ').toLowerCase().includes(w))
+      && (!max || (x.price != null && x.price <= max))
+      && (!size || ((x.minP == null || x.minP <= size) && (x.maxP == null || x.maxP >= size))))
+      .sort((a, b) => ((a.price ?? 1e9) - (b.price ?? 1e9)) || String(a.name).localeCompare(String(b.name), 'he'));
+    sum.textContent = `${rows.length} מתוך ${all.length} אטרקציות, הזולות קודם.`;
+    box.innerHTML = rows.length ? '' : '<p class="hint">אין אטרקציה שמתאימה. נסו מחיר גבוה יותר, אזור אחר או סוג אחר.</p>';
+    rows.forEach(x => box.append(funCard(x)));
+  }
+  draw();
+}
+
+function funCard(x) {
+  const site = safeUrl(x.link);
+  const size = x.minP && x.maxP ? `${x.minP}-${x.maxP} איש` : x.maxP ? `עד ${x.maxP} איש` : x.minP ? `מ-${x.minP} איש` : '';
+  const el = h(`<article class="sm-h sm-fun">
+    <div class="sm-h__body">
+      <div class="sm-h__top"><h3>${esc(x.name)}</h3><span class="sm-fun__k">${FK[x.kind] || FK.other}</span></div>
+      <p class="sm-h__where">${esc([x.area, x.supplier].filter(Boolean).join(', '))}</p>
+      <div class="sm-h__facts">
+        ${x.price != null ? `<span class="sm-price"><b>${money(x.price, x.currency)}</b> ${FPER[x.per] || ''}</span>` : '<span class="hint">עוד אין מחיר</span>'}
+        ${size ? `<span class="sm-fun__f">${esc(size)}</span>` : ''}${x.hours ? `<span class="sm-fun__f">${esc(x.hours)}</span>` : ''}${FPLACE[x.place] ? `<span class="sm-fun__f">${FPLACE[x.place]}</span>` : ''}${x.kids ? '<span class="sm-fun__f">מתאים לילדים</span>' : ''}
+      </div>
+      ${x.notes ? `<p class="sm-h__txt">${esc(x.notes)}</p>` : ''}
+      <div class="sm-h__acts">
+        ${x.phone ? `<a class="btn btn--line" href="tel:${esc(x.phone.replace(/[^\d+]/g, ''))}" dir="ltr">${esc(x.phone)}</a>` : ''}
+        ${site ? `<a class="btn btn--line" href="${esc(site)}" target="_blank" rel="noopener">האתר</a>` : ''}
+        <button type="button" class="btn btn--line" data-edit>לערוך</button>
+      </div>
+    </div>
+  </article>`);
+  el.querySelector('[data-edit]').addEventListener('click', () => funSheet(x));
+  return el;
+}
+
+function funSheet(x) {
+  document.querySelector('.ev-sheet')?.remove();
+  const v = x || { kind: 'team', per: 'person', currency: 'ILS', place: '' };
+  const opt = (o, cur) => Object.entries(o).map(([k, t]) => `<option value="${k}"${cur === k ? ' selected' : ''}>${t}</option>`).join('');
+  const w = h(`<div class="ev-sheet" role="dialog" aria-modal="true" aria-label="${x ? 'עריכת אטרקציה' : 'אטרקציה חדשה'}">
+    <form class="ev-sheet__card">
+      <div class="ev-sheet__top"><h2>${x ? esc(x.name) : 'אטרקציה חדשה'}</h2><button class="icon" type="button" data-x aria-label="סגירה">✕</button></div>
+      <label class="f">שם האטרקציה<input name="name" maxlength="100" required value="${esc(v.name || '')}" placeholder="למשל: סדנת שוקולד, ראלי ג׳יפים, מופע קוסמות"></label>
+      <div class="f2">
+        <label class="f">סוג<select name="kind">${opt(FK, v.kind)}</select></label>
+        <label class="f">אזור או עיר<input name="area" maxlength="80" value="${esc(v.area || '')}"></label>
+      </div>
+      <div class="f2">
+        <label class="f">ספק או איש קשר<input name="supplier" maxlength="100" value="${esc(v.supplier || '')}"></label>
+        <label class="f">טלפון<input name="phone" maxlength="30" inputmode="tel" dir="ltr" value="${esc(v.phone || '')}"></label>
+      </div>
+      <div class="f2">
+        <label class="f">מחיר<input name="price" inputmode="decimal" dir="ltr" value="${v.price ?? ''}"></label>
+        <label class="f">על מה המחיר<select name="per">${opt(FPER, v.per)}</select></label>
+      </div>
+      <div class="f2">
+        <label class="f">מטבע<select name="currency">${opt({ ILS: '₪ שקל', EUR: '€ יורו', USD: '$ דולר' }, v.currency)}</select></label>
+        <label class="f">משך<input name="hours" maxlength="40" value="${esc(v.hours || '')}" placeholder="למשל: שעתיים"></label>
+      </div>
+      <div class="f2">
+        <label class="f">מינימום אנשים<input name="minP" inputmode="numeric" dir="ltr" value="${v.minP ?? ''}"></label>
+        <label class="f">מקסימום אנשים<input name="maxP" inputmode="numeric" dir="ltr" value="${v.maxP ?? ''}"></label>
+      </div>
+      <div class="f2">
+        <label class="f">איפה<select name="place"><option value="">לא ידוע</option>${opt(FPLACE, v.place)}</select></label>
+        <label class="sm-check sm-check--f"><input type="checkbox" name="kids"${v.kids ? ' checked' : ''}> מתאים גם לילדים</label>
+      </div>
+      <label class="f">קישור לאתר <small>(מתחיל ב-https)</small><input name="link" maxlength="400" dir="ltr" value="${esc(v.link || '')}"></label>
+      <label class="f">הערות<textarea name="notes" rows="3" maxlength="1500">${esc(v.notes || '')}</textarea></label>
+      <div class="ev-sheet__acts"><button class="btn btn--gold" type="submit">לשמור</button>${x && fun?.del ? '<button class="btn btn--danger" type="button" data-del>למחוק</button>' : ''}</div>
+    </form></div>`);
+  const close = () => w.remove();
+  w.addEventListener('click', e => { if (e.target === w) close(); });
+  w.querySelector('[data-x]').addEventListener('click', close);
+  w.querySelector('form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const f = Object.fromEntries(new FormData(e.target));
+    f.kids = !!e.target.kids.checked;
+    if (x) f.id = x.id;
+    try { await funApi('POST', f); close(); ctx.toast('נשמר'); ctx.rerender(); } catch (e2) { fail(e2); }
+  });
+  w.querySelector('[data-del]')?.addEventListener('click', async () => {
+    if (!confirm('למחוק את "' + x.name + '" מהמאגר? אי אפשר להחזיר.')) return;
+    try { await funApi('DELETE', null, '?id=' + x.id); close(); ctx.toast('נמחק'); ctx.rerender(); } catch (e2) { fail(e2); }
+  });
+  document.body.append(w);
+  w.querySelector('input').focus();
+}
