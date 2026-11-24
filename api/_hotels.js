@@ -229,13 +229,27 @@ const saveUser = (id, u) => setJ(K.users, id, u);
    and a place that is already in one card. Not sure → the waiting area, and the owner says where it goes. */
 const KIND_WORDS = {
   'שבת חתן': [['שבת חתן', 4], ['אופרוף', 4], ['aufruf', 4], ['shabbat hatan', 4], ['chabbat hatan', 4], ['shabbat chatan', 4], ['שבת', 2], ['חדרים', 1], ['לינה', 1], ['סעודות', 1], ['קידוש', 1]],
-  'חתונה': [['חתונה', 4], ['חופה', 4], ['אולם', 3], ['אולמות', 3], ['גן אירועים', 3], ['mariage', 4], ['houppa', 4], ['salle', 2], ['קבלת פנים', 1], ['מנות', 1], ['רחבה', 1]],
+  'חתונה': [['חתונה', 4], ['חופה', 4], ['אולם', 3], ['אולמות', 3], ['גן אירועים', 3], ['mariage', 4], ['houppa', 4], ['salle', 2], ['זירת אירועים', 3], ['זירת האירועים', 3], ['מוזמנים', 2], ['אורחים', 1], ['קבלת פנים', 1], ['מנות', 1], ['רחבה', 1]],
   'בר מצווה': [['בר מצווה', 4], ['בר מצוה', 4], ['bar mitsva', 4], ['bar mitzvah', 4], ['תפילין', 2]],
   'בת מצווה': [['בת מצווה', 4], ['בת מצוה', 4], ['bat mitsva', 4], ['bat mitzvah', 4]],
   'חג': [['פסח', 3], ['סוכות', 3], ['ראש השנה', 3], ['שבועות', 3], ['pessah', 3], ['souccot', 3], ['חג', 1]],
 };
 const CARD_SKIP = new Set(['בדיקת', 'מלונות', 'מלון', 'משפחת', 'אירוע', 'הכל', 'הכול', 'כללי', 'אחר']);
 const cardEnd = sv => sv.to || sv.from || '';
+const HE_MONTHS = ['ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני', 'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'];
+const FR_MONTHS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+/** Ways the card's days can be said or written in a call (each day from "from" to "to", at most 7). */
+function cardDates(sv) {
+  const out = [];
+  const a = Date.parse(sv.from), b = Date.parse(sv.to || sv.from);
+  if (!a) return out;
+  for (let t = a, i = 0; t <= (b || a) && i < 7; t += 864e5, i++) {
+    const d = new Date(t), day = d.getUTCDate(), m = d.getUTCMonth();
+    out.push(new RegExp('(^|[^\\d])0?' + day + '\\s?[./\\-]\\s?0?' + (m + 1) + '([^\\d]|$)'));
+    out.push(new RegExp('(^|[^\\d])' + day + '\\s?(ב|ל)?(' + HE_MONTHS[m] + '|' + FR_MONTHS[m] + ')'));
+  }
+  return out;
+}
 async function openCards(userId) {
   const day = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
   return (await allJ(K.surveys)).filter(sv => mine(sv, userId) && !sv.closed && (!cardEnd(sv) || cardEnd(sv) >= day));
@@ -248,6 +262,8 @@ function cardScore(sv, text, hotels, h) {
   for (const [w, p] of kw) if (t.includes(w)) { kindPts += p; if (p >= 3) why.push(w); }
   score += Math.min(kindPts, 6);
   for (const w of flat(sv.title + ' ' + (sv.area || '')).split(/[\s,.\-/]+/)) if (w.length >= 3 && !CARD_SKIP.has(w) && t.includes(w)) { score += 2; if (!why.includes(w)) why.push(w); }
+  // owner 24.11: the card's date said in the call (25.3, 25/03, 25 במרץ…) is a strong sign
+  if (sv.from && cardDates(sv).some(re => re.test(t))) { score += 4; why.push('התאריך ' + sv.from.slice(8, 10).replace(/^0/, '') + '.' + sv.from.slice(5, 7).replace(/^0/, '')); }
   if (h && hotels && findHotel(hotels, h)) { score += 4; why.push('המקום כבר בכרטיסייה'); }
   return { surveyId: sv.id, title: sv.title, score, why: why.slice(0, 4) };
 }
