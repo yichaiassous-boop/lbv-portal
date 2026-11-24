@@ -991,7 +991,7 @@ async function script(req, res, what, userId, b) {
     if (userId === 'owner') {
       const { whoOf } = await whoMap();
       const since = Date.now() - 365 * 864e5;   // every unknown call from the last year
-      sortCalls = (await allJ(K.calls)).filter(c => c.owner === userId && !c.dup && !c.sort && (c.sortTries || 0) < 2 && (Date.parse(c.at) || 0) >= since && !whoOf(c).k)
+      sortCalls = (await allJ(K.calls)).filter(c => c.owner === userId && !c.dup && !c.sort && (c.sortFails || 0) < 3 && (Date.parse(c.at) || 0) >= since && !whoOf(c).k)
         .sort((a2, b2) => String(b2.at).localeCompare(String(a2.at))).slice(0, 2)
         .map(c => ({ id: c.id, at: c.at, name: c.name || '', phone: whoOf(c).d, local: !!c.local, text: c.local ? str(c.sum?.transcript || '', 30000) : '' }));
     }
@@ -1036,7 +1036,10 @@ async function script(req, res, what, userId, b) {
     const c = await getJ(K.calls, str(b.id, 120));
     if (!c) return send(res, 404, { error: 'not-found' });
     const r = b.result || {};
-    if (b.error || !r.cat) { c.sortTries = (c.sortTries || 0) + 1; await setJ(K.calls, c.id, c); return send(res, 200, { ok: true, tries: c.sortTries }); }
+    if (b.error || !r.cat) {   // owner 24.11: Gemini busy (503 / 429) is not a failure: the call is tried again next run
+      if (!/\b(503|429|500|overloaded|UNAVAILABLE|RESOURCE_EXHAUSTED)\b/i.test(str(b.error, 300))) { c.sortFails = (c.sortFails || 0) + 1; await setJ(K.calls, c.id, c); }
+      return send(res, 200, { ok: true, fails: c.sortFails || 0 });
+    }
     const cat = pick(r.cat, SORT_CATS, 'other');
     c.sort = { cat, who: str(r.who, 100), sub: str(r.sub, 120), summary: str(r.summary, 800), at: now() };
     if (cat === 'attraction') { const fid = await funFromCall(c, { ...(r.attraction || {}), summary: r.summary }, b.phone || c.phone); if (fid) c.sort.funId = fid; }
