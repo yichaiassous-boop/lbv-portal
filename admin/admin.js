@@ -312,7 +312,7 @@ function windows() {
 const GROUPS = () => [
   { id: 'home', name: 'ראשי', pages: [{ id: 'dashboard', title: 'לוח בקרה', sub: 'תמונת מצב: פניות, נרשמים וקיצורי דרך' }] },
   { id: 'inbox', name: 'פניות', badge: true, pages: [
-    { id: 'inbox', title: 'פניות ונרשמים', sub: 'כל מי שהשאיר פרטים באתר: בקשות להצעת מחיר והרשמות לעדכונים', badge: true },
+    { zone: 'work', id: 'inbox', title: 'פניות ונרשמים', sub: 'כל מי שהשאיר פרטים באתר: בקשות להצעת מחיר והרשמות לעדכונים', badge: true },
     { id: 'quotes', title: 'הצעות מחיר', sub: 'בונים הצעת מחיר ממותגת, שולחים ללקוח בוואטסאפ ורואים מתי הוא מאשר' },
     { id: 'mail', title: 'מייל לנרשמים', sub: 'עדכון לכל מי שנרשם, מהמייל של החברה' }] },
   ...(IN_APP ? [{ id: 'app', name: 'בית', pages: [{ id: 'apphome', title: 'בית', sub: '' }, { id: 'appholidays', title: 'חגים', sub: '' }, { id: 'appsite', title: 'עריכת האתר', sub: '' }] }] : []),
@@ -320,7 +320,7 @@ const GROUPS = () => [
   { id: 'artists', name: 'אמנים', pages: [{ id: 'artists', title: 'אמנים', sub: 'האמנים שאנחנו מייצגים: לוח שנה בצבע של כל אחד, הלקוחות, הרשתות והשיחות עליו' }] },
   { id: 'screens', name: 'השלט', pages: [{ id: 'remote', title: 'השלט של המסכים', sub: 'שליטה מהטלפון במסך של האירוע' }] },
   { id: 'hotels', name: 'בדיקת מלונות', pages: [{ id: 'hotels', title: 'בדיקת מלונות', sub: 'מתקשרים למלונות, והמערכת ממלאת לבד מהשיחות: פרטים, זמינות, מחירים, מיילים וסיכום' },
-    { id: 'catalog', title: 'מאגר המלונות', sub: 'כל מלון שדיברנו איתו, פעם אחת: חיפוש לפי אזור ומחיר, והאפשרויות הכי טובות קודם' }] },
+    { zone: 'smart', id: 'catalog', title: 'מאגר המלונות', sub: 'כל מלון שדיברנו איתו, פעם אחת: חיפוש לפי אזור ומחיר, והאפשרויות הכי טובות קודם' }] },
   { id: 'nets', name: 'הרשתות', pages: [{ id: 'nets', title: 'הרשתות', sub: 'אינסטגרם, טיקטוק ויוטיוב של La Belle Vie ושל האמנים: עוקבים, צפיות וסרטונים' }] },
   { id: 'calls', name: 'השיחות', pages: [{ id: 'calls', title: 'השיחות', sub: 'כל שיחה בטלפון של העבודה, לפי מי התקשר: מלון, אמן, לקוח, אילן. רק הבעלים ומעיין רואים את זה' }] },
   { id: 'ilan', name: 'מטלות מאילן', pages: [{ id: 'ilan', title: 'מטלות מאילן', sub: 'מה אילן ביקש בשיחות איתו, ורשימה של מה לעשות. רק הבעלים ומעיין רואים את זה' }] },
@@ -358,18 +358,18 @@ function pageAllowed(id) {
 function appTiles() {
   const open = leads.filter(l => !l.handled).length;
   return [
-    { id: 'events', title: 'לוח אירועים', sub: 'מה, מתי ואיפה', icon: ICON.events },
-    { id: 'artists', title: 'אמנים', sub: 'אהרון מאיר והאמנים שלנו', icon: ICON.artists },
-    { id: 'hotels', title: 'בדיקת מלונות', sub: 'שיחות, מחירים, זמינות', icon: ICON.hotels },
-    { id: 'catalog', title: 'מאגר המלונות', sub: 'לפי אזור ומחיר', icon: 'M3 21V8l9-5 9 5v13M9 21v-6h6v6M8 10h.01M12 10h.01M16 10h.01' },
-    { id: 'nets', title: 'הרשתות', sub: 'עוקבים וצפיות', icon: 'M7 3h10a4 4 0 0 1 4 4v10a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V7a4 4 0 0 1 4-4zM12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7zM17.5 6.5v.01' },
-    { id: 'calls', title: 'השיחות', sub: 'מי התקשר, לפי המספר', icon: 'M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2' },
-    { id: 'ilan', title: 'מטלות מאילן', sub: 'מה הוא ביקש בשיחות', icon: 'M9 6h11M9 12h11M9 18h11M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2' },
-    { id: 'remote', title: 'השלט', sub: 'המסך של האירוע', icon: ICON.screens },
-    { id: 'appholidays', title: 'חגים', sub: 'סוכות, פסח וכל הנופשים', icon: 'M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.4 6.8 19.1l1-5.8L3.5 9.2l5.9-.9z' },
-    { id: 'appsite', title: 'עריכת האתר', sub: 'טקסטים, תמונות, סרטונים', icon: ICON.pencil, need: 'w-home' },
-    { id: 'inbox', title: 'פניות', sub: 'מי השאיר פרטים באתר', icon: ICON.inbox, badge: open || 0 },
-  ].filter(t => pageAllowed(t.need || t.id)).concat(SYSTEMS.filter(t => has(t.id)).map(t => ({ ...t, href: '/api/config?sso=' + t.id })));
+    { zone: 'work', id: 'events', title: 'לוח אירועים', sub: 'מה, מתי ואיפה', icon: ICON.events },
+    { zone: 'work', id: 'artists', title: 'אמנים', sub: 'אהרון מאיר והאמנים שלנו', icon: ICON.artists },
+    { zone: 'smart', id: 'hotels', title: 'בדיקת מלונות', sub: 'שיחות, מחירים, זמינות', icon: ICON.hotels },
+    { zone: 'smart', id: 'catalog', title: 'מאגר המלונות', sub: 'לפי אזור ומחיר', icon: 'M3 21V8l9-5 9 5v13M9 21v-6h6v6M8 10h.01M12 10h.01M16 10h.01' },
+    { zone: 'smart', id: 'nets', title: 'הרשתות', sub: 'עוקבים וצפיות', icon: 'M7 3h10a4 4 0 0 1 4 4v10a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V7a4 4 0 0 1 4-4zM12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7zM17.5 6.5v.01' },
+    { zone: 'smart', id: 'calls', title: 'השיחות', sub: 'מי התקשר, לפי המספר', icon: 'M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2' },
+    { zone: 'work', id: 'ilan', title: 'מטלות מאילן', sub: 'מה הוא ביקש בשיחות', icon: 'M9 6h11M9 12h11M9 18h11M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2' },
+    { zone: 'sys', id: 'remote', title: 'השלט', sub: 'המסך של האירוע', icon: ICON.screens },
+    { zone: 'sys', id: 'appholidays', title: 'חגים', sub: 'סוכות, פסח וכל הנופשים', icon: 'M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.4 6.8 19.1l1-5.8L3.5 9.2l5.9-.9z' },
+    { zone: 'site', id: 'appsite', title: 'עריכת האתר', sub: 'טקסטים, תמונות, סרטונים', icon: ICON.pencil, need: 'w-home' },
+    { zone: 'work', id: 'inbox', title: 'פניות', sub: 'מי השאיר פרטים באתר', icon: ICON.inbox, badge: open || 0 },
+  ].filter(t => pageAllowed(t.need || t.id)).concat(SYSTEMS.filter(t => has(t.id)).map(t => ({ ...t, zone: 'sys', href: '/api/config?sso=' + t.id })));
 }
 /** The other LBV systems (their own sites and logins). Inside the Android app they open in the app too. */
 const SYSTEMS = [

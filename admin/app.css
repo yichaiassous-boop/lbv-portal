@@ -261,3 +261,9 @@
 .lbv-app .ab a.ab__home[aria-current] { background: none; color: #fff; }
 .lbv-app .ab a.ab__home[aria-current] svg { color: #0B1430; }
 .lbv-app .ab a.ab__home::after { display: none; }
+
+/* owner 22.11: the home screen in zones */
+.ah-zones { display: grid; gap: 22px; }
+.ah-zone__t { margin: 0 0 10px; font: 700 .95rem/1.2 "Assistant", sans-serif; color: var(--ink-3); }
+.ah-zone--site .ah-grid { grid-template-columns: 1fr; }
+.ah-zone--site .ah-tile { grid-template-columns: auto 1fr; align-items: center; min-height: 0; }
