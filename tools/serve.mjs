@@ -13,8 +13,35 @@ const port = Number(process.env.PORT) || 5190;
 const PASSWORD = process.env.ADMIN_PASSWORD || '';
 const STATS = {};   // local visit counts (/api/track)
 const sessions = new Map(); // session id → { n: name, r: role }
-const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.mp4': 'video/mp4', '.svg': 'image/svg+xml' };
+const types = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.mp4': 'video/mp4', '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.wav': 'audio/wav', '.svg': 'image/svg+xml' };
 
+// FAL_FAKE=1: a stand-in for fal.ai (the twin page, api/_twin.js), so every flow can be tested without spending money.
+// Every request runs 6 s; then the image edit returns the photo, video edits return the clip, the scene video returns
+// media/uploads/zz-fake-move.mp4, speech returns media/uploads/zz-fake.mp3, the voice clone returns a fake voice id.
+if (process.env.FAL_FAKE === '1') {
+  process.env.FAL_KEY ||= 'local-fake';
+  const jobs = new Map(), real = globalThis.fetch;
+  globalThis.fetch = async (url, opt = {}) => {
+    const u = String(url);
+    if (!u.startsWith('https://queue.fal.run/')) return real(url, opt);
+    const reply = (code, obj) => new Response(JSON.stringify(obj), { status: code, headers: { 'Content-Type': 'application/json' } });
+    if (opt.method === 'POST') {
+      const model = u.slice(22), id = crypto.randomUUID(), base = 'https://queue.fal.run/' + model + '/requests/' + id;
+      jobs.set(id, { at: Date.now(), model, input: JSON.parse(opt.body) });
+      return reply(200, { request_id: id, status_url: base + '/status', response_url: base });
+    }
+    const m = u.match(/requests\/([\w-]+)(\/status)?$/), j = m && jobs.get(m[1]);
+    if (!j) return reply(404, { detail: 'not found' });
+    const done = Date.now() - j.at > 6000;
+    if (m[2]) return reply(done ? 200 : 202, { status: done ? 'COMPLETED' : 'IN_PROGRESS' });
+    const i = j.input, k = j.model;
+    if (k.includes('nano-banana')) return reply(200, { images: [{ url: i.image_urls[0] }] });
+    if (k.includes('image-to-video')) return reply(200, { video: { url: 'media/uploads/zz-fake-move.mp4' } });
+    if (k.includes('voice-clone')) return reply(200, { custom_voice_id: 'fake-voice-ilan', audio: { url: 'media/uploads/zz-fake.mp3' } });
+    if (k.includes('speech')) return reply(200, { audio: { url: 'media/uploads/zz-fake.mp3' } });
+    return reply(200, { video: { url: i.video_url } });
+  };
+}
 const json = (res, code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(obj)); };
 const authed = req => { const c = (req.headers.cookie || '').split(/;\s*/).find(x => x.startsWith('lbv_admin=')); return c ? sessions.get(c.slice(10)) || null : null; };
 const PERMS = { content: ['owner', 'admin', 'editor'], leads: ['owner', 'admin', 'sales'], mail: ['owner', 'admin', 'sales'], users: ['owner'] };
@@ -33,6 +60,16 @@ const body = req => new Promise((ok, bad) => { const b = []; req.on('data', d =>
 async function areas(user) { process.env.LBV_LOCAL_DATA = path.join(root, "data", "hotels.local.json"); return (await import("../api/_areas.js")).areasOf({ id: user.id || (user.r === "owner" ? "owner" : user.n), r: user.r }); }
 
 async function api(req, res, p) {
+  if (p === '/api/twin') {
+    // The real handler (api/_twin.js); its jobs in data/hotels.local.json. fal is faked with FAL_FAKE=1 (top of this file).
+    process.env.LBV_LOCAL_DATA = path.join(root, 'data', 'hotels.local.json');
+    const { default: twin } = await import('../api/_twin.js');
+    const s = authed(req);
+    req.lbvUser = s ? { id: s.id || (s.r === 'owner' ? 'owner' : s.n), n: s.n, r: s.r } : null;
+    if (req.method === 'POST' || req.method === 'DELETE') { const raw = (await body(req)).toString(); req.body = raw ? JSON.parse(raw) : {}; }
+    res.status = code => ({ json: obj => json(res, code, obj) });
+    return twin(req, res);
+  }
   if (p === '/api/hotels' || p === '/api/events') {
     // The real handler (api/_hotels.js), with its data in data/hotels.local.json and this server's login.
     process.env.LBV_LOCAL_DATA = path.join(root, 'data', 'hotels.local.json');

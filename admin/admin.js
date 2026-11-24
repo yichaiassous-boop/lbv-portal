@@ -14,6 +14,7 @@ import { hotelsPage, showHotel } from "./hotels.js";
 import { callsPage, catalogPage, netsPage, funPage } from "./smart.js";
 import { ilanPage } from "./ilan.js";
 import { artistsPage } from "./artists.js";
+import { twinPage } from "./twin.js";
 import { eventsPage, remotePage, appHome, appSite, appHolidays } from "./events.js";
 const IN_APP = document.documentElement.classList.contains("lbv-app");   // inside the LBV phone app (or the iPhone home-screen app)
 
@@ -91,6 +92,14 @@ async function uploadFile(file) {
     return blob.url;
   }
   throw new Error('no-storage');
+}
+/** A twin clip or frame: straight to storage under twin/, owner only (local preview: media/uploads). */
+async function twinFile(name, file) {
+  if (storage === 'blob') {
+    const { upload } = await import('https://cdn.jsdelivr.net/npm/@vercel/blob@2.8.1/client/+esm');
+    return (await upload(`twin/${name}`, file, { access: 'public', handleUploadUrl: '/api/upload' })).url;
+  }
+  return uploadFile(new File([file], name, { type: file.type }));
 }
 /** A hotel photo: straight to storage under hotels/ (local preview: media/uploads). */
 async function hotelPhoto(file) {
@@ -329,6 +338,7 @@ const GROUPS = () => [
   { id: 'calls', name: 'שיחות ומטלות', pages: [{ id: 'calls', title: 'השיחות', sub: 'כל שיחה בטלפון של העבודה, לפי מי התקשר: מלון, אמן, לקוח, אילן. רק הבעלים ומעיין רואים את זה' },
     { id: 'ilan', title: 'מטלות מאילן', sub: 'מה אילן ביקש בשיחות איתו, ורשימה של מה לעשות. רק הבעלים ומעיין רואים את זה' }] },
   { id: 'nets', name: 'הרשתות', pages: [{ id: 'nets', title: 'הרשתות', sub: 'אינסטגרם, טיקטוק ויוטיוב של La Belle Vie ושל האמנים: עוקבים, צפיות וסרטונים' }] },
+  { id: 'twin', name: 'הכפיל', pages: [{ id: 'twin', title: 'הכפיל של אילן', sub: 'בגדים, רקע וחפצים בקליפ אמיתי, סצנות חדשות שבהן הוא הולך וזז, ומילים חדשות בקול שלו. רק לבעלים' }] },
   { id: 'site', name: 'עמודי האתר', pages: windows() },
   { id: 'people', name: 'צוות', pages: [{ id: 'team', title: 'צוות ודבר המנכ״ל', sub: 'תמונות, שמות ותפקידים, והמכתב של אילן', lang: true }] },
   { id: 'settings', name: 'הגדרות', pages: [
@@ -354,6 +364,7 @@ function pageAllowed(id) {
   if (id === 'fun') return has('events');   // owner 24.11: the attractions catalog (api/_fun.js)   // owner 22.11: the artists we represent (api/_artists.js)
   if (id === 'hotels' || id === 'catalog' || id === 'venues') return has('hotels');
   if (id === 'nets') return has('nets');
+  if (id === 'twin') return !!me && me.role === 'owner';   // owner 24.11: Ilan's twin (api/_twin.js), costs money, owner only
   if (id === 'calls') return !!me && (me.role === 'owner' || me.id === 'cad5d8ff-c32d-4df9-918e-38cfd1d315d8');   // owner 22.11: includes the calls with Ilan → like the Ilan tab   // each sees only their own surveys and those shared with them
   if (id === 'ilan') return !!me && (me.role === 'owner' || me.id === 'cad5d8ff-c32d-4df9-918e-38cfd1d315d8');   // only the owner and מעיין (owner 19.11: Ilan must never see it, not even for a moment)
   if (id === 'remote') return has('remote');
@@ -370,6 +381,7 @@ function appTiles() {
     { zone: 'smart', id: 'venues', title: 'מאגר האולמות', sub: 'לפי אזור ומחיר', icon: 'M4 21V9l8-6 8 6v12M4 21h16M9 21v-5a3 3 0 0 1 6 0v5M12 8h.01' },
     { zone: 'smart', id: 'catalog', title: 'מאגר המלונות', sub: 'לפי אזור ומחיר', icon: 'M3 21V8l9-5 9 5v13M9 21v-6h6v6M8 10h.01M12 10h.01M16 10h.01' },
     { zone: 'smart', id: 'fun', title: 'מאגר האטרקציות', sub: 'לימי כיף', icon: 'M3 9V7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2a3 3 0 0 0 0 6v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2a3 3 0 0 0 0-6zM14 5v14' },
+    { zone: 'smart', id: 'twin', title: 'הכפיל של אילן', sub: 'בגדים, מקום, תנועה ודיבור', icon: 'M12 3a4 4 0 1 1 0 8 4 4 0 0 1 0-8zM4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1M17 3l1 2 2 1-2 1-1 2-1-2-2-1 2-1z' },
     { zone: 'smart', id: 'nets', title: 'הרשתות', sub: 'עוקבים וצפיות', icon: 'M7 3h10a4 4 0 0 1 4 4v10a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V7a4 4 0 0 1 4-4zM12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7zM17.5 6.5v.01' },
     { zone: 'smart', id: 'calls', title: 'השיחות', sub: 'מי התקשר, לפי המספר', icon: 'M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2' },
     { zone: 'work', id: 'ilan', title: 'מטלות מאילן', sub: 'מה הוא ביקש בשיחות', icon: 'M9 6h11M9 12h11M9 18h11M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2' },
@@ -450,6 +462,7 @@ function render() {
   if (page === 'ilan') return ilanPage(pg, { toast, showLogin, rerender: () => page === 'ilan' && render() });
   if (page === 'venues') return catalogPage(pg, { venues: true, toast, showLogin, rerender: () => page === 'venues' && render(), openHotel: s => { if (!s) return; showHotel(s.surveyId, s.hotelId); go('hotels'); } });   // owner 24.11: the halls catalog
   if (page === 'catalog') return catalogPage(pg, { toast, showLogin, rerender: () => page === 'catalog' && render(), openHotel: s => { if (!s) return; showHotel(s.surveyId, s.hotelId); go('hotels'); } });
+  if (page === 'twin') return twinPage(pg, { toast, showLogin, rerender: () => page === 'twin' && render(), upload: twinFile });
   if (page === 'fun') return funPage(pg, { toast, showLogin, rerender: () => page === 'fun' && render() });
   if (page === 'nets') return netsPage(pg, { toast, showLogin, rerender: () => page === 'nets' && render() });
   if (page === 'calls') return callsPage(pg, { toast, showLogin, rerender: () => page === 'calls' && render(), quote: pageAllowed('quotes') ? x => startQuote(fromCall(x)) : null });

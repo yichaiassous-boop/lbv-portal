@@ -467,3 +467,52 @@ mark { background: #FCE7A8; color: inherit; padding: 0 2px; border-radius: 3px; 
 .hs-cmp__link p { margin: 0; font-weight: 600; }
 @media (max-width: 900px) { .hs-cmp__it { grid-template-columns: 1fr; } }
 @media (max-width: 560px) { .hs-cmp__fill { grid-template-columns: 1fr; } .hs-cmp__foot .btn { flex: 1 1 100%; } }
+
+/* Ilan's twin (owner 24.11, admin/twin.js) */
+.tw-key { border-inline-start: 4px solid var(--gold); }
+.tw-key ol { margin: 8px 0; padding-inline-start: 22px; line-height: 1.8; }
+.tw-new { display: grid; gap: 12px; }
+.tw-new .btn small, .tw-step2 .btn small { font-weight: 400; opacity: .8; }
+.tw-pre { border: 0; margin: 0; padding: 0; }
+.tw-pre legend { font-weight: 700; margin-bottom: 8px; }
+.tw-pre .sm-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.tw-pre .sm-chips button[aria-pressed="true"] { background: var(--night); border-color: var(--night); color: #fff; }
+.tw-h { margin: 22px 0 10px; font-size: 1.15rem; }
+.tw-list { display: grid; gap: 14px; }
+.tw-job__top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.tw-job__top h3 { margin: 0; }
+.tw-job__p { margin: 6px 0 12px; font-size: .85rem; color: var(--ink-2); text-align: left; }
+.tw-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 220px)); gap: 12px; }
+.tw-pair figure { margin: 0; }
+.tw-pair img, .tw-pair video, .tw-wait { display: block; width: 100%; aspect-ratio: 9 / 16; object-fit: cover; border-radius: 12px; background: var(--bg); border: 1px solid var(--line); }
+.tw-wait { display: grid; place-items: center; color: var(--ink-3); font-weight: 600; }
+.tw-pair figcaption { margin-top: 6px; font-size: .85rem; color: var(--ink-2); }
+.tw-vid video { display: block; width: 100%; max-width: 360px; border-radius: 12px; margin-top: 14px; background: #000; }
+.tw-job__acts { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; margin-top: 14px; }
+.tw-step2 { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; width: 100%; padding: 14px; border-radius: 14px; background: var(--bg); }
+.tw-step2 .tw-pre { flex: 1 1 100%; }
+@media (max-width: 560px) { .tw-pair { grid-template-columns: 1fr 1fr; } .tw-job__acts .btn, .tw-step2 .btn { flex: 1 1 100%; } }
+.tw-new input[type=file], .tw-voice input[type=file] { font: inherit; color: var(--ink-2); cursor: pointer; }
+.tw-new input[type=file]::file-selector-button, .tw-voice input[type=file]::file-selector-button { font: inherit; font-weight: 600; margin-inline-end: 12px; padding: 8px 16px; border: 0; border-radius: 999px; background: var(--night); color: #fff; cursor: pointer; }
+.tw-new input[type=file]::file-selector-button:hover { background: var(--gold); color: var(--night); }
+.tw-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 14px; }
+.tw-tabs button { display: grid; gap: 2px; text-align: start; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--line); background: #fff; color: var(--night); font: inherit; cursor: pointer; transition: border-color .15s, background .15s; }
+.tw-tabs button b { font-size: 1rem; }
+.tw-tabs button small { color: var(--ink-2); font-size: .8rem; }
+.tw-tabs button:hover { border-color: var(--gold); }
+.tw-tabs button[aria-selected="true"] { background: var(--night); border-color: var(--night); color: #fff; box-shadow: inset 0 -3px 0 var(--gold); }
+.tw-tabs button[aria-selected="true"] small { color: rgba(255, 255, 255, .75); }
+.tw-kind { margin-inline-start: auto; padding: 2px 10px; border-radius: 999px; background: var(--bg); border: 1px solid var(--line); font-size: .78rem; color: var(--ink-2); white-space: nowrap; }
+.tw-job__top { flex-wrap: wrap; }
+.tw-voice { display: grid; gap: 8px; padding: 14px; border-radius: 14px; background: var(--bg); border-inline-start: 4px solid var(--gold); }
+.tw-voice p { margin: 0; }
+.tw-voice audio, .tw-aud audio { width: 100%; max-width: 360px; }
+.tw-voice summary { cursor: pointer; font-weight: 600; color: var(--ink-2); }
+.tw-vform { display: grid; gap: 10px; margin-top: 8px; }
+.tw-bad { color: #b42318; }
+.tw-pre-src { display: flex; gap: 12px; align-items: center; padding: 10px; border: 1px solid var(--line); border-radius: 14px; }
+.tw-pre-src video { width: 72px; aspect-ratio: 9 / 16; object-fit: cover; border-radius: 10px; background: #000; }
+.tw-pre-src .btn { margin-top: 8px; }
+.tw-aud { display: grid; gap: 4px; }
+.tw-check { display: flex; gap: 8px; align-items: center; font-size: .9rem; flex: 1 1 100%; }
+@media (max-width: 560px) { .tw-tabs button { padding: 10px; } .tw-tabs button small { display: none; } .tw-tabs button b { font-size: .88rem; } }

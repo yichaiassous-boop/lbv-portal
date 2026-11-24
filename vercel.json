@@ -4,7 +4,8 @@
     { "source": "/api/events", "destination": "/api/quotes?_e=1" },
     { "source": "/api/artists", "destination": "/api/quotes?_a=1" },
     { "source": "/api/nets", "destination": "/api/quotes?_n=1" },
-    { "source": "/api/fun", "destination": "/api/quotes?_f=1" }
+    { "source": "/api/fun", "destination": "/api/quotes?_f=1" },
+    { "source": "/api/twin", "destination": "/api/quotes?_t=1" }
   ],
   "headers": [
     { "source": "/app/(.*)\\.apk", "headers": [

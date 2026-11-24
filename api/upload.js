@@ -19,6 +19,11 @@ export default async function handler(req, res) {
         if (String(pathname || '').startsWith('hotels/') && s && await hasArea(s, 'hotels')) {
           return { allowedContentTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/heic'], maximumSizeInBytes: 25 * 1024 * 1024, addRandomSuffix: true };
         }
+        // the twin (owner 24.11, api/_twin.js): Ilan's clips, photos, a reference image and his voice sample, owner only
+        if (String(pathname || '').startsWith('twin/')) {
+          if (!s || s.r !== 'owner') throw new Error('login');
+          return { allowedContentTypes: ['video/mp4', 'video/quicktime', 'image/jpeg', 'image/png', 'image/webp', 'audio/mpeg', 'audio/mp4', 'audio/x-m4a', 'audio/wav', 'audio/x-wav', 'audio/aac', 'audio/ogg'], maximumSizeInBytes: 200 * 1024 * 1024, addRandomSuffix: true };
+        }
         if (!can(s, 'content')) throw new Error('login');
         return {
           allowedContentTypes: ['image/jpeg', 'image/png', 'image/webp', 'video/mp4', 'video/quicktime'],

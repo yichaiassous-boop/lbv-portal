@@ -8,6 +8,7 @@ import eventsHandler from './_events.js';
 import artistsHandler from './_artists.js';
 import netsHandler from './_nets.js';
 import funHandler from './_fun.js';
+import twinHandler from './_twin.js';
 const sameTok = (a, b) => { const x = Buffer.from(String(a ?? '')), y = Buffer.from(String(b ?? '')); return x.length === y.length && crypto.timingSafeEqual(x, y); };
 
 // Quotes (הצעות מחיר) built in the admin, kept in the PRIVATE store next to the requests:
@@ -122,6 +123,7 @@ export default async function handler(req, res) {
   if (new URL(req.url, 'http://x').searchParams.has('_e')) return eventsHandler(req, res);   // /api/events: the events calendar + app settings
   if (new URL(req.url, 'http://x').searchParams.has('_n')) return netsHandler(req, res);   // /api/nets: the numbers of the social networks (owner 22.11)
   if (new URL(req.url, 'http://x').searchParams.has('_a')) return artistsHandler(req, res);
+  if (new URL(req.url, 'http://x').searchParams.has('_t')) return twinHandler(req, res);   // /api/twin: Ilan's twin, real footage edited by Luma (owner 24.11)
   if (new URL(req.url, 'http://x').searchParams.has('_f')) return funHandler(req, res);   // /api/fun: the attractions catalog for fun days (owner 24.11)   // /api/artists: the artists we represent
   res.setHeader('Cache-Control', 'no-store');
   if (!leadsReady()) return res.status(503).json({ error: 'not-configured' });
