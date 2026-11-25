@@ -660,3 +660,7 @@ mark { background: #FCE7A8; color: inherit; padding: 0 2px; border-radius: 3px; 
 .hs-ph--pick.is-on img, .hs-ph--pick a:hover img { opacity: 1; }
 .hs-ph.is-on img { outline: 3px solid #B08D57; outline-offset: -3px; border-radius: 10px; }
 .hs-ph__n { position: absolute; top: 6px; inset-inline-start: 6px; min-width: 24px; height: 24px; padding: 0 6px; border-radius: 12px; background: #B08D57; color: #fff; font-size: .85rem; line-height: 24px; text-align: center; pointer-events: none; }
+/* while choosing: every photo in view (a wrapping grid, not a sideways strip that jumps back on each tap) */
+.hs-photos:has(.hs-ph--pick) { flex-wrap: wrap; overflow: visible; scroll-snap-type: none; }
+.hs-photos:has(.hs-ph--pick) img { height: 110px; width: 150px; max-width: none; }
+@media (max-width: 640px) { .hs-photos:has(.hs-ph--pick) img { width: calc((100vw - 72px) / 3); height: 84px; } }
