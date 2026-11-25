@@ -7,6 +7,7 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; min-height: 100%; background: radial-gradient(ellipse at 50% 0%, #1B2A5C, var(--desk) 62%) fixed; color: var(--ink); font: 16px/1.6 var(--body); }
 bdi { unicode-bidi: isolate; }
+[hidden] { display: none !important; }
 .wait, .gone { padding: 120px 24px; text-align: center; color: #C7D3E4; }
 
 .sheet { width: min(680px, 100% - 32px); margin: 28px auto 48px; background: var(--paper); border-radius: 6px; box-shadow: 0 40px 80px -40px rgba(0,0,0,.85), 0 0 0 1px rgba(214,165,77,.25); overflow: hidden; }

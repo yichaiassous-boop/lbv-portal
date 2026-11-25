@@ -418,6 +418,7 @@ mark { background: #FCE7A8; color: inherit; padding: 0 2px; border-radius: 3px; 
 .in-chip input:checked + span { background: var(--night); border-color: var(--night); color: #fff; }
 .in-chip input:focus-visible + span { outline: 3px solid var(--gold); outline-offset: 2px; }
 .in-more { margin-top: 10px; }
+.in-more[hidden] { display: none; }
 .in-back { border: 0; background: none; color: var(--ink-2); font: inherit; font-weight: 700; cursor: pointer; padding: 6px 0 12px; }
 .in-back::before { content: "→ "; }
 .in-view { display: grid; gap: 16px; }
