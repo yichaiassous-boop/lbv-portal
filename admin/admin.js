@@ -39,6 +39,14 @@ const IN_APP = document.documentElement.classList.contains("lbv-app");   // insi
     document.body.append(w);
   } catch (e) {}
 })();
+// owner 25.11: inside the phone app, tell the site what the phone has done (last check, errors, version, logged in as), on every opening
+setTimeout(() => {
+  try {
+    if (!window.LBVApp?.phone) return;
+    const p = JSON.parse(window.LBVApp.phone() || '{}');
+    if (p.version) fetch('/api/hotels', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ op: 'phonestat', p }) }).catch(() => {});
+  } catch (e) {}
+}, 4000);
 let me = null; // the logged-in manager: { name, role, areas }
 /** Does this manager have this area of the app (set by the owner in "מנהלים והרשאות")? */
 const has = a => !me || me.role === 'owner' || (me.areas || []).includes(a);

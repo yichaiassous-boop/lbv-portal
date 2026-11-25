@@ -641,6 +641,17 @@ export default async function hotelsHandler(req, res) {
     /* ----- the admin ----- */
     const s = req.lbvUser || isAuthed(req);
     if (!s) return send(res, 401, { error: 'login' });
+    // owner 25.11: inside the phone app the page reports what the phone has done (last check, errors, version, who is logged in),
+    // so a phone that stopped sending calls can be seen from the computer. Any logged-in user; only the owner reads it.
+    if (req.method === 'POST' && body.op === 'phonestat') {
+      const p = body.p && typeof body.p === 'object' ? body.p : {};
+      await setJ('hs:phonestat', String(s.id || s.n || 'x').slice(0, 60), { at: now(), who: s.n || '', role: s.r || '', p: JSON.stringify(p).length > 4000 ? { tooBig: true } : p });
+      return send(res, 200, { ok: true });
+    }
+    if (req.method === 'GET' && q('phonestat')) {
+      if (s.r !== 'owner') return send(res, 403, { error: 'owner' });
+      return send(res, 200, { phones: await allJ('hs:phonestat') });
+    }
     const ilanReq = Boolean(q('ilan') || body.op === 'ilan' || q('calls') || body.op === 'tag');   // the Ilan tab has its own rule (owner + מעיין), not the hotels area
     if (!ilanReq && !(await (await import('./_areas.js')).hasArea(s, 'hotels'))) return send(res, 403, { error: 'forbidden' });
     const uid = meId(s);

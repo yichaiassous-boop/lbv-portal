@@ -55,7 +55,16 @@ export async function hotelsPage(pg, c) {
   // owner 22.11: no window pops up by itself any more; the "חיבור למערכת" card on the page opens it
 }
 const again = () => ctx.rerender();
-async function refreshHome() { home = await api('GET'); pushWindows(); }
+async function refreshHome() { home = await api('GET'); pushWindows(); reportPhone(); }
+/** Inside the phone app (owner 25.11): tell the site what the phone has done, so a stuck phone shows on the computer too. */
+function reportPhone() {
+  try {
+    if (!window.LBVApp?.phone) return;
+    const p = JSON.parse(window.LBVApp.phone() || '{}');
+    if (!p.version) return;
+    fetch('/api/hotels', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ op: 'phonestat', p }) }).catch(() => {});
+  } catch (e) {}
+}
 /** Inside the phone app: tell it when check mode was on, so only those calls go up by themselves. */
 function pushWindows() {
   try {
