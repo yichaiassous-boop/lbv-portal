@@ -103,8 +103,8 @@
   let at = 0;
   const mark = i => { at = i; $('n').textContent = (i + 1) + ' מתוך ' + pics.length; [i - 1, i, i + 1, i + 2].forEach(load); };
   // which photo is on screen: the slide nearest the middle
-  const seen = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting && e.intersectionRatio > .6) mark(slides.indexOf(e.target)); }), { root: k, threshold: [.6] });
-  slides.forEach(s => seen.observe(s));
+  // (right-to-left: the strip scrolls to negative numbers, so by the distance from the start)
+  k.addEventListener('scroll', () => { if (!v.classList.contains('on')) return; const i = Math.round(Math.abs(k.scrollLeft) / (k.clientWidth || 1)); if (i !== at && slides[i]) mark(i); }, { passive: true });
   const go = i => { i = Math.max(0, Math.min(pics.length - 1, i)); load(i); slides[i].scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' }); };
 
   function open(i) {
