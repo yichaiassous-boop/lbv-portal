@@ -1525,6 +1525,21 @@ async function script(req, res, what, userId, b) {
       if ((h.log || []).some(l => l.msgId === msgId)) continue;
       h.log = [...(h.log || []), { t: x.out ? 'mail-out' : 'mail-in', state: x.out ? 'sent' : undefined, to: x.out ? str(x.to, 200) : undefined, at: str(x.at, 40) || now(), from: str(x.from, 200), subject: str(x.subject, 200), body: str(x.body, 12000), msgId, threadId: str(x.threadId, 80), files: (Array.isArray(x.files) ? x.files : []).slice(0, 10).map(f => ({ name: str(f.name, 160), url: link(f.url, 400) })) }].slice(-80);
       await setJ(key, h.id, h); added++;
+      // owner 25.11: the same place in another event card (a copy, "לשכפל") has the same mail thread: the reply goes there too,
+      // and is read there as well (a parse job with the mail's text), so each card gets the prices / dates from it
+      const threadId = str(x.threadId, 80);
+      if (!threadId || x.out) continue;
+      for (const sv2 of await allJ(K.surveys)) {
+        if (!mine(sv2, userId)) continue;
+        for (const h2 of await allJ(K.hotels(sv2.id))) {
+          if (sv2.id === str(x.surveyId, 40) && h2.id === h.id) continue;
+          if (!(h2.log || []).some(l => l.threadId === threadId) || (h2.log || []).some(l => l.msgId === msgId)) continue;
+          const entry = h.log[h.log.length - 1];
+          h2.log = [...(h2.log || []), { ...entry }].slice(-80);
+          h2.parse = [...(h2.parse || []), { id: rid('p'), src: 'mail', at: now(), by: 'המערכת', text: ('From: ' + str(x.from, 200) + '\nSubject: ' + str(x.subject, 200) + '\n' + str(x.body, 12000)).slice(0, 15000) }].slice(-5);
+          await setJ(K.hotels(sv2.id), h2.id, h2); added++;
+        }
+      }
     }
     await saveUser(userId, u);
     return send(res, 200, { ok: true, added });
