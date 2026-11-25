@@ -1339,11 +1339,21 @@ async function users(pg) {
     list.innerHTML = '';
     // The owner: a username of their choice, with the main password.
     const o = html(`<div class="user"><span class="user__ava">★</span>
-      <div><b>הבעלים (אתם)</b><small>נכנסים עם שם המשתמש הזה והסיסמה הראשית${own.last ? ' · נכנס לאחרונה ' + date(own.last) : ''}</small></div>
-      <div class="row-tools"><input aria-label="שם המשתמש של הבעלים" dir="ltr" value="${esc(own.username)}" style="width:150px"><button type="button" class="btn btn--dark btn--sm">שמירת שם המשתמש</button></div>
+      <div><b>הבעלים (אתם)</b><small>נכנסים עם שם המשתמש הזה והסיסמה שלכם${own.last ? ' · נכנס לאחרונה ' + date(own.last) : ''}</small></div>
+      <div class="row-tools"><input aria-label="שם המשתמש של הבעלים" dir="ltr" value="${esc(own.username)}" style="width:150px"><button type="button" class="btn btn--dark btn--sm" data-user>שמירת שם המשתמש</button></div>
+      <form class="user__pw" autocomplete="off"><span>סיסמה חדשה לבעלים (8 תווים לפחות). לא צריך את הסיסמה הישנה.</span>
+        <div class="row-tools"><input type="password" name="next" aria-label="סיסמה חדשה" placeholder="סיסמה חדשה" minlength="8" required autocomplete="new-password" dir="ltr"><input type="password" name="again" aria-label="שוב את הסיסמה החדשה" placeholder="שוב את הסיסמה" minlength="8" required autocomplete="new-password" dir="ltr"><button type="submit" class="btn btn--gold btn--sm">החלפת הסיסמה</button></div></form>
       <label class="user__mail"><span>המייל שלכם בשמחה, בגאלה ובהרשמה לחגים</span><input type="email" dir="ltr" value="${esc(own.email || '')}" placeholder="name@example.com"></label></div>`);
     $('.user__mail input', o).addEventListener('change', async e => { const r2 = await fetch('/api/users?id=owner', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: e.target.value }) }); toast(r2.ok ? 'המייל נשמר' : 'המייל לא תקין', r2.ok ? 'ok' : 'err'); });
-    $('button', o).addEventListener('click', async () => {
+    $('.user__pw', o).addEventListener('submit', async e => {
+      e.preventDefault();
+      const f = e.target, next = f.next.value, again = f.again.value;
+      if (next.length < 8) return toast('הסיסמה קצרה מדי: 8 תווים לפחות', 'err');
+      if (next !== again) return toast('שתי הסיסמאות לא זהות', 'err');
+      const r2 = await fetch('/api/users?id=owner', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: next }) });
+      if (r2.ok) { f.reset(); toast('הסיסמה הוחלפה. מהכניסה הבאה נכנסים איתה'); } else toast('הסיסמה לא הוחלפה. נסו שוב', 'err');
+    });
+    $('[data-user]', o).addEventListener('click', async () => {
       const v = $('input', o).value.trim().toLowerCase();
       if (!/^[a-z0-9._-]{3,30}$/.test(v)) return toast('שם משתמש: 3 תווים לפחות, באנגלית או מספרים', 'err');
       const r2 = await fetch('/api/users?id=owner', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: v }) });

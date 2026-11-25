@@ -44,6 +44,14 @@ export default async function handler(req, res) {
   const id = new URL(req.url, 'http://x').searchParams.get('id') || '';
   // The owner's own username.
   if (id === 'owner' && req.method === 'PATCH') {
+    // owner 25.11: a new password for the owner, from the logged-in owner (he did not remember the old one).
+    // The main password from the hosting settings keeps working as a backup.
+    if (pw && !username) {
+      if (s.r !== 'owner') return res.status(403).json({ error: 'forbidden' });
+      if (pw.length < 8) return res.status(400).json({ error: 'short' });
+      await saveOwner({ ...owner, hash: hashPassword(pw), changed: new Date().toISOString() });
+      return res.status(200).json({ ok: true });
+    }
     if (email !== null && !username) { await saveOwner({ ...owner, email }); return res.status(200).json({ ok: true }); }
     if (!/^[a-z0-9._-]{3,30}$/.test(username)) return res.status(400).json({ error: 'invalid' });
     if (list.some(u => u.username === username)) return res.status(409).json({ error: 'taken' });
