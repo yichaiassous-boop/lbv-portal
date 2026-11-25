@@ -214,6 +214,8 @@ function phoneFromName(n) {
 }
 
 /* ---------- Gemini ---------- */
+/** owner 25.11: Agam called back from a sales person's mobile and named itself by where it is (the garden) → a second card. */
+const CALLBACK_RULE = 'A place often CALLS BACK from ANOTHER number (the mobile of a sales person) and may call itself by its company, by the site or the place it is in (a hall inside a garden, a park, a hotel or a resort). If this call is a reply to what we asked one of the hotels already in the survey (they say they are calling back, or they talk about the same date, number of guests or event we asked about), use the exact name of that hotel from the list, not the other name.';
 function listen(file, sv, at, question) {
   let part = file.textPart;   // owner 24.11: the phone transcribed the call itself → only its text comes here
   if (!part) {
@@ -244,6 +246,7 @@ function listen(file, sv, at, question) {
     'Survey: "' + sv.title + '". Dates needed: ' + (sv.from || '?') + ' to ' + (sv.to || '?') + '. What is needed: ' + (sv.need || '-') + '. Area: ' + (sv.area || '-') + '.',
     'Price levels used in this survey: ' + (sv.levels || []).join(', ') + '. Use one of these names for "level" when it fits, otherwise the hotel\'s own room name.',
     'Hotels already in the survey: ' + (known || 'none') + '. If this call is with one of them, use exactly the same name.',
+    CALLBACK_RULE,
     'The recording file name (may contain the phone number or contact name): ' + file.getName() + (file.getDescription() ? '. From the phone call log: ' + file.getDescription() : ''),
     'The call was recorded on ' + Utilities.formatDate(at || new Date(), 'Asia/Jerusalem', 'EEEE yyyy-MM-dd HH:mm') + ' (Israel time). Turn relative days ("ביום ראשון", "מחר", "בעוד שבוע") into a date.',
     'The company is written "La Belle Vie" (in Hebrew: לה בל וי).',

@@ -955,6 +955,7 @@ function hotelView(sv, x) {
       ${(x.log || []).some(l => l.t === 'call') ? `<button class="btn btn--line btn--sm" type="button" data-relisten ${x.relisten ? 'disabled' : ''}>${x.relisten ? 'קורא את השיחה מחדש…' : 'לקרוא את השיחה מחדש'}</button>` : ''}
       ${safeUrl(x.website) ? `<a class="btn btn--line btn--sm" href="${esc(x.website)}" target="_blank" rel="noopener">לאתר של המלון</a>` : ''}
       ${sv.manage && moveTargets(sv).length ? `<button class="btn btn--line btn--sm" type="button" data-move>להעביר לכרטיסייה אחרת</button><button class="btn btn--line btn--sm" type="button" data-dup>לשכפל לכרטיסייה אחרת</button>` : ''}
+      ${sv.manage && (cur?.hotels || []).length > 1 ? '<button class="btn btn--line btn--sm" type="button" data-join>זה אותו מקום כמו...</button>' : ''}
       ${sv.manage ? (x.booked ? '<button class="btn btn--line btn--sm" type="button" data-book="0">לבטל "סגרנו איתו"</button>' : '<button class="btn btn--gold btn--sm" type="button" data-book="1">סגרתי עם המקום הזה</button>') : ''}
       <label class="btn btn--line btn--sm" data-vid><input type="file" accept="video/mp4,video/quicktime,video/*" hidden><span>+ להוסיף סרטון</span></label>
       <button class="btn btn--line btn--sm" type="button" data-one>גיליון של המקום הזה</button>
@@ -963,11 +964,19 @@ function hotelView(sv, x) {
     </div>
     ${x.booked ? `<p class="hs-booked">סגרנו עם המקום הזה לאירוע${dmy(x.booked.slice(0, 10)) ? ' (סומן ב-' + dmy(x.booked.slice(0, 10)) + ')' : ''}.</p>` : ''}
     ${x.after ? `<p class="hs-after"><b>אחרי האירוע:</b> ${esc(x.after.text)}</p>` : ''}
-    ${moveOpen === x.id ? `<div class="hs-move"><p>${moveMode === 'dup' ? `לאיזו כרטיסייה לשכפל את "${esc(x.name || 'המקום')}"? הוא יישאר גם כאן, ויופיע גם שם עם כל השיחות, המיילים וההערות.` : `לאיזו כרטיסייה להעביר את "${esc(x.name || 'המקום')}"? הוא עובר עם כל השיחות, המיילים וההערות.`}</p><div class="hs-wait__btns">${moveTargets(sv).map(t => `<button class="btn btn--gold btn--sm" type="button" data-to="${esc(t.id)}">${esc(t.title)}${t.from ? ' · ' + dmy(t.from) : ''}</button>`).join('')}<button class="btn btn--line btn--sm" type="button" data-nomove>ביטול</button></div></div>` : ''}
+    ${moveOpen === x.id && moveMode === 'join' ? `<div class="hs-move"><p>עם איזה מקום לאחד את "${esc(x.name || 'המקום')}"? כל השיחות, המיילים, המחירים והמספרים שלו עוברים לשם, וכל שיחה הבאה מהמספרים שלו תגיע לשם לבד.</p><div class="hs-wait__btns">${(cur?.hotels || []).filter(h => h.id !== x.id).sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'he')).map(h => `<button class="btn btn--gold btn--sm" type="button" data-into="${esc(h.id)}">${esc(h.name || 'ללא שם')}</button>`).join('')}<button class="btn btn--line btn--sm" type="button" data-nomove>ביטול</button></div></div>` : ''}
+    ${moveOpen === x.id && moveMode !== 'join' ? `<div class="hs-move"><p>${moveMode === 'dup' ? `לאיזו כרטיסייה לשכפל את "${esc(x.name || 'המקום')}"? הוא יישאר גם כאן, ויופיע גם שם עם כל השיחות, המיילים וההערות.` : `לאיזו כרטיסייה להעביר את "${esc(x.name || 'המקום')}"? הוא עובר עם כל השיחות, המיילים וההערות.`}</p><div class="hs-wait__btns">${moveTargets(sv).map(t => `<button class="btn btn--gold btn--sm" type="button" data-to="${esc(t.id)}">${esc(t.title)}${t.from ? ' · ' + dmy(t.from) : ''}</button>`).join('')}<button class="btn btn--line btn--sm" type="button" data-nomove>ביטול</button></div></div>` : ''}
   </section>`);
   $('[data-move]', head)?.addEventListener('click', () => { moveOpen = moveOpen === x.id && moveMode === 'move' ? null : x.id; moveMode = 'move'; again(); });
   $('[data-dup]', head)?.addEventListener('click', () => { moveOpen = moveOpen === x.id && moveMode === 'dup' ? null : x.id; moveMode = 'dup'; again(); });
   $('[data-nomove]', head)?.addEventListener('click', () => { moveOpen = null; again(); });
+  $('[data-join]', head)?.addEventListener('click', () => { moveOpen = moveOpen === x.id && moveMode === 'join' ? null : x.id; moveMode = 'join'; again(); });
+  head.querySelectorAll('[data-into]').forEach(b => b.addEventListener('click', async () => {
+    const to = (cur?.hotels || []).find(h => h.id === b.dataset.into);
+    if (!confirm('לאחד את "' + (x.name || 'המקום') + '" עם "' + ((to && to.name) || 'המקום') + '"? הכרטיס הזה ייסגר וכל מה שבו יעבור לשם.')) return;
+    b.disabled = true;
+    try { const r = await api('POST', '', { op: 'join', surveyId: sv.id, id: x.id, into: b.dataset.into }); moveOpen = null; openHotel = r.id; await refreshSurvey(); ctx.toast('אוחד עם "' + (r.name || '') + '"'); again(); } catch (e2) { fail(e2); b.disabled = false; }
+  }));
   head.querySelectorAll('[data-to]').forEach(b => b.addEventListener('click', async () => {
     b.disabled = true;
     try {

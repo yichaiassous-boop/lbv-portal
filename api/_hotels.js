@@ -1076,7 +1076,7 @@ export default async function hotelsHandler(req, res) {
       await setJ(key, h.id, h);
       return send(res, 200, { ok: true, photos: h.photos });
     }
-    if (op === 'hotel' || op === 'note' || op === 'mail' || op === 'draft' || op === 'paste' || op === 'photos' || op === 'sheetPics' || op === 'mailNow' || op === 'relisten' || op === 'booked' || op === 'after') {
+    if (op === 'hotel' || op === 'note' || op === 'mail' || op === 'draft' || op === 'paste' || op === 'photos' || op === 'sheetPics' || op === 'mailNow' || op === 'relisten' || op === 'booked' || op === 'after' || op === 'join') {
       const sv = await getJ(K.surveys, body.surveyId);
       if (!canSee(s, sv)) return send(res, 404, { error: 'not-found' });
       const key = K.hotels(sv.id);
@@ -1084,6 +1084,17 @@ export default async function hotelsHandler(req, res) {
       if (body.id && !old) return send(res, 404, { error: 'not-found' });
 
       if (op === 'draft') return send(res, 200, mailDraft(sv, old || {}));
+
+      // owner 25.11: two cards that are one place (it called back from another number, under another name): this card goes into the other one.
+      // Its numbers stay on the kept card, so the next call from either number lands there by itself.
+      if (op === 'join') {
+        if (!old || !canManage(s, sv)) return send(res, 404, { error: 'not-found' });
+        const keep = await getJ(key, str(body.into, 40));
+        if (!keep || keep.id === old.id) return send(res, 404, { error: 'not-found' });
+        await mergeCards(key, keep, old, 'אוחד ידנית על ידי ' + (s.n || ''));
+        for (const [fid, hid] of Object.entries((await kv.hgetall(K.files)) || {})) if (hid === old.id) await kv.hset(K.files, fid, keep.id);
+        return send(res, 200, { ...keep, min: minPrice(keep) });
+      }
 
       if (op === 'hotel') {
         const h = old ? { ...cleanHotel(body, old), updatedAt: now() } : { ...cleanHotel(body), id: rid('h'), createdAt: now(), updatedAt: now(), log: [] };
