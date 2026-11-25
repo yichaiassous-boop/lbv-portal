@@ -1382,11 +1382,16 @@ function downloadCsv(sv, hotels, pref) {
   const rank = x => { const o = info.get(x); return x.status === 'no' ? 9 : o.st === 'free' ? 0 : o.st === 'maybe' ? 1 : o.other.length ? 2 : o.st === '' ? 3 : 4; };
   const list = [...hotels].sort((a, b) => rank(a) - rank(b) || (a.min ?? 1e12) - (b.min ?? 1e12));
   const vid = x => ((x.log || []).flatMap(l => l.files || []).map(f => f.url).filter(u => /^https:[^ ]+[.](mp4|mov|webm)([?]|$)/i.test(u || '')).pop() || '');
-  const rows = list.map(x => [x.name, pic(x), vid(x), safeUrl(x.website) || '', x.city, avOf(x, { from: pref, to: pref })[0], info.get(x).other.map(dmy).join(', '),
+  const dateTxt = x => { const o = info.get(x); return o.st === 'free' || o.st === 'maybe' || !o.other.length ? (pref ? PREF_HE[o.st] : (AV[x.avail] || [])[0] || 'עוד לא ענו') : (o.st === 'taken' || x.avail === 'full' ? 'תפוס, ' : '') + 'פנוי בתאריך אחר'; };
+  const L = (url, text) => url ? { url, text } : '';
+  const rows = list.map(x => [x.name, L(pic(x), picsOf(x).length === 1 ? 'לפתוח את התמונה' : 'לפתוח ' + picsOf(x).length + ' תמונות'), L(vid(x), 'לצפייה בסרטון'), L(safeUrl(x.website) || '', 'לאתר'), x.city, dateTxt(x), info.get(x).other.map(dmy).join(', '),
     x.brief?.guests || '', x.brief?.plate || (x.min != null ? 'מ-' + money(x.min, 'ILS') : ''), x.brief?.hall || '',
     x.brief ? (x.brief.extras || []).join('\n') : [x.availText, x.rooms ? 'חדרים: ' + x.rooms : ''].map(t => String(t || '').replace(/\s+/g, ' ').trim()).filter(Boolean).join('\n'),
     [x.contact, [x.phone, x.phone2].filter(Boolean).join(' / ')].filter(Boolean).join(' · ')]);
-  saveCsv(sv.title, [head, ...rows]);
+  // owner 25.11: the downloaded file looked bad (long raw links, "יש מקום", no colours, text over other cells): on the computer it is
+  // now a real Excel file laid out like the Google sheet. In the phone app (text files only) it opens the Google sheet itself.
+  if (window.LBVApp?.share) { if (safeUrl(sv.sheetUrl)) { window.open(sv.sheetUrl, '_blank'); return; } saveCsv(sv.title, [head, ...rows.map(r => r.map(v => v && v.url ? v.url : v))]); return; }
+  saveXlsx(sv.title, head, rows, 5).catch(() => saveCsv(sv.title, [head, ...rows.map(r => r.map(v => v && v.url ? v.url : v))]));
 }
 /** owner 25.11: the summary sheet: site, photos, price, availability and one line about the place. Same order as the full sheet. */
 function downloadSummary(sv, hotels, pref) {
@@ -1404,6 +1409,51 @@ function downloadSummary(sv, hotels, pref) {
       av, line(x)];
   });
   saveCsv(sv.title + ' - תקציר', [head, ...rows]);
+}
+/** owner 25.11: a real Excel file, the same look as the Google sheet: right to left, dark header, the place name fixed on the side,
+ *  every cell wraps inside itself, columns narrow enough for the phone, the whole row tinted by the date answer, links with short names. */
+let exceljs = null;
+function loadExcel() {
+  if (window.ExcelJS) return Promise.resolve(window.ExcelJS);
+  if (!exceljs) exceljs = new Promise((ok, no) => { const sc = document.createElement('script'); sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js'; sc.onload = () => window.ExcelJS ? ok(window.ExcelJS) : no(new Error('excel')); sc.onerror = () => { exceljs = null; no(new Error('excel')); }; document.head.append(sc); });
+  return exceljs;
+}
+async function saveXlsx(name, head, rows, dateCol) {
+  const X = await loadExcel();
+  const wb = new X.Workbook();
+  const ws = wb.addWorksheet('גיליון', { views: [{ rightToLeft: true, state: 'frozen', xSplit: 1, ySplit: 1 }] });
+  const wide = { 'מה כלול ומה חשוב': 46, 'מחיר מנה': 32, 'השכרת אולם': 32, 'כמה אורחים': 24, 'איש קשר וטלפון': 24, 'מקום': 18, 'תאריכים חלופיים': 16 };
+  ws.columns = head.map((t, i) => ({ width: wide[t] || (i === dateCol ? 18 : 15) }));
+  const tint = { 'פנוי': 'FFEEF9F2', 'בספק': 'FFFFF8E1', 'תפוס': 'FFFDEEEE', 'פנוי בתאריך אחר': 'FFEEF3FF', 'תפוס, פנוי בתאריך אחר': 'FFEEF3FF', 'עוד לא ענו': 'FFF1F1F1' };
+  const strong = { 'פנוי': ['FFD9F2E3', 'FF0B5D2A'], 'בספק': ['FFFFF1C9', 'FF7A5600'], 'תפוס': ['FFFBDCDC', 'FF8A1C1C'], 'פנוי בתאריך אחר': ['FFE3ECFF', 'FF1F3D8A'], 'תפוס, פנוי בתאריך אחר': ['FFE3ECFF', 'FF1F3D8A'], 'עוד לא ענו': ['FFE6E6E6', 'FF555555'] };
+  const border = { style: 'thin', color: { argb: 'FFD9D9D9' } };
+  const hr = ws.addRow(head);
+  hr.height = 34;
+  hr.eachCell(c => { c.font = { name: 'Arial', bold: true, color: { argb: 'FFFFFFFF' }, size: 11 }; c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1F2A44' } }; c.alignment = { vertical: 'middle', horizontal: 'right', wrapText: true, readingOrder: 'rtl' }; });
+  rows.forEach((r, i) => {
+    const row = ws.addRow(r.map(v => v && v.url ? { text: v.text, hyperlink: v.url } : (v ?? '')));
+    const d = String(r[dateCol] || '').trim();
+    let lines = 1;
+    row.eachCell({ includeEmpty: true }, (c, n) => {
+      const v = r[n - 1];
+      c.font = { name: 'Arial', size: 11, bold: n === 1, ...(v && v.url ? { color: { argb: 'FF1155CC' }, underline: true } : {}) };
+      c.alignment = { vertical: 'top', horizontal: 'right', wrapText: true, readingOrder: 'rtl' };
+      c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: tint[d] || (i % 2 ? 'FFF3F3F3' : 'FFFFFFFF') } };
+      c.border = { top: border, left: border, bottom: border, right: border };
+      const w = ws.getColumn(n).width || 15, txt = String(v && v.text ? v.text : v ?? '');
+      lines = Math.max(lines, txt.split('\n').reduce((k, l) => k + Math.max(1, Math.ceil(l.length * 1.1 / w)), 0));
+    });
+    const dc = row.getCell(dateCol + 1);
+    if (strong[d]) { dc.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: strong[d][0] } }; dc.font = { name: 'Arial', size: 11, bold: true, color: { argb: strong[d][1] } }; }
+    row.height = Math.max(22, lines * 16 + 10);   // room to spare on the phone
+  });
+  const buf = await wb.xlsx.writeBuffer();
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+  a.download = name + '.xlsx';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  ctx.toast('הגיליון ירד כקובץ אקסל, מסודר כמו הגיליון בגוגל');
 }
 function saveCsv(name, table) {
   const csv = '\uFEFF' + table.map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\r\n');
