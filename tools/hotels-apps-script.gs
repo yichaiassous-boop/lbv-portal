@@ -88,8 +88,8 @@ function tick() {
     try { sortCalls(st); } catch (e) { console.error('sortCalls', e); }   // owner 24.11 (early, so a long run never skips it): who an unknown call is with
     try { photoChecks(st); } catch (e) { console.error('photoChecks', e); }   // owner 24.11 (early): only the place's own site and real photos of it
     try { recordings(st); } catch (e) { console.error('recordings', e); }
-    try { relistens(st); } catch (e) { console.error('relistens', e); }   // early: it needs minutes
     try { placeCallsRun(st); } catch (e) { console.error('placeCalls', e); }   // owner 25.11: calls with a place that were filed nowhere
+    try { relistens(st); } catch (e) { console.error('relistens', e); }   // early: it needs minutes
     try { answerAsks(st); } catch (e) { console.error('asks', e); }
     try { outbox(st); } catch (e) { console.error('outbox', e); }
     try { replies(st); } catch (e) { console.error('replies', e); }
@@ -444,7 +444,7 @@ function sortCalls(st) {
  *  It is read like any survey call and the site puts it in the right card (or asks which event). One per run: a reading takes minutes. */
 function placeCallsRun(st) {
   for (const c of (st.placeCalls || []).slice(0, 1)) {
-    if (elapsed() > 100) return;
+    if (elapsed() > 90) return;   // one reading per run (two readings ran past the 6 minutes)
     const sv = (st.surveys || [])[0];
     if (!sv) return;
     try {
