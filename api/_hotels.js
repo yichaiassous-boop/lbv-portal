@@ -249,6 +249,11 @@ async function saveIlanCall(b) {
   await kv.hset(K.files, file.id, 'ilan');
   return { code: 200, body: { ok: true, tasks: call.tasks.length } };
 }
+/** owner 25.11: a WhatsApp line that is not the place talking: our own team (Ilan, La Belle Vie) or a call notice. */
+const WA_OURS = /ilan|אילן|belle\s*vie|לה\s*בל\s*וי|\blbv\b/i;
+const WA_NOISE = /^\s*(שיחת וידאו|שיחה קולית|שיחת וידאו פעילה|שיחה פעילה|שיחה שלא נענתה|שיחת וידאו שלא נענתה|הודעה זו נמחקה|ההודעה נמחקה|missed (voice|video) call|(voice|video) call|ongoing (voice|video) call|this message was deleted)\s*\.?\s*$/i;
+const waNotPlace = (from, text) => WA_OURS.test(String(from || '')) || WA_NOISE.test(String(text || ''));
+const waKey = (from, text) => String(from || '').trim() + '|' + String(text || '').replace(/\s+/g, ' ').trim();
 async function ilanCfg() { return (await getJ(K.ilan, 'cfg')) || { phones: [], since: null }; }
 
 /* ---------- small helpers ---------- */
@@ -379,6 +384,7 @@ function robotJobs(sv, hotels) {
   return { watch, parses, mailScan, webLook, wa, webRedo, relisten, mailAuto, photoCheck };
 }
 const MAIL_EVERY = 4 * 3600e3;   // owner 24.11: each place's mail is checked by itself every 4 hours
+const eventPassed = sv => !!cardEnd(sv) && cardEnd(sv) < new Date().toISOString().slice(0, 10);   // owner 25.11: the event's day is over
 const cardLive = sv => !cardEnd(sv) || cardEnd(sv) >= new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);   // events that did not pass (a month back)
 
 async function userRec(id) { return (await getJ(K.users, id)) || { mode: { on: false }, windows: [] }; }
@@ -675,15 +681,19 @@ export default async function hotelsHandler(req, res) {
             photo: (ho.myPhotos || [])[0] || (ho.photos || [])[0] || '', avail: ho.avail || 'unknown', availText: ho.availText || '', status: ho.status || 'new',
             min: mp ? { price: mp.price, per: mp.per || '', currency: mp.currency || 'ILS', what: [mp.level, mp.board].filter(Boolean).join(', ') } : null,
             prices: (ho.prices || []).slice(0, 6), summary: str(ho.summary || '', 300), lastAt: last, calls,
+            about: str(ho.about || '', 220), booked: ho.booked ? [sv.title || ''] : [], after: ho.after ? [{ text: str(ho.after.text, 400), event: ho.after.event || sv.title || '', at: ho.after.at }] : [],
             surveys: [{ surveyId: sv.id, hotelId: ho.id, title: sv.title, from: sv.from || '', to: sv.to || '' }] };
           const old = map.get(key);
           if (!old) { map.set(key, row); continue; }
           const newer = String(row.lastAt) > String(old.lastAt) ? row : old, other = newer === row ? old : row;
           newer.surveys = [...new Map([...old.surveys, ...row.surveys].map(x => [x.surveyId + x.hotelId, x])).values()];
           newer.calls = old.calls + row.calls;
+          newer.booked = [...old.booked, ...row.booked].filter(Boolean); newer.after = [...old.after, ...row.after];
           newer.venue = old.venue || row.venue;
           if (!newer.min && other.min) newer.min = other.min;
           if (!newer.photo) newer.photo = other.photo;
+          if (!newer.about) newer.about = other.about;
+          if (!(newer.prices || []).length) newer.prices = other.prices;
           if (!newer.area) newer.area = other.area;
           map.set(key, newer);
         }
@@ -840,7 +850,9 @@ export default async function hotelsHandler(req, res) {
       const surveys = await Promise.all(all.map(async sv => {
         const hs = await allJ(K.hotels(sv.id));
         return { ...sv, mine: sv.by?.id === uid, manage: canManage(s, sv), token: canManage(s, sv) && sv.link ? viewToken(sv.id) : undefined,
-          count: hs.length, avail: hs.filter(h => h.avail === 'available' || h.avail === 'partial').length, follow: hs.filter(h => h.status === 'followup').length };
+          count: hs.length, avail: hs.filter(h => h.avail === 'available' || h.avail === 'partial').length, follow: hs.filter(h => h.status === 'followup').length,
+          booked: hs.filter(h => h.booked).map(h => ({ id: h.id, name: h.name || '' })),
+          afterAsk: eventPassed(sv) ? hs.filter(h => h.booked && !h.after && !h.afterSkip).map(h => ({ id: h.id, name: h.name || '' })) : [] };
       }));
       const managers = await managerList(req);
       return send(res, 200, { me: { id: uid, name: s.n, role: s.r }, robot: isOwner(s) ? await robotHealth() : undefined, follow: await followList(all), wait: await waitList(s), mode: u.mode || { on: false }, windows: (u.windows || []).slice(-60), wa: await (async () => { const w = []; for (const sv of all) w.push(...robotJobs(sv, await allJ(K.hotels(sv.id))).wa); return w.slice(0, 300); })(), watch: await (async () => { const w = []; for (const sv of all) w.push(...robotJobs(sv, await allJ(K.hotels(sv.id))).watch.map(x => ({ phone: x.phone, from: x.from, to: x.to }))); return w.slice(0, 300); })(), connection: await (async () => { const r = (await robotOf(uid)).u; return { connected: !!r.keyHash, ping: r.ping || null, last: r.lastCall || null, skipped: r.skipped || 0, app: !!r.app?.url, appLast: r.app?.last || null }; })(), surveys, managers });
@@ -909,7 +921,7 @@ export default async function hotelsHandler(req, res) {
       await setJ(key, h.id, h);
       return send(res, 200, { ok: true, photos: h.photos });
     }
-    if (op === 'hotel' || op === 'note' || op === 'mail' || op === 'draft' || op === 'paste' || op === 'photos' || op === 'mailNow' || op === 'relisten') {
+    if (op === 'hotel' || op === 'note' || op === 'mail' || op === 'draft' || op === 'paste' || op === 'photos' || op === 'mailNow' || op === 'relisten' || op === 'booked' || op === 'after') {
       const sv = await getJ(K.surveys, body.surveyId);
       if (!canSee(s, sv)) return send(res, 404, { error: 'not-found' });
       const key = K.hotels(sv.id);
@@ -935,6 +947,28 @@ export default async function hotelsHandler(req, res) {
         old.updatedAt = now();
         await setJ(key, old.id, old);
         return send(res, 200, { myPhotos: old.myPhotos, photos: old.photos || [] });
+      }
+      // owner 25.11: the place we closed with for this event (or not any more)
+      if (op === 'booked') {
+        if (!old || !canManage(s, sv)) return send(res, 404, { error: 'not-found' });
+        const on = body.on !== false;
+        if (on) { old.booked = now(); old.status = 'closed'; } else { delete old.booked; if (old.status === 'closed') old.status = 'good'; }
+        old.log = [...(old.log || []), { t: 'note', at: now(), by: s.n, text: on ? 'סגרנו עם המקום הזה לאירוע.' : 'בוטל הסימון "סגרנו עם המקום".' }].slice(-80);
+        old.updatedAt = now();
+        await setJ(key, old.id, old);
+        return send(res, 200, { ...old, min: minPrice(old) });
+      }
+      // owner 25.11: after the event, how it was there (kept with the place, shown in the catalog next time)
+      if (op === 'after') {
+        if (!old || !canManage(s, sv)) return send(res, 404, { error: 'not-found' });
+        if (body.skip === true) { old.afterSkip = now(); await setJ(key, old.id, old); return send(res, 200, { ok: true }); }
+        const text = str(body.text, 2000).trim();
+        if (text.length < 2) return send(res, 400, { error: 'text' });
+        old.after = { text, at: now(), by: s.n || '', event: sv.title || '' };
+        old.log = [...(old.log || []), { t: 'note', at: now(), by: s.n, text: 'אחרי האירוע: ' + text }].slice(-80);
+        old.updatedAt = now();
+        await setJ(key, old.id, old);
+        return send(res, 200, { ...old, min: minPrice(old) });
       }
       if (op === 'paste') {
         if (!old) return send(res, 404, { error: 'not-found' });
@@ -1024,6 +1058,20 @@ export default async function hotelsHandler(req, res) {
       if (!canManage(s, sv) || !mine(sv, w.userId)) return send(res, 404, { error: 'not-found' });
       await kv.hdel(K.wait, w.id); if (fid) await kv.hdel(K.files, fid);
       return script(req, res, 'call', w.userId, { ...w.b, surveyId: sv.id, placed: true });
+    }
+
+    // owner 25.11: take out of the places' history what came in before the fix: our own WhatsApp lines, call notices, the same message twice
+    if (op === 'tidyWa') {
+      if (!isOwner(s)) return send(res, 403, { error: 'owner' });
+      let removed = 0;
+      for (const sv of await allJ(K.surveys)) for (const ho of await allJ(K.hotels(sv.id))) {
+        const seen = new Set(), before = (ho.log || []).length;
+        ho.log = (ho.log || []).filter(l => { if (l.t !== 'wa') return true; if (waNotPlace(l.from, l.text)) return false; const k = waKey(l.from, l.text); if (seen.has(k)) return false; seen.add(k); return true; });
+        const pBefore = (ho.parse || []).length;
+        ho.parse = (ho.parse || []).filter(p => !(p.src === 'wa' && WA_OURS.test(p.text || '')));
+        if (ho.log.length !== before || ho.parse.length !== pBefore) { removed += before - ho.log.length; await setJ(K.hotels(sv.id), ho.id, ho); }
+      }
+      return send(res, 200, { ok: true, removed });
     }
 
     // owner 24.11: move a place (with all its history) from one card to another, e.g. from the שבת חתן to the wedding
@@ -1471,14 +1519,16 @@ async function script(req, res, what, userId, b) {
   if (what === 'wa') {
     const items = (Array.isArray(b.items) ? b.items : []).slice(0, 100);
     const byPhone = {};
-    for (const it of items) { const d = digits(it.phone).slice(-9); if (d.length >= 8 && str(it.text, 4000).trim()) (byPhone[d] = byPhone[d] || []).push(it); }
+    for (const it of items) { const d = digits(it.phone).slice(-9); if (d.length >= 8 && str(it.text, 4000).trim() && !waNotPlace(it.from, it.text)) (byPhone[d] = byPhone[d] || []).push(it); }
     let filed = 0;
     for (const sv of (await allJ(K.surveys)).filter(x => mine(x, userId))) {
       const key = K.hotels(sv.id);
       for (const h of await allJ(key)) {
         const d = [h.phone, h.phone2].map(x => digits(x).slice(-9)).find(x => x.length >= 8 && byPhone[x]);
         if (!d) continue;
-        const msgs = byPhone[d];
+        const had = new Set((h.log || []).filter(l => l.t === 'wa').map(l => waKey(l.from, l.text)));
+        const msgs = byPhone[d].filter(m => { const k = waKey(m.from, m.text); if (had.has(k)) return false; had.add(k); return true; });
+        if (!msgs.length) continue;
         h.log = [...(h.log || []), ...msgs.map(m => ({ t: 'wa', at: str(m.at, 40) || now(), from: str(m.from, 120), text: str(m.text, 4000) }))].slice(-80);
         h.parse = [...(h.parse || []), { id: rid('p'), src: 'wa', at: now(), by: 'וואטסאפ', text: msgs.map(m => 'הודעת וואטסאפ מ' + str(m.from, 120) + ' (' + str(m.at, 40) + '):\n' + str(m.text, 4000)).join('\n\n').slice(0, 20000) }].slice(-5);
         h.updatedAt = now();

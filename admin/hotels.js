@@ -360,6 +360,16 @@ function homeView(pg) {
   const box = $('.hs-surveys', list);
   if ((home.follow || []).length) pg.append(followCard());
   if ((home.wait || []).length) pg.append(waitCard());
+  const asks = home.surveys.filter(s => s.manage && (s.afterAsk || []).length);
+  if (asks.length) {
+    const c = h(`<section class="card hs-aftercard"><div class="card__head"><div><h2>אירועים שעברו</h2><p>איך היה במקום שסגרתם איתו? כמה מילים ותמונות נשמרים עם המקום לפעם הבאה.</p></div></div><div class="hs-wait__btns"></div></section>`);
+    for (const s of asks) for (const a of s.afterAsk) {
+      const b = h(`<button type="button" class="btn btn--gold btn--sm">${esc(a.name || 'המקום')} · ${esc(s.title)}</button>`);
+      b.addEventListener('click', async () => { openSurvey = s.id; openHotel = null; try { await refreshSurvey(); } catch (e) { fail(e); return; } again(); scrollTo({ top: 0 }); });
+      $('.hs-wait__btns', c).append(b);
+    }
+    pg.append(c);
+  }
   $('[data-recheck]', list)?.addEventListener('click', async e => {
     e.currentTarget.disabled = true; e.currentTarget.textContent = 'בודק…';
     try {
@@ -746,6 +756,14 @@ function surveyView(pg) {
   if (compareOpen && sv.manage) { pg.append(compareCard(sv, hotels)); return; }
 
   if (openHotel) { const ho = hotels.find(x => x.id === openHotel); if (ho) return pg.append(hotelView(sv, ho)); openHotel = null; }
+  const booked = hotels.filter(x => x.booked);
+  if (booked.length) {
+    const end = sv.to || sv.from || '', passed = !!end && end < new Date().toISOString().slice(0, 10);
+    for (const x of booked) if (passed && sv.manage && !x.after && !x.afterSkip) pg.append(afterCard(sv, x));
+    const bc = h(`<section class="card hs-bookedcard"><h3>סגרנו עם</h3><div class="hs-wait__btns">${booked.map(x => `<button type="button" class="btn btn--line btn--sm" data-ho="${esc(x.id)}">${esc(x.name || 'בלי שם')}</button>`).join('')}</div></section>`);
+    $$('[data-ho]', bc).forEach(b => b.addEventListener('click', () => { openHotel = b.dataset.ho; again(); scrollTo({ top: 0 }); }));
+    pg.append(bc);
+  }
 
   // The two main actions inside a card
   const acts = h(`<section class="hs-acts">
@@ -918,8 +936,11 @@ function hotelView(sv, x) {
       ${(x.log || []).some(l => l.t === 'call') ? `<button class="btn btn--line btn--sm" type="button" data-relisten ${x.relisten ? 'disabled' : ''}>${x.relisten ? 'קורא את השיחה מחדש…' : 'לקרוא את השיחה מחדש'}</button>` : ''}
       ${safeUrl(x.website) ? `<a class="btn btn--line btn--sm" href="${esc(x.website)}" target="_blank" rel="noopener">לאתר של המלון</a>` : ''}
       ${sv.manage && moveTargets(sv).length ? `<button class="btn btn--line btn--sm" type="button" data-move>להעביר לכרטיסייה אחרת</button><button class="btn btn--line btn--sm" type="button" data-dup>לשכפל לכרטיסייה אחרת</button>` : ''}
+      ${sv.manage ? (x.booked ? '<button class="btn btn--line btn--sm" type="button" data-book="0">לבטל "סגרנו איתו"</button>' : '<button class="btn btn--gold btn--sm" type="button" data-book="1">סגרתי עם המקום הזה</button>') : ''}
       ${sv.manage ? '<button class="btn btn--danger btn--sm" type="button" data-del>מחיקת המלון</button>' : ''}
     </div>
+    ${x.booked ? `<p class="hs-booked">סגרנו עם המקום הזה לאירוע${dmy(x.booked.slice(0, 10)) ? ' (סומן ב-' + dmy(x.booked.slice(0, 10)) + ')' : ''}.</p>` : ''}
+    ${x.after ? `<p class="hs-after"><b>אחרי האירוע:</b> ${esc(x.after.text)}</p>` : ''}
     ${moveOpen === x.id ? `<div class="hs-move"><p>${moveMode === 'dup' ? `לאיזו כרטיסייה לשכפל את "${esc(x.name || 'המקום')}"? הוא יישאר גם כאן, ויופיע גם שם עם כל השיחות, המיילים וההערות.` : `לאיזו כרטיסייה להעביר את "${esc(x.name || 'המקום')}"? הוא עובר עם כל השיחות, המיילים וההערות.`}</p><div class="hs-wait__btns">${moveTargets(sv).map(t => `<button class="btn btn--gold btn--sm" type="button" data-to="${esc(t.id)}">${esc(t.title)}${t.from ? ' · ' + dmy(t.from) : ''}</button>`).join('')}<button class="btn btn--line btn--sm" type="button" data-nomove>ביטול</button></div></div>` : ''}
   </section>`);
   $('[data-move]', head)?.addEventListener('click', () => { moveOpen = moveOpen === x.id && moveMode === 'move' ? null : x.id; moveMode = 'move'; again(); });
@@ -938,6 +959,11 @@ function hotelView(sv, x) {
       ctx.toast('הועבר ל"' + r.toTitle + '"'); again();
     } catch (e2) { fail(e2); b.disabled = false; }
   }));
+  $('[data-book]', head)?.addEventListener('click', async e => {
+    const on = e.currentTarget.dataset.book === '1';
+    if (!on && !confirm('לבטל את הסימון שסגרתם עם המקום הזה?')) return;
+    try { await api('POST', '', { op: 'booked', surveyId: sv.id, id: x.id, on }); await refreshSurvey(); await refreshHome(); ctx.toast(on ? 'סומן: סגרתם עם "' + (x.name || 'המקום') + '"' : 'הסימון בוטל'); again(); } catch (e2) { fail(e2); }
+  });
   $('[data-back]', head).addEventListener('click', () => { openHotel = null; mailOpen = false; pasteOpen = false; again(); });
   $('[data-paste]', head).addEventListener('click', () => { pasteOpen = !pasteOpen; again(); });
   $('[data-relisten]', head)?.addEventListener('click', async () => {
@@ -985,6 +1011,39 @@ function hotelView(sv, x) {
   cols.append(side);
   wrap.append(cols);
   return wrap;
+}
+
+/* ---------- owner 25.11: after the event: how it was at the place we closed with (notes + photos) ---------- */
+function afterCard(sv, x) {
+  const c = h(`<section class="card hs-aftercard">
+    <div class="card__head"><div><h2>האירוע עבר. איך היה ב"${esc(x.name || 'המקום')}"?</h2><p>מה היה טוב, מה פחות, ומה לזכור לפעם הבאה. זה נשמר עם המקום ויופיע במאגר כשתחפשו אותו שוב.</p></div></div>
+    <textarea class="input" rows="4" maxlength="2000" placeholder="למשל: השירות היה מצוין, האוכל חם, האולם קטן ל-250. לבקש מראש את החדר הצדדי."></textarea>
+    <div class="hs-wait__btns"><button class="btn btn--gold btn--sm" type="button" data-save>לשמור</button>
+      <label class="btn btn--line btn--sm"><input type="file" accept="image/*" multiple hidden><span>להוסיף תמונות מהאירוע</span></label>
+      <button class="btn btn--line btn--sm" type="button" data-skip>לא עכשיו</button></div>
+  </section>`);
+  $('[data-save]', c).addEventListener('click', async e => {
+    const text = $('textarea', c).value.trim();
+    if (text.length < 2) { ctx.toast('כתבו כמה מילים על המקום', 'err'); return; }
+    e.target.disabled = true;
+    try { await api('POST', '', { op: 'after', surveyId: sv.id, id: x.id, text }); await refreshSurvey(); await refreshHome(); ctx.toast('נשמר עם המקום'); again(); } catch (e2) { fail(e2); e.target.disabled = false; }
+  });
+  $('[data-skip]', c).addEventListener('click', async () => {
+    try { await api('POST', '', { op: 'after', surveyId: sv.id, id: x.id, skip: true }); await refreshSurvey(); await refreshHome(); again(); } catch (e2) { fail(e2); }
+  });
+  $('input[type=file]', c).addEventListener('change', async e => {
+    const files = [...e.target.files].filter(f => /^image\//.test(f.type) || /\.(jpe?g|png|webp|heic)$/i.test(f.name)).slice(0, 12);
+    if (!files.length) return;
+    if (!ctx.upload) return ctx.toast('אי אפשר להעלות מכאן', 'err');
+    const lab = $('label span', c); lab.textContent = 'מעלה…';
+    try {
+      const urls = [];
+      for (const f of files) { if (f.size > 25 * 1024 * 1024) { ctx.toast('תמונה גדולה מדי (עד 25MB)', 'err'); continue; } urls.push(await ctx.upload(f)); }
+      if (urls.length) { await api('POST', '', { op: 'photos', surveyId: sv.id, id: x.id, add: urls }); ctx.toast(urls.length === 1 ? 'התמונה נוספה למקום' : 'התמונות נוספו למקום'); }
+      lab.textContent = urls.length ? 'נוספו ' + urls.length + '. להוסיף עוד' : 'להוסיף תמונות מהאירוע';
+    } catch (e2) { fail(e2); lab.textContent = 'להוסיף תמונות מהאירוע'; }
+  });
+  return c;
 }
 
 /* ---------- owner 24.11: import places from my catalogs (hotels + halls) into this card ---------- */
@@ -1090,8 +1149,18 @@ function timeline(sv, x) {
     try { await api('POST', '', { op: 'note', surveyId: sv.id, id: x.id, text }); await refreshSurvey(); again(); } catch (e2) { fail(e2); }
   });
   const ol = $('.hs-log', c);
-  const log = [...(x.log || [])].sort((a, b) => (b.at || '').localeCompare(a.at || ''));
-  if (!log.length) ol.append(h('<li class="hint">עוד אין היסטוריה.</li>'));
+  const techNote = l => l.t === 'note' && (l.by === 'המערכת' || /^נוספו \d+ תמונות|^נוספה תמונה|נבדקו ידנית|^הוסרו \d+ תמונות|Error|gemini/i.test(l.text || ''));
+  const ours = l => l.t === 'wa' && (/ilan|אילן|belle\s*vie|לה\s*בל\s*וי/i.test(l.from || '') || /^\s*(שיחת וידאו|שיחה קולית|שיחת וידאו פעילה|שיחה שלא נענתה|הודעה זו נמחקה)/.test(l.text || ''));
+  const all = [...(x.log || [])].filter(l => !techNote(l) && !ours(l)).sort((a, b) => (b.at || '').localeCompare(a.at || ''));
+  const waRaw = all.filter(l => l.t === 'wa'), log = all.filter(l => l.t !== 'wa');
+  if (!log.length && !waRaw.length) ol.append(h('<li class="hint">עוד אין היסטוריה.</li>'));
+  if (waRaw.length) {
+    const read = log.some(l => l.t === 'text' && l.src === 'wa');
+    const li = h(`<li class="ev ev--wa"><div class="ev__h"><b>${waRaw.length === 1 ? 'הודעת וואטסאפ אחת' : waRaw.length + ' הודעות וואטסאפ'}</b><time>${when(waRaw[0].at)}</time></div>
+      <p class="hint">${read ? 'מה שחשוב מהן (מחירים, מה מציעים, פרטים) מסוכם למטה ב"נקרא מהוואטסאפ".' : 'הרובוט יסכם מהן את מה שחשוב תוך כמה דקות.'}</p>
+      <details><summary>להציג את ההודעות</summary>${waRaw.map(l => `<p class="ev__wa"><small>${when(l.at)}${l.from ? ' · ' + esc(l.from) : ''}</small><br>${esc(l.text)}</p>`).join('')}</details></li>`);
+    ol.append(li);
+  }
   for (const l of log) {
     if (l.t === 'call') {
       const [an, ac] = AV[l.avail] || AV.unknown;
@@ -1116,8 +1185,6 @@ function timeline(sv, x) {
         ${(l.files || []).length ? `<div class="row-tools">${l.files.filter(f => safeUrl(f.url)).map(f => `<a class="btn btn--line btn--sm" href="${esc(f.url)}" target="_blank" rel="noopener">${esc(f.name)}</a>`).join('')}</div>` : ''}
         ${l.error ? `<p class="err">${esc(l.error)}</p>` : ''}</li>`);
       ol.append(li);
-    } else if (l.t === 'wa') {
-      ol.append(h(`<li class="ev ev--wa"><div class="ev__h"><b>הודעת וואטסאפ</b><time>${when(l.at)}</time>${l.from ? `<span>מאת <bdi>${esc(l.from)}</bdi></span>` : ''}</div><p class="ev__wa">${esc(l.text)}</p></li>`));
     } else if (l.t === 'text') {
       const [an, ac] = AV[l.avail] || AV.unknown;
       ol.append(h(`<li class="ev ev--text"><div class="ev__h"><b>${l.src === 'mail' ? 'נקרא מהמיילים' : l.src === 'wa' ? 'נקרא מהוואטסאפ' : 'נקרא מטקסט שהודבק'}</b><time>${when(l.at)}</time>${l.avail && l.avail !== 'unknown' ? `<span class="pill pill--${ac}">${an}</span>` : ''}</div>

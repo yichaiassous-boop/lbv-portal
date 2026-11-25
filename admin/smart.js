@@ -153,11 +153,14 @@ function hotelCard(x, best) {
     ${photo ? `<img class="sm-h__img" src="${esc(photo)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : '<div class="sm-h__img sm-h__img--none" aria-hidden="true"></div>'}
     <div class="sm-h__body">
       <div class="sm-h__top"><h3>${esc(x.name)}</h3>${best ? `<span class="sm-best">בחירה ${best}</span>` : ''}</div>
+      ${(x.booked || []).length ? `<span class="sm-h__booked">סגרנו איתו: ${esc(x.booked.join(', '))}</span>` : ''}
+      ${(x.after || []).map(a => `<p class="sm-h__after"><b>מהאירוע ${esc(a.event)}:</b> ${esc(a.text)}</p>`).join('')}
       <p class="sm-h__where">${esc([x.city, x.area && x.area !== x.city ? x.area : ''].filter(Boolean).join(', '))}${x.rating ? ` · ${esc(x.rating)}★` : ''}</p>
       <div class="sm-h__facts">
         ${x.min ? `<span class="sm-price"><b>${money(x.min.price, x.min.currency)}</b> ${esc(x.min.per)}${x.min.what ? ` <small>(${esc(x.min.what)})</small>` : ''}</span>` : '<span class="hint">עוד אין מחיר</span>'}
       </div>
-      <p class="sm-h__meta">${[x.calls ? `${x.calls} שיחות` : '', x.lastAt ? 'קשר אחרון ' + day(x.lastAt) : '', x.surveys.map(s => s.title).filter(Boolean).join(', ')].filter(Boolean).map(esc).join(' · ')}</p>
+      ${x.about ? `<p class="sm-h__txt">${esc(x.about)}</p>` : ''}
+      ${(x.prices || []).filter(p => p.price > 0).length > 1 ? `<ul class="sm-h__prices">${x.prices.filter(p => p.price > 0).slice(0, 4).map(p => `<li>${esc([p.level, p.board].filter(Boolean).join(', ') || 'מחיר')}: <b>${money(p.price, p.currency)}</b>${p.per ? ' ' + esc(p.per) : ''}</li>`).join('')}</ul>` : ''}
       <div class="sm-h__acts">
         ${x.phone ? `<a class="btn btn--line" href="tel:${esc(x.phone.replace(/[^\d+]/g, ''))}" dir="ltr">${esc(x.phone)}</a>` : ''}
         ${safeUrl(x.website) ? `<a class="btn btn--line" href="${esc(x.website)}" target="_blank" rel="noopener">האתר</a>` : ''}
@@ -167,6 +170,8 @@ function hotelCard(x, best) {
     </div>
   </article>`);
   el.querySelector('[data-open]').addEventListener('click', () => ctx.openHotel?.(x.surveys[x.surveys.length - 1]));
+  el.classList.add('sm-h--click');
+  el.addEventListener('click', e => { if (e.target.closest('a, button')) return; ctx.openHotel?.(x.surveys[x.surveys.length - 1]); });
   el.querySelector('[data-add]').addEventListener('click', () => addToEvent(x));
   return el;
 }

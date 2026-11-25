@@ -384,6 +384,19 @@ mark { background: #FCE7A8; color: inherit; padding: 0 2px; border-radius: 3px; 
 .sm-h__txt { margin: 0; font-size: .9rem; color: var(--ink); }
 .sm-h__acts { display: flex; flex-wrap: wrap; gap: 6px; }
 .sm-h__acts .btn { min-height: 36px; padding: 0 12px; font-size: .88rem; }
+.hs-booked { margin: 10px 0 0; padding: 8px 12px; border-radius: 10px; background: #E3F4EA; color: #1d6b3d; font-weight: 700; }
+.hs-after { margin: 8px 0 0; padding: 8px 12px; border-radius: 10px; background: #FFF8E8; color: var(--ink); }
+.hs-aftercard { border-inline-start: 4px solid var(--gold, #C9A24A); }
+.hs-aftercard textarea { width: 100%; margin: 10px 0; resize: vertical; }
+.hs-aftercard label.btn { cursor: pointer; }
+.hs-bookedcard h3 { margin: 0 0 8px; }
+.sm-h__booked { display: inline-block; font-size: .8rem; font-weight: 700; background: #E3F4EA; color: #1d6b3d; border-radius: 6px; padding: 2px 8px; }
+.sm-h__after { margin: 6px 0 0; font-size: .9rem; background: #FFF8E8; border-radius: 8px; padding: 6px 10px; }
+.sm-h__prices { margin: 6px 0 0; padding: 0; list-style: none; font-size: .88rem; color: var(--ink-2); display: grid; gap: 2px; }
+.ev--wa details summary { cursor: pointer; color: var(--ink-2); margin-top: 4px; }
+.ev--wa details .ev__wa { margin: 8px 0 0; }
+.sm-h--click { cursor: pointer; transition: box-shadow .15s; }
+.sm-h--click:hover { box-shadow: 0 4px 16px rgba(22, 32, 58, .12); }
 .sm-pick { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
 .sm-pick .btn { justify-content: flex-start; text-align: start; min-height: 44px; }
 .hs-imp__list { display: flex; flex-direction: column; gap: 6px; max-height: 52vh; overflow: auto; margin: 10px 0; }
