@@ -53,6 +53,22 @@ export default async function funHandler(req, res) {
     }
     let b = {}; try { b = (await readBody(req)) || {}; } catch (e) { return send(res, 400, { error: 'bad-json' }); }
     const id = String(b.id || new URL(req.url, 'http://x').searchParams.get('id') || '');
+    if (req.method === 'POST' && b.op === 'asked') {
+      const all = await allJ(KEY), dig = v => String(v || '').replace(/\D/g, '').slice(-9);
+      const have = new Set(all.map(a => dig(a.phone)).filter(d => d.length >= 8));
+      let added = 0, already = 0;
+      for (const line of String(b.text || '').split(/\n+/).slice(0, 200)) {
+        const m = line.match(/(\+?972[\s-]?|0)?5\d(?:[\s-]?\d){7}|(\+?972[\s-]?|0)[2-9](?:[\s-]?\d){7}/);
+        const d = m ? dig(m[0]) : '';
+        if (d.length < 8) continue;
+        if (have.has(d)) { already++; continue; }
+        have.add(d);
+        const name = str(line.replace(m[0], '').replace(/[-–:,|]+/g, ' ').replace(/\s+/g, ' '), 100) || 'מחכה לתשובה 0' + d;
+        const x = { ...clean({ name, kind: b.kind, area: b.area, phone: '0' + d }), id: 'f' + crypto.randomBytes(6).toString('hex'), createdAt: now(), by: s.n || '', asked: now() };
+        await setJ(KEY, x.id, x); added++;
+      }
+      return send(res, 200, { ok: true, added, already });
+    }
     if (req.method === 'POST') {
       const old = id ? await getJ(KEY, id) : null;
       if (id && !old) return send(res, 404, { error: 'not-found' });

@@ -270,8 +270,9 @@ export async function funPage(pg, c) {
   try { fun = await funApi('GET'); } catch (e) { pg.innerHTML = ''; fail(e); return; }
   pg.innerHTML = '';
   const all = fun.list || [];
-  const add = h('<div class="sm-add"><button type="button" class="btn btn--gold">להוסיף אטרקציה</button></div>');
-  add.querySelector('button').addEventListener('click', () => funSheet(null));
+  const add = h('<div class="sm-add"><button type="button" class="btn btn--gold" data-one>להוסיף אטרקציה</button><button type="button" class="btn btn--line" data-asked>כתבתי למקומות בוואטסאפ</button></div>');
+  add.querySelector('[data-one]').addEventListener('click', () => funSheet(null));
+  add.querySelector('[data-asked]').addEventListener('click', () => askedSheet());
   pg.append(add);
   if (!all.length) { pg.append(h('<section class="card"><h2>עוד אין אטרקציות במאגר</h2><p class="hint">מוסיפים כל אטרקציה פעם אחת: מה זה, איפה, לכמה אנשים, כמה זה עולה ולמי מתקשרים. בפעם הבאה שמתכננים יום כיף, מחפשים כאן לפי אזור, מחיר וגודל הקבוצה.</p></section>')); return; }
   const bar = h(`<form class="sm-bar sm-bar--cat" role="search">
@@ -311,7 +312,7 @@ function funCard(x) {
   const size = x.minP && x.maxP ? `${x.minP}-${x.maxP} איש` : x.maxP ? `עד ${x.maxP} איש` : x.minP ? `מ-${x.minP} איש` : '';
   const el = h(`<article class="sm-h sm-fun">
     <div class="sm-h__body">
-      <div class="sm-h__top"><h3>${esc(x.name)}</h3><span class="sm-fun__k">${FK[x.kind] || FK.other}</span></div>
+      <div class="sm-h__top"><h3>${esc(x.name)}</h3><span class="sm-fun__k">${FK[x.kind] || FK.other}</span>${x.asked && !(x.calls || []).length ? '<span class="sm-fun__wait">מחכה לתשובה</span>' : ''}${x.fromWa ? '<span class="sm-fun__wait sm-fun__wait--new">נכנס מוואטסאפ</span>' : ''}</div>
       <p class="sm-h__where">${esc([x.area, x.supplier].filter(Boolean).join(', '))}</p>
       <div class="sm-h__facts">
         ${x.price != null ? `<span class="sm-price"><b>${money(x.price, x.currency)}</b> ${FPER[x.per] || ''}</span>` : '<span class="hint">עוד אין מחיר</span>'}
@@ -328,6 +329,38 @@ function funCard(x) {
   </article>`);
   el.querySelector('[data-edit]').addEventListener('click', () => funSheet(x));
   return el;
+}
+
+/** owner 25.11: the places we wrote to on WhatsApp: each number is in the catalog at once, and its replies are read by themselves. */
+function askedSheet() {
+  document.querySelector('.ev-sheet')?.remove();
+  const w = h(`<div class="ev-sheet" role="dialog" aria-modal="true" aria-label="כתבתי למקומות">
+    <form class="ev-sheet__card">
+      <div class="ev-sheet__top"><h2>כתבתי למקומות האלה</h2><button class="icon" type="button" data-x aria-label="סגירה">✕</button></div>
+      <p class="hint">מדביקים את המספרים, אחד בכל שורה, ואפשר גם את השם לידו (למשל: "ראלי ג׳יפים 052-1234567"). כל מקום נכנס למאגר מיד, והתשובות שלו בוואטסאפ ייקראו לבד: מחיר, מה מציעים, לכמה אנשים.</p>
+      <label class="f">המספרים<textarea name="text" rows="8" dir="auto" required placeholder="ראלי ג׳יפים 052-1234567&#10;054-7654321"></textarea></label>
+      <div class="f2">
+        <label class="f">סוג<select name="kind">${Object.entries(FK).map(([k, t]) => `<option value="${k}"${k === 'other' ? ' selected' : ''}>${t}</option>`).join('')}</select></label>
+        <label class="f">אזור<input name="area" maxlength="80"></label>
+      </div>
+      <div class="ev-sheet__acts"><button class="btn btn--gold" type="submit">להוסיף למאגר</button></div>
+    </form></div>`);
+  const close = () => w.remove();
+  w.querySelector('[data-x]').addEventListener('click', close);
+  w.addEventListener('click', e => { if (e.target === w) close(); });
+  w.querySelector('form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const f = e.target, btn = f.querySelector('[type=submit]');
+    btn.disabled = true;
+    try {
+      const r = await funApi('POST', { op: 'asked', text: f.text.value, kind: f.kind.value, area: f.area.value });
+      close();
+      ctx.toast(r.added ? (r.added === 1 ? 'מקום אחד נוסף' : r.added + ' מקומות נוספו') + (r.already ? ', ' + r.already + ' כבר היו במאגר' : '') : r.already ? 'כל המספרים כבר במאגר' : 'לא מצאתי מספרי טלפון', r.added || r.already ? 'ok' : 'err');
+      ctx.rerender();
+    } catch (x2) { fail(x2); btn.disabled = false; }
+  });
+  document.body.append(w);
+  w.querySelector('textarea').focus();
 }
 
 function funSheet(x) {

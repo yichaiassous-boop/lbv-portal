@@ -67,7 +67,10 @@ const getJ = async (key, field, fb = null) => { const v = await kv.hget(key, fie
 const setJ = (key, field, v) => kv.hset(key, field, JSON.stringify(v));
 const allJ = async key => Object.values(await kv.hgetall(key)).map(v => { try { return JSON.parse(v); } catch (e) { return null; } }).filter(Boolean);
 
+const WA_NO_DAYS = 14;   // a number that was read and is not a supplier: not read again for two weeks
 const K = {
+  waNew: 'wa:new',                  // owner 25.11: last 9 digits → WhatsApp from a number in no card, not saved in the phone (until the robot decides)
+  waNo: 'wa:no',                    // last 9 digits → { at } read lately, not a supplier
   surveys: 'hs:surveys',            // id → survey
   hotels: id => 'hs:h:' + id,        // hotelId → hotel (with its history)
   pend: 'hs:pend',                   // 'list' → calls picked on the phone, waiting to be searched for a question
@@ -207,7 +210,7 @@ async function funFromCall(c, x, phone, src = 'call', into = null) {
   const num = v => { const n = Number(String(v ?? '').replace(/[,\s₪€$]/g, '')); return Number.isFinite(n) && n > 0 && n < 1e8 ? n : null; };
   const KIND = ['show', 'workshop', 'sport', 'team', 'food', 'tour', 'kids', 'party', 'other'];
   const fresh = !f;
-  if (!f) f = { id: crypto.randomBytes(6).toString('hex'), createdAt: now(), by: 'המערכת', name, kind: 'other', area: '', supplier: '', phone: '', price: null, per: 'person', currency: 'ILS', minP: null, maxP: null, hours: '', place: '', kids: false, link: '', notes: '' };
+  if (!f) f = { id: 'f' + crypto.randomBytes(6).toString('hex'), createdAt: now(), by: 'המערכת', name, kind: 'other', area: '', supplier: '', phone: '', price: null, per: 'person', currency: 'ILS', minP: null, maxP: null, hours: '', place: '', kids: false, link: '', notes: '' };
   // what the call said fills what is still empty (never over what a person wrote)
   const fill = (k, v) => { if (v !== null && v !== undefined && v !== '' && (f[k] === null || f[k] === undefined || f[k] === '' || (k === 'kind' && f[k] === 'other'))) f[k] = v; };
   fill('kind', KIND.includes(x.kind) ? x.kind : '');
@@ -1245,7 +1248,12 @@ async function script(req, res, what, userId, b) {
         const named = String(f.name || '').replace(/[^\p{L}\p{N}]/gu, '').length >= 4;
         if ((f.email || named || d.length >= 8) && Date.now() - (Date.parse(f.mailAt) || 0) > 4 * 3600e3) funMail.push({ id: f.id, name: f.name || '', phone: d.length >= 8 ? '0' + d : '', email: f.email || '', seen: (f.msgIds || []).slice(-200) });
       }
-      funMail = funMail.slice(0, 2); funRead = funRead.slice(0, 2);
+      // owner 25.11: a new number on WhatsApp (not in the system, not saved in the phone): is it a supplier? (the robot's reading decides)
+      for (const w of (await allJ(K.waNew)).filter(w => (w.msgs || []).length).slice(0, 2)) {
+        const d = digits(w.phone).slice(-9);
+        funRead.push({ id: 'wn' + d, name: w.from || w.phone, text: 'מספר חדש שכתב לנו בוואטסאפ (' + w.phone + '). אם זה ספק, אטרקציה, מקום לאירועים, מלון או אמן שמציע לנו משהו, זה רלוונטי. אם זו שיחה אישית, זה לא רלוונטי.\n\n' + w.msgs.map(m => 'הודעת וואטסאפ מ' + m.from + ' (' + m.at + '):\n' + m.text).join('\n\n').slice(0, 20000) });
+      }
+      funMail = funMail.slice(0, 2); funRead = funRead.slice(0, 3);
     }
     if (userId === 'owner') {
       const { whoOf } = await whoMap();
@@ -1548,16 +1556,48 @@ async function script(req, res, what, userId, b) {
         filed++;
       }
     }
+    const known = new Set();
+    for (const sv of await allJ(K.surveys)) for (const h of await allJ(K.hotels(sv.id))) for (const x of [h.phone, h.phone2]) { const d = digits(x).slice(-9); if (d.length >= 8) known.add(d); }
     if (userId === 'owner') for (const f of await allJ('fn:all')) {
       const d = digits(f.phone).slice(-9);
+      if (d.length >= 8) known.add(d);
       if (d.length < 8 || !byPhone[d]) continue;
       f.waNew = [...(f.waNew || []), ...byPhone[d].map(m => ({ at: str(m.at, 40) || now(), from: str(m.from, 120), text: str(m.text, 4000) }))].slice(-20);
       await setJ('fn:all', f.id, f); filed++;
     }
-    return send(res, 200, { ok: true, filed });
+    let aside = 0;
+    if (userId === 'owner') for (const [d, msgs] of Object.entries(byPhone)) {
+      if (known.has(d) || !msgs.some(m => m.unknown === true)) continue;
+      const no = await getJ(K.waNo, d);
+      if (no && Date.now() - Date.parse(no.at) < WA_NO_DAYS * 864e5) continue;   // checked lately: not a supplier
+      const w = (await getJ(K.waNew, d)) || { phone: '0' + d, from: '', msgs: [], tries: 0 };
+      const had = new Set(w.msgs.map(m => waKey(m.from, m.text)));
+      for (const m of msgs) { const k = waKey(m.from, m.text); if (!had.has(k)) { had.add(k); w.msgs.push({ at: str(m.at, 40) || now(), from: str(m.from, 120), text: str(m.text, 4000) }); } }
+      w.msgs = w.msgs.slice(-20); w.from = str(msgs[msgs.length - 1].from, 120) || w.from; w.at = now();
+      await setJ(K.waNew, d, w); aside++;
+    }
+    return send(res, 200, { ok: true, filed, aside });
   }
 
   // owner 24.11: what the robot read about an attraction in its mail / WhatsApp: on the card, and fills what is still empty
+  if (what === 'funread' && /^wn\d{8,9}$/.test(str(b.id, 20))) {
+    if (userId !== 'owner') return send(res, 403, { error: 'owner' });
+    const d = str(b.id, 20).slice(2), w = await getJ(K.waNew, d);
+    if (!w) return send(res, 200, { ok: true, gone: true });
+    if (b.error) {   // the reading failed: tried again later (5 times at most), then let go
+      w.tries = (w.tries || 0) + 1;
+      if (w.tries >= 5) await kv.hdel(K.waNew, d); else await setJ(K.waNew, d, w);
+      return send(res, 200, { ok: true, retry: w.tries < 5 });
+    }
+    const r = b.result || {};
+    await kv.hdel(K.waNew, d);   // the messages themselves are not kept (a private chat never stays in the system)
+    if (!r.relevant) { await setJ(K.waNo, d, { at: now() }); return send(res, 200, { ok: true, relevant: false }); }
+    const x = r.attraction || {};
+    const name = str(x.supplier, 100) || (/\p{L}/u.test(w.from || '') ? str(w.from, 100) : '') || 'ספק חדש ' + w.phone;
+    const id = await funFromCall({ at: str(b.at, 40) || now(), from: w.from || w.phone }, { ...x, name, summary: r.summary }, w.phone, 'wa');
+    if (id) { const f = await getJ('fn:all', id); if (f) { f.fromWa = true; f.waText = w.msgs.map(m => m.text).join('\n').slice(0, 3000); await setJ('fn:all', id, f); } }
+    return send(res, 200, { ok: true, relevant: true, id });
+  }
   if (what === 'funmailscan' || what === 'funread') {
     if (userId !== 'owner') return send(res, 403, { error: 'owner' });
     const f = await getJ('fn:all', str(b.id, 40));
