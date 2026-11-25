@@ -67,6 +67,7 @@ const getJ = async (key, field, fb = null) => { const v = await kv.hget(key, fie
 const setJ = (key, field, v) => kv.hset(key, field, JSON.stringify(v));
 const allJ = async key => Object.values(await kv.hgetall(key)).map(v => { try { return JSON.parse(v); } catch (e) { return null; } }).filter(Boolean);
 
+const WA_CTX = 'אלה רק ההודעות שהמקום שלח בוואטסאפ. את השאלות שלנו לא רואים. מסכמים רק עובדות ברורות (מחיר, זמינות, מה יש במקום ומה צריך להביא), כל עובדה במשפט שלם שמובן בלי השאלה (למשל: "בגשם אפשר את החופה בפנים"). תשובה שלא ברור על מה היא עונה, לא כותבים. בלי ציטוטים.\n\n';
 const WA_NO_DAYS = 14;   // a number that was read and is not a supplier: not read again for two weeks
 const K = {
   waNew: 'wa:new',                  // owner 25.11: last 9 digits → WhatsApp from a number in no card, not saved in the phone (until the robot decides)
@@ -362,7 +363,7 @@ function robotJobs(sv, hotels) {
     const waRead = h.waReadAt || (h.log || []).filter(l => l.t === 'text' && l.src === 'wa').map(l => l.at).sort().pop() || '';
     const unread = (h.log || []).filter(l => l.t === 'wa' && String(l.at || '') > String(waRead) && !/^\s*[\u{1F4F7}\u{1F3A5}]/u.test(l.text || ''));
     if (unread.length && !(h.parse || []).some(p => p.src === 'wa') && (h.waTry || 0) < 4)
-      parses.push({ surveyId: sv.id, hotelId: h.id, id: 'wacatch', name: h.name, src: 'wa', text: unread.map(m => 'הודעת וואטסאפ מ' + (m.from || '') + ' (' + (m.at || '') + '):\n' + (m.text || '')).join('\n\n').slice(0, 20000) });
+      parses.push({ surveyId: sv.id, hotelId: h.id, id: 'wacatch', name: h.name, src: 'wa', text: WA_CTX + unread.map(m => 'הודעת וואטסאפ מ' + (m.from || '') + ' (' + (m.at || '') + '):\n' + (m.text || '')).join('\n\n').slice(0, 20000) });
     // WhatsApp: hotels added in the last 60 days, by number + hotel name + contact person
     if (Date.now() < t + 60 * 864e5) for (const ph of [h.phone, h.phone2]) { const d = digits(ph).slice(-9); if (d.length >= 8) wa.push({ phone: d, names: [h.name, h.contact].map(x => String(x || '').trim()).filter(x => x.length >= 3) }); }
     const em = String(h.email || '').trim().toLowerCase();
@@ -1554,7 +1555,7 @@ async function script(req, res, what, userId, b) {
         const msgs = byPhone[d].filter(m => { const k = waKey(m.from, m.text); if (had.has(k)) return false; had.add(k); return true; });
         if (!msgs.length) continue;
         h.log = [...(h.log || []), ...msgs.map(m => ({ t: 'wa', at: str(m.at, 40) || now(), from: str(m.from, 120), text: str(m.text, 4000) }))].slice(-80);
-        h.parse = [...(h.parse || []), { id: rid('p'), src: 'wa', at: now(), by: 'וואטסאפ', text: msgs.map(m => 'הודעת וואטסאפ מ' + str(m.from, 120) + ' (' + str(m.at, 40) + '):\n' + str(m.text, 4000)).join('\n\n').slice(0, 20000) }].slice(-5);
+        h.parse = [...(h.parse || []), { id: rid('p'), src: 'wa', at: now(), by: 'וואטסאפ', text: WA_CTX + msgs.map(m => 'הודעת וואטסאפ מ' + str(m.from, 120) + ' (' + str(m.at, 40) + '):\n' + str(m.text, 4000)).join('\n\n').slice(0, 20000) }].slice(-5);
         h.updatedAt = now();
         await setJ(key, h.id, h);
         filed++;

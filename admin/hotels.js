@@ -1190,7 +1190,7 @@ function timeline(sv, x) {
       ol.append(h(`<li class="ev ev--text"><div class="ev__h"><b>${l.src === 'mail' ? 'נקרא מהמיילים' : l.src === 'wa' ? 'נקרא מהוואטסאפ' : 'נקרא מטקסט שהודבק'}</b><time>${when(l.at)}</time>${l.avail && l.avail !== 'unknown' ? `<span class="pill pill--${ac}">${an}</span>` : ''}</div>
         ${l.summary ? `<p>${esc(l.summary)}</p>` : ''}
         ${(l.files || []).filter(f => safeUrl(f.url)).length ? `<div class="row-tools">${l.files.filter(f => safeUrl(f.url)).map(f => `<a class="btn btn--line btn--sm" href="${esc(f.url)}" target="_blank" rel="noopener">לפתוח את הקובץ: ${esc(f.name)}</a>`).join('')}</div>` : ''}
-        ${l.quotes?.length ? `<ul class="ev__q">${l.quotes.map(q => `<li>${q.who ? `<b>${esc(q.who)}:</b> ` : ''}"${esc(q.text)}"</li>`).join('')}</ul>` : ''}</li>`));
+        ${l.quotes?.length && l.src !== 'wa' ? `<ul class="ev__q">${l.quotes.map(q => `<li>${q.who ? `<b>${esc(q.who)}:</b> ` : ''}"${esc(q.text)}"</li>`).join('')}</ul>` : ''}</li>`));
     } else {
       ol.append(h(`<li class="ev ev--note"><div class="ev__h"><b>הערה</b><time>${when(l.at)}</time>${l.by ? `<span>${esc(l.by)}</span>` : ''}</div><p>${esc(l.text)}</p></li>`));
     }
