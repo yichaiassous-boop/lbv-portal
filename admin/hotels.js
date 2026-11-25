@@ -1277,11 +1277,11 @@ const PREF_HE = { free: 'פנוי', maybe: 'בספק', taken: 'תפוס', '': '�
 /** owner 25.11: a place that is not free (or not known) on the card's date but said another date is free shows "פנוי בתאריך אחר", not "לא ידוע". */
 function avOf(x, sv) {
   const base = AV[x.avail] || AV.unknown;
-  if (x.avail === 'available' || x.avail === 'partial') return base;
   const o = onDate(x, (sv && sv.from) || '', (sv && sv.from) || '', (sv && sv.to) || '');
+  if (o.st === 'taken' && o.other.length) return ['תפוס, פנוי בתאריך אחר', 'warn'];
   if (o.st === 'free') return AV.available;
   if (o.st === 'maybe') return AV.partial;
-  if (!o.other.length) return base;
+  if (x.avail === 'available' || x.avail === 'partial' || !o.other.length) return base;
   return [(o.st === 'taken' || x.avail === 'full' ? 'תפוס, ' : '') + 'פנוי בתאריך אחר', 'warn'];
 }
 /** owner 24.11: which date the client prefers: every date of the card and every date the places talked about. */
