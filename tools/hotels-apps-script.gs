@@ -975,6 +975,8 @@ function tidySheet(sh, rows, w) {
   const paint = (c, text, bg, fg) => { if (c && n > 1) rules.push(SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo(text).setBackground(bg).setFontColor(fg).setRanges([sh.getRange(2, c, n - 1, 1)]).build()); };
   const pc = head.findIndex(t => /^ב-\d/.test(t)) + 1;   // owner 24.11: the preferred-date column
   if (pc) { paint(pc, 'פנוי', '#d9f2e3', '#0b5d2a'); paint(pc, 'בספק', '#fff1c9', '#7a5600'); paint(pc, 'תפוס', '#fbdcdc', '#8a1c1c'); sh.setColumnWidth(pc, 110); }
+  // owner 25.11: free only on another date gets its own colour
+  if (pc) { paint(pc, 'פנוי בתאריך אחר', '#e3ecff', '#1f3d8a'); paint(pc, 'תפוס, פנוי בתאריך אחר', '#e3ecff', '#1f3d8a'); }
   if (col('תאריכים חלופיים')) sh.setColumnWidth(col('תאריכים חלופיים'), 150);
   paint(col('זמינות'), 'יש מקום', '#d9f2e3', '#0b5d2a'); paint(col('זמינות'), 'מקום חלקי', '#fff1c9', '#7a5600'); paint(col('זמינות'), 'תפוס', '#fbdcdc', '#8a1c1c');
   paint(col('סטטוס'), 'מתאים', '#d9f2e3', '#0b5d2a'); paint(col('סטטוס'), 'לחזור אליהם', '#fff1c9', '#7a5600'); paint(col('סטטוס'), 'לא רלוונטי', '#eeeeee', '#666666'); paint(col('סטטוס'), 'נסגר', '#dbe6ff', '#1f3d8a');

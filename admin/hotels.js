@@ -1316,7 +1316,8 @@ function mustKnow(x) {
 function downloadCsv(sv, hotels, pref) {
   // owner 24.11: short and clear, the same columns as the Google sheet; the preferred date first, other dates on the side
   pref = pref || sv.from || '';
-  const head = ['מקום', 'תמונות', 'אתר', 'עיר', pref ? 'ב-' + dmy(pref) : 'זמינות', 'תאריכים חלופיים', 'הכי זול', 'המחירים', 'מה חשוב לדעת', 'איש קשר וטלפון', 'סטטוס'];
+  const head = ['מקום', 'תמונה', 'כל התמונות', 'אתר', 'עיר', pref ? 'ב-' + dmy(pref) : 'זמינות', 'תאריכים חלופיים', 'הכי זול', 'המחירים', 'מה חשוב לדעת', 'איש קשר וטלפון', 'סטטוס'];
+  const firstPic = x => [...(x.myPhotos || []), ...(x.photos || [])].map(u => /^media\/uploads\//.test(u || '') ? location.origin + '/' + u : safeUrl(u)).find(u => /^https:\/\//.test(u || '')) || '';
   // owner 25.11: a link to a photo page on the site, not a single picture
   const pic = x => { const all = [...new Set([...(x.myPhotos || []), ...(x.photos || [])].map(u => /^media\/uploads\//.test(u || '') ? location.origin + '/' + u : safeUrl(u)).filter(u => /^https:\/\//.test(u || '')))];
     let link = location.origin + '/hotels/photos.html?n=' + encodeURIComponent(x.name || ''), k = 0;
@@ -1325,7 +1326,7 @@ function downloadCsv(sv, hotels, pref) {
   const info = new Map(hotels.map(x => [x, onDate(x, pref, sv.from || '', sv.to || '')]));
   const rank = x => { const o = info.get(x); return x.status === 'no' ? 9 : o.st === 'free' ? 0 : o.st === 'maybe' ? 1 : o.other.length ? 2 : o.st === '' ? 3 : 4; };
   const list = [...hotels].sort((a, b) => rank(a) - rank(b) || (a.min ?? 1e12) - (b.min ?? 1e12));
-  const rows = list.map(x => [x.name, pic(x), safeUrl(x.website) || '', x.city, avOf(x, { from: pref, to: pref })[0], info.get(x).other.map(dmy).join(', '), x.min ?? '',
+  const rows = list.map(x => [x.name, firstPic(x), pic(x), safeUrl(x.website) || '', x.city, avOf(x, { from: pref, to: pref })[0], info.get(x).other.map(dmy).join(', '), x.min ?? '',
     (x.prices || []).filter(p => p.price > 0).map(p => ([p.level, p.board].filter(Boolean).join(', ') || 'מחיר') + ': ' + money(p.price, p.currency) + (p.per ? ' ' + p.per : '') + (p.note ? ' (' + p.note + ')' : '')).join('\n'),
     mustKnow(x), [x.contact, [x.phone, x.phone2].filter(Boolean).join(' / ')].filter(Boolean).join(' · '), ST[x.status] || '']);
   saveCsv(sv.title, [head, ...rows]);
