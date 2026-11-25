@@ -312,7 +312,7 @@ function cleanHotel(b, old = {}) {
     name: f('name', 120), city: f('city', 80), contact: f('contact', 80), phone: f('phone', 40), phone2: f('phone2', 40),
     email: f('email', 160), website: f('website', 200),
     avail: b.avail !== undefined ? pick(b.avail, AVAIL, 'unknown') : old.avail || 'unknown',
-    availText: f('availText', 400), rooms: f('rooms', 80),
+    availText: f('availText', 400), rooms: f('rooms', 200),
     prices: b.prices !== undefined ? cleanPrices(b.prices) : old.prices || [],
     status: b.status !== undefined ? pick(b.status, STATUS, 'new') : old.status || 'new',
     followUp: f('followUp', 10), followWhat: f('followWhat', 300),
@@ -492,7 +492,7 @@ function mergeCall(hotel, r, call) {
   if (g.phone && hotel.phone && digits(g.phone) !== digits(hotel.phone) && !hotel.phone2) hotel.phone2 = str(g.phone, 40);
   const a = r.availability || {};
   if (a.status && a.status !== 'unknown') { hotel.avail = pick(a.status, AVAIL, hotel.avail || 'unknown'); hotel.availText = str(a.text, 400); }
-  if (a.rooms) hotel.rooms = str(a.rooms, 80);
+  if (a.rooms) hotel.rooms = str(a.rooms, 200);
   // New prices replace the old ones for the same level + board; others are kept.
   const fresh = cleanPrices(r.prices);
   if (fresh.length) {
@@ -584,7 +584,7 @@ export function tableRows(sv, hotels, pref) {
   const sym = c => ({ ILS: '₪', USD: '$', EUR: '€' }[c] || (c ? ' ' + c : '₪'));
   const rows = list.map(h => [
     h.name || '', photo(h) ? `=IMAGE("${q(photo(h))}")` : '', site(h) ? `=HYPERLINK("${q(site(h))}","לאתר")` : '',
-    h.city || '', pref ? PREF_HE[info.get(h).st] : AV_HE[h.avail] || 'לא ידוע', info.get(h).other.map(dmy).join(', '), minPrice(h) ?? '',
+    h.city || '', (o => o.st === 'free' || o.st === 'maybe' || !o.other.length ? (pref ? PREF_HE[o.st] : AV_HE[h.avail] || 'לא ידוע') : (o.st === 'taken' || h.avail === 'full' ? 'תפוס, ' : '') + 'פנוי בתאריך אחר')(info.get(h)), info.get(h).other.map(dmy).join(', '), minPrice(h) ?? '',
     (h.prices || []).filter(p => p.price > 0).map(p => ([p.level, p.board].filter(Boolean).join(', ') || 'מחיר') + ': ' + Number(p.price).toLocaleString('he-IL') + ' ' + sym(p.currency).trim() + (p.per ? ' ' + p.per : '') + (p.note ? ' (' + p.note + ')' : '')).join('\n'),
     // owner 25.11: everything important that was said (availability, rooms, what is included, extras), not only availability
     (() => { const open = h.followWhat ? 'מה שנשאר פתוח: ' + h.followWhat + (h.followUp ? ' (' + dmy(h.followUp) + ')' : '') : '';

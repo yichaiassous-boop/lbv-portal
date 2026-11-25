@@ -429,7 +429,7 @@ function compareCard(sv, hotels) {
   const list = $('.hs-cmp__list', c), nEl = $('.hs-cmp__n', c);
   const count = () => { const n = rows.filter(x => kept.pick[x.id]).length; nEl.textContent = n ? (n === 1 ? 'נבחר מקום אחד' : 'נבחרו ' + n + ' מקומות') : 'עוד לא נבחר מקום'; };
   for (const x of rows) {
-    const [an, ac] = AV[x.avail] || AV.unknown;
+    const [an, ac] = avOf(x, sv);
     if (kept.note[x.id] == null) kept.note[x.id] = x.availText || '';
     const it = h(`<article class="hs-cmp__it">
       <label class="hs-cmp__pick"><input type="checkbox" data-pick><span><b>${esc(x.name || 'בלי שם')}</b><small>${esc(x.city || '')}</small></span></label>
@@ -809,7 +809,7 @@ function surveyView(pg) {
     if (!hotels.length) listEl.append(h(`<p class="hint hint--box">עוד אין מלונות בכרטיסייה. לוחצים "הוספת מלון", או מדליקים "מצב בדיקה" למעלה ומתקשרים: כל שיחה עם מלון נכנסת לכאן לבד אחרי כמה דקות.</p>`));
     else if (!rows.length) listEl.append(h('<p class="hint">לא נמצא כלום.</p>'));
     for (const x of rows) {
-      const [an, ac] = AV[x.avail] || AV.unknown;
+      const [an, ac] = avOf(x, sv);
       const calls = (x.log || []).filter(l => l.t === 'call').length, mails = (x.log || []).filter(l => l.t === 'mail-in' || l.t === 'mail-out').length;
       const card = h(`<button type="button" class="hs-ho">
         <div class="hs-ho__top"><b>${esc(x.name || 'בלי שם')}</b>${x.rating ? `<span class="hs-rate">${rateTxt(x)}</span>` : ''}<span class="pill pill--${ac}">${an}</span></div>
@@ -926,7 +926,7 @@ function hotelForm(sv, x) {
 let mailOpen = false, mailDraft = null;
 function hotelView(sv, x) {
   const wrap = h('<div class="hs-hotel"></div>');
-  const [an, ac] = AV[x.avail] || AV.unknown;
+  const [an, ac] = avOf(x, sv);
   const head = h(`<section class="card hs-hhead">
     <button type="button" class="hs-back" data-back>→ כל המלונות</button>
     <div class="hs-hhead__t"><h2>${esc(x.name || 'בלי שם')}</h2><span class="pill pill--${ac}">${an}</span><span class="st st--${x.status}">${ST[x.status]}</span></div>
@@ -1274,6 +1274,16 @@ function onDate(x, pref, svFrom, svTo) {
   return { st: st === 'said' ? '' : st, other };
 }
 const PREF_HE = { free: 'פנוי', maybe: 'בספק', taken: 'תפוס', '': 'לא ידוע' };
+/** owner 25.11: a place that is not free (or not known) on the card's date but said another date is free shows "פנוי בתאריך אחר", not "לא ידוע". */
+function avOf(x, sv) {
+  const base = AV[x.avail] || AV.unknown;
+  if (x.avail === 'available' || x.avail === 'partial') return base;
+  const o = onDate(x, (sv && sv.from) || '', (sv && sv.from) || '', (sv && sv.to) || '');
+  if (o.st === 'free') return AV.available;
+  if (o.st === 'maybe') return AV.partial;
+  if (!o.other.length) return base;
+  return [(o.st === 'taken' || x.avail === 'full' ? 'תפוס, ' : '') + 'פנוי בתאריך אחר', 'warn'];
+}
 /** owner 24.11: which date the client prefers: every date of the card and every date the places talked about. */
 function cardDates(sv, hotels) {
   const all = new Set([sv.from, sv.to].filter(Boolean));
@@ -1311,7 +1321,7 @@ function downloadCsv(sv, hotels, pref) {
   const info = new Map(hotels.map(x => [x, onDate(x, pref, sv.from || '', sv.to || '')]));
   const rank = x => { const o = info.get(x); return x.status === 'no' ? 9 : o.st === 'free' ? 0 : o.st === 'maybe' ? 1 : o.other.length ? 2 : o.st === '' ? 3 : 4; };
   const list = [...hotels].sort((a, b) => rank(a) - rank(b) || (a.min ?? 1e12) - (b.min ?? 1e12));
-  const rows = list.map(x => [x.name, pic(x), safeUrl(x.website) || '', x.city, pref ? PREF_HE[info.get(x).st] : (AV[x.avail] || AV.unknown)[0], info.get(x).other.map(dmy).join(', '), x.min ?? '',
+  const rows = list.map(x => [x.name, pic(x), safeUrl(x.website) || '', x.city, avOf(x, { from: pref, to: pref })[0], info.get(x).other.map(dmy).join(', '), x.min ?? '',
     (x.prices || []).filter(p => p.price > 0).map(p => ([p.level, p.board].filter(Boolean).join(', ') || 'מחיר') + ': ' + money(p.price, p.currency) + (p.per ? ' ' + p.per : '') + (p.note ? ' (' + p.note + ')' : '')).join('\n'),
     mustKnow(x), [x.contact, [x.phone, x.phone2].filter(Boolean).join(' / ')].filter(Boolean).join(' · '), ST[x.status] || '']);
   saveCsv(sv.title, [head, ...rows]);
@@ -1326,7 +1336,7 @@ function downloadSummary(sv, hotels, pref) {
   const line = x => { const t = String(x.about || x.summary || '').replace(/\s+/g, ' ').trim(); const m = t.match(/^.{20,220}?[.!?](\s|$)/); return m ? m[0].trim() : t.slice(0, 220); };
   const rows = [...hotels].sort((a, b) => rank(a) - rank(b) || (a.min ?? 1e12) - (b.min ?? 1e12)).map(x => {
     const o = info.get(x), cheap = (x.prices || []).filter(p => p.price > 0).sort((a, b) => a.price - b.price)[0];
-    const av = (pref ? PREF_HE[o.st] + ' ב-' + dmy(pref) : (AV[x.avail] || AV.unknown)[0]) + (o.other.length ? '. פנוי גם ב-' + o.other.map(dmy).join(', ') : '');
+    const av = pref && !o.st && o.other.length ? 'פנוי בתאריך אחר: ' + o.other.map(dmy).join(', ') : (pref ? PREF_HE[o.st] + ' ב-' + dmy(pref) : avOf(x, sv)[0]) + (o.other.length ? '. פנוי גם ב-' + o.other.map(dmy).join(', ') : '');
     return [x.name + (x.city ? ', ' + x.city : ''), safeUrl(x.website) || '', [...(x.myPhotos || []), ...(x.photos || [])].map(full).filter(Boolean).slice(0, 3).join('\n'),
       cheap ? money(cheap.price, cheap.currency) + (cheap.per ? ' ' + cheap.per : '') + ([cheap.level, cheap.board].filter(Boolean).length ? ' (' + [cheap.level, cheap.board].filter(Boolean).join(', ') + ')' : '') : 'עוד אין מחיר',
       av, line(x)];

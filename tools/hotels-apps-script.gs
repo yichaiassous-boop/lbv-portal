@@ -249,6 +249,7 @@ function listen(file, sv, at, question) {
     'Answer in JSON only. Write summary, availability text, notes and quotes in Hebrew (quotes: the exact words spoken, in the language spoken).',
     'relevant = true only if the call is about hotel rooms / accommodation / a venue, hall or meals for an event (Shabbat chatan, bar mitzvah, family event, holiday): availability, conditions or prices. A private or unrelated call → relevant=false and leave everything else empty.',
     'availability.text: rooms AND the hall/meals if mentioned (e.g. "12 חדרים פנויים, אולם לשבת פנוי, אין מניין במלון"). Put kashrut, minimum rooms/guests and other conditions in prices[].note or the summary.',
+    EXTRAS_RULE,
     'keyQuotes: the sentences that matter as proof later — especially anything said about availability ("we are full", "there are rooms"), prices, conditions, promises — with the time in the recording (mm:ss) and who said it (הנציג / המלון).',
     'prices: one row per room type + board, or per event package (e.g. level "חבילת שבת" / "אולם" / "סעודת שבת"), the number only in price (no currency sign), per = per what (לזוג ללילה / לאדם לשבת / לחדר לכל השבת / לאורח ...).',
     'followUp: needed = true whenever something is still open after the call: the place said it will check / call back / send an offer or prices, or we have to call back / send something. date = YYYY-MM-DD only if a day was said. what (Hebrew, short) = what is still open (e.g. "אמרו שיבדקו זמינות ל-25.3 ויחזרו אלינו"). needed = false only if nothing is left open.',
@@ -479,6 +480,12 @@ function hotelSchema() {
   };
 }
 
+/** owner 25.11: every place offers something different; rooms are not always a Shabbat-chatan stay. */
+var EXTRAS_RULE = [
+  'EVERY OFFER COUNTS: each place offers something different and it always changes. Write in the summary every extra, gift or condition that was offered (e.g. "מציע גם חדר חתן-כלה באותו מחיר", "הלינה לזוג הצעיר כלולה", "תוספת של 5 חדרים במחיר מיוחד").',
+  'ROOMS ARE NOT ALWAYS A STAY: a hall (אולם) for a wedding or an event often offers a room in addition to the hall (a bride-and-groom room, a few rooms for the family). That is NOT a Shabbat-chatan stay. availability.rooms must say what the rooms are and what they come with, in Hebrew, e.g. "חדר חתן-כלה, כלול במחיר האולם" or "7 חדרים ללינה עם ארוחת בוקר לשבת חתן", not only a number.',
+  'DATES: if the asked date is taken but another date is free, write each date with its word in availability.text (e.g. "25.3 תפוס, 18.3 פנוי"), so it shows as free on another date.'
+].join('\n');
 /** Pasted text, a quote or hotel e-mails → the same details as a call (prices, rooms, availability, conditions). */
 function readText(text, sv, hotelName, src) {
   const prompt = [
@@ -488,6 +495,7 @@ function readText(text, sv, hotelName, src) {
     'Today is ' + Utilities.formatDate(new Date(), 'Asia/Jerusalem', 'EEEE yyyy-MM-dd') + ' (Israel). Turn relative days into a date.',
     'Answer in JSON only. Write summary, availability text and notes in Hebrew. relevant = true if the text is about rooms, a hall, meals, availability, prices or conditions.',
     'availability: rooms AND hall/meals if mentioned; rooms = how many rooms. prices: one row per room type + board or per package, the number only in price, per = per what. Hours (check-in, check-out, meal times) and conditions go into prices[].note or the summary.',
+    EXTRAS_RULE,
     'hotel: name, city, contact person, phone, email, website if written. followUp: whether something has to be sent / answered, by when and what.',
     'keyQuotes: the sentences that matter as proof later, the exact words written, speaker = who wrote them.',
     '',
@@ -862,6 +870,7 @@ function readMail(text, files, sv, hotelName) {
     'Answer in JSON only. Write summary, availability text and notes in Hebrew. relevant = true if the mail or the files are about rooms, a hall, meals, availability, prices or conditions.',
     'summary: start with what the hotel sent (e.g. "הצעת מחיר בקובץ PDF:"), then the main points of the quote: what is included, the prices per room / per person / per package, the dates it is for, the conditions (deposit, cancellation, until when the offer is valid), and what is missing or must be answered.',
     'availability: rooms AND hall/meals if mentioned; rooms = how many rooms. prices: one row per room type + board or per package, the number only in price, per = per what. Hours and conditions go into prices[].note or the summary.',
+    EXTRAS_RULE,
     'hotel: name, city, contact person, phone, email, website if written. followUp: whether something has to be sent / answered, by when and what.',
     'keyQuotes: the sentences that matter as proof later, the exact words written (from the mail or the file), speaker = who wrote them.',
     '',
