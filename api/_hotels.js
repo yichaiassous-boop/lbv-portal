@@ -355,6 +355,11 @@ function robotJobs(sv, hotels) {
     const t = Date.parse(h.createdAt || h.updatedAt || 0) || 0;
     for (const ph of [h.phone, h.phone2]) { const d = digits(ph); if (d.length >= 8 && Date.now() < t + WATCH_DAYS * 864e5) watch.push({ surveyId: sv.id, hotelId: h.id, phone: d, from: new Date(t - WATCH_DAYS * 864e5).toISOString(), to: new Date(t + WATCH_DAYS * 864e5).toISOString() }); }
     for (const p of (h.parse || []).slice(0, 3)) parses.push({ surveyId: sv.id, hotelId: h.id, id: p.id, text: p.text, name: h.name, src: p.src || 'paste' });
+    // owner 25.11: WhatsApp messages newer than the last reading of the WhatsApp → read (once more, at most 4 tries)
+    const waRead = h.waReadAt || (h.log || []).filter(l => l.t === 'text' && l.src === 'wa').map(l => l.at).sort().pop() || '';
+    const unread = (h.log || []).filter(l => l.t === 'wa' && String(l.at || '') > String(waRead) && !/^\s*[\u{1F4F7}\u{1F3A5}]/u.test(l.text || ''));
+    if (unread.length && !(h.parse || []).some(p => p.src === 'wa') && (h.waTry || 0) < 4)
+      parses.push({ surveyId: sv.id, hotelId: h.id, id: 'wacatch', name: h.name, src: 'wa', text: unread.map(m => 'הודעת וואטסאפ מ' + (m.from || '') + ' (' + (m.at || '') + '):\n' + (m.text || '')).join('\n\n').slice(0, 20000) });
     // WhatsApp: hotels added in the last 60 days, by number + hotel name + contact person
     if (Date.now() < t + 60 * 864e5) for (const ph of [h.phone, h.phone2]) { const d = digits(ph).slice(-9); if (d.length >= 8) wa.push({ phone: d, names: [h.name, h.contact].map(x => String(x || '').trim()).filter(x => x.length >= 3) }); }
     const em = String(h.email || '').trim().toLowerCase();
@@ -1503,12 +1508,19 @@ async function script(req, res, what, userId, b) {
     const key = K.hotels(sv.id), h = await getJ(key, str(b.hotelId, 40));
     if (!h) return send(res, 404, { error: 'not-found' });
     const jobId = str(b.id, 40);
-    if (jobId) h.parse = (h.parse || []).filter(p => p.id !== jobId);
+    const busy = b.error && /503|429|quota|busy|overload|out of time|timeout|timed out|unavailable|rate/i.test(String(b.error));
+    if (jobId === 'wacatch') { if (b.error) h.waTry = (h.waTry || 0) + 1; }
+    else if (jobId && busy && ((h.parse || []).find(p => p.id === jobId)?.tries || 0) < 5) {
+      h.parse = (h.parse || []).map(p => p.id === jobId ? { ...p, tries: (p.tries || 0) + 1 } : p);   // kept: tried again on a next run
+      await setJ(key, h.id, h);
+      return send(res, 200, { ok: true, retry: true });
+    } else if (jobId) h.parse = (h.parse || []).filter(p => p.id !== jobId);
     const r = b.result || {};
+    if (b.src === 'wa' && !b.error) { const lastWa = (h.log || []).filter(l => l.t === 'wa').map(l => l.at).sort().pop(); if (lastWa) h.waReadAt = lastWa; delete h.waTry; }
     if (!b.error && r && (r.summary || (r.prices || []).length || r.availability || r.hotel)) {
       const src = pick(b.src, ['paste', 'mail', 'wa'], 'paste');
       mergeCall(h, { ...r, hotel: r.hotel || {} }, { t: 'text', src, at: now(), files: (Array.isArray(b.files) ? b.files : []).slice(0, 10).map(f => ({ name: str(f.name, 160), url: link(f.url, 400) })).filter(f => f.name), summary: str(r.summary, 1500), avail: pick(r.availability?.status, AVAIL, 'unknown'), availText: str(r.availability?.text, 400), quotes: (Array.isArray(r.keyQuotes) ? r.keyQuotes : []).slice(0, 8).map(x => ({ time: '', who: str(x.speaker, 40), text: str(x.text, 500) })) });
-    } else if (b.error) h.log = [...(h.log || []), { t: 'note', at: now(), by: 'המערכת', text: 'לא הצלחתי לקרוא את הטקסט: ' + str(b.error, 200) }].slice(-80);
+    } else if (b.error && !busy) h.log = [...(h.log || []), { t: 'note', at: now(), by: 'המערכת', text: 'לא הצלחתי לקרוא את הטקסט: ' + str(b.error, 200) }].slice(-80);
     h.updatedAt = now();
     await setJ(key, h.id, h);
     await saveUser(userId, u);
