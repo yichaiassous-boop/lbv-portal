@@ -67,7 +67,9 @@ const getJ = async (key, field, fb = null) => { const v = await kv.hget(key, fie
 const setJ = (key, field, v) => kv.hset(key, field, JSON.stringify(v));
 const allJ = async key => Object.values(await kv.hgetall(key)).map(v => { try { return JSON.parse(v); } catch (e) { return null; } }).filter(Boolean);
 
-const WA_CTX = 'אלה רק ההודעות שהמקום שלח בוואטסאפ. את השאלות שלנו לא רואים. מסכמים רק עובדות ברורות (מחיר, זמינות, מה יש במקום ומה צריך להביא), כל עובדה במשפט שלם שמובן בלי השאלה (למשל: "בגשם אפשר את החופה בפנים"). תשובה שלא ברור על מה היא עונה, לא כותבים. בלי ציטוטים.\n\n';
+// one WhatsApp line for the robot; our own lines (from the linked WhatsApp, lbv-wa) are marked so it knows the question
+const waLine = m => (m.mine ? 'הודעה מאיתנו' : 'הודעת וואטסאפ מ' + String(m.from || '').slice(0, 120)) + ' (' + String(m.at || '').slice(0, 40) + '):\n' + String(m.text || '').slice(0, 4000);
+const WA_CTX = 'אלה הודעות וואטסאפ עם המקום. הודעה שכתוב בה "מאיתנו" היא שלנו (השאלה), כל השאר מהמקום. אם השאלה שלנו לא מופיעה, לא מנחשים אותה. מסכמים רק עובדות ברורות (מחיר, זמינות, מה יש במקום ומה צריך להביא), כל עובדה במשפט שלם שמובן בלי השאלה (למשל: "בגשם אפשר את החופה בפנים"). תשובה שלא ברור על מה היא עונה, לא כותבים. בלי ציטוטים.\n\n';
 const WA_NO_DAYS = 14;   // a number that was read and is not a supplier: not read again for two weeks
 const K = {
   waNew: 'wa:new',                  // owner 25.11: last 9 digits → WhatsApp from a number in no card, not saved in the phone (until the robot decides)
@@ -362,8 +364,8 @@ function robotJobs(sv, hotels) {
     // owner 25.11: WhatsApp messages newer than the last reading of the WhatsApp → read (once more, at most 4 tries)
     const waRead = h.waReadAt || (h.log || []).filter(l => l.t === 'text' && l.src === 'wa').map(l => l.at).sort().pop() || '';
     const unread = (h.log || []).filter(l => l.t === 'wa' && String(l.at || '') > String(waRead) && !/^\s*[\u{1F4F7}\u{1F3A5}]/u.test(l.text || ''));
-    if (unread.length && !(h.parse || []).some(p => p.src === 'wa') && (h.waTry || 0) < 4)
-      parses.push({ surveyId: sv.id, hotelId: h.id, id: 'wacatch', name: h.name, src: 'wa', text: WA_CTX + unread.map(m => 'הודעת וואטסאפ מ' + (m.from || '') + ' (' + (m.at || '') + '):\n' + (m.text || '')).join('\n\n').slice(0, 20000) });
+    if (unread.some(m => !m.mine) && !(h.parse || []).some(p => p.src === 'wa') && (h.waTry || 0) < 4)
+      parses.push({ surveyId: sv.id, hotelId: h.id, id: 'wacatch', name: h.name, src: 'wa', text: WA_CTX + unread.map(waLine).join('\n\n').slice(0, 20000) });
     // WhatsApp: hotels added in the last 60 days, by number + hotel name + contact person
     if (Date.now() < t + 60 * 864e5) for (const ph of [h.phone, h.phone2]) { const d = digits(ph).slice(-9); if (d.length >= 8) wa.push({ phone: d, names: [h.name, h.contact].map(x => String(x || '').trim()).filter(x => x.length >= 3) }); }
     const em = String(h.email || '').trim().toLowerCase();
@@ -950,7 +952,7 @@ export default async function hotelsHandler(req, res) {
         const ok = u => /^https:\/\/[a-z0-9-]+\.public\.blob\.vercel-storage\.com\/hotels\/[^\s"'<>]+$/i.test(u) || /^media\/uploads\/[\w.\-]+$/.test(u);
         const add = (Array.isArray(body.add) ? body.add : []).map(x => String(x || '').slice(0, 500)).filter(ok);
         const rm = new Set((Array.isArray(body.remove) ? body.remove : []).map(x => String(x || '')));
-        old.myPhotos = [...(old.myPhotos || []).filter(u => !rm.has(u)), ...add].filter((u, i, a) => a.indexOf(u) === i).slice(0, 24);
+        old.myPhotos = [...(old.myPhotos || []).filter(u => !rm.has(u)), ...add].filter((u, i, a) => a.indexOf(u) === i).slice(0, 40);
         if (rm.size) old.photos = (old.photos || []).filter(u => !rm.has(u));
         if (add.length) old.log = [...(old.log || []), { t: 'note', at: now(), by: s.n, text: add.length === 1 ? 'נוספה תמונה' : `נוספו ${add.length} תמונות` }].slice(-80);
         old.updatedAt = now();
@@ -1418,7 +1420,7 @@ async function script(req, res, what, userId, b) {
       if (!cur || !to) return;
       if ((cur.log || []).some(l => l.t === 'call' && l.file?.id !== file.id)) return;   // it has other calls of its own: keep it
       to.log = [...(to.log || []), ...(cur.log || []), { t: 'note', at: now(), by: 'המערכת', text: 'השיחה נקראה מחדש. הכרטיס "' + (cur.name || '') + '" פוצל לפי המקומות שדיברו עליהם.' }].sort((a2, b2) => String(a2.at).localeCompare(String(b2.at))).slice(-80);
-      to.myPhotos = [...new Set([...(to.myPhotos || []), ...(cur.myPhotos || [])])].slice(0, 24);
+      to.myPhotos = [...new Set([...(to.myPhotos || []), ...(cur.myPhotos || [])])].slice(0, 40);
       if (!to.notes && cur.notes) to.notes = cur.notes;
       await setJ(key, to.id, to);
       await kv.hdel(key, old.id);
@@ -1541,21 +1543,62 @@ async function script(req, res, what, userId, b) {
   }
 
   // WhatsApp messages from a hotel (owner 19.11): kept in its history, and read for prices / rooms / hours like a pasted text
+  // owner 25.11, the linked WhatsApp (lbv-wa): the numbers that have a card. Only chats with these numbers are read into the system.
+  if (what === 'waknown') {
+    if (userId !== 'owner') return send(res, 403, { error: 'owner' });
+    const phones = new Set();
+    for (const sv of await allJ(K.surveys)) for (const h of await allJ(K.hotels(sv.id))) for (const x of [h.phone, h.phone2]) { const d = digits(x).slice(-9); if (d.length >= 8) phones.add(d); }
+    for (const f of await allJ('fn:all')) { const d = digits(f.phone).slice(-9); if (d.length >= 8) phones.add(d); }
+    return send(res, 200, { ok: true, phones: [...phones] });
+  }
+
+  // owner 25.11, the linked WhatsApp: a photo / video / voice note a place sent (already in Blob storage, hotels/wa-…).
+  // A photo joins the card's photos; a video or a voice note is kept in the history with a link to open it.
+  if (what === 'wamedia') {
+    if (userId !== 'owner') return send(res, 403, { error: 'owner' });
+    const d = digits(b.phone).slice(-9), kind = pick(b.kind, ['image', 'video', 'audio'], ''), url = str(b.url, 500);
+    if (d.length < 8 || !kind || !/^https:\/\/[a-z0-9-]+\.public\.blob\.vercel-storage\.com\/hotels\/wa-[\w.\-]+$/i.test(url)) return send(res, 400, { error: 'bad' });
+    const at = str(b.at, 40) || now(), sec = Math.round(Number(b.seconds) || 0), mmss = sec ? ` (${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')})` : '';
+    const label = kind === 'video' ? 'סרטון מהוואטסאפ' + mmss : 'הודעה קולית מהוואטסאפ' + mmss;
+    let filed = 0;
+    for (const sv of await allJ(K.surveys)) {
+      const key = K.hotels(sv.id);
+      for (const h of await allJ(key)) {
+        if (![h.phone, h.phone2].some(x => digits(x).slice(-9) === d)) continue;
+        if (kind === 'image') h.myPhotos = [...(h.myPhotos || []), url].filter((u, i, a) => a.indexOf(u) === i).slice(-40);
+        else if (!(h.log || []).some(l => l.waId && l.waId === str(b.id, 80))) h.log = [...(h.log || []), { t: 'note', at, by: 'וואטסאפ', text: label, waId: str(b.id, 80) || undefined, files: [{ name: kind === 'video' ? 'לצפייה בסרטון' : 'להאזנה', url }] }].slice(-80);
+        h.updatedAt = now();
+        await setJ(key, h.id, h); filed++;
+      }
+    }
+    for (const f of await allJ('fn:all')) {
+      if (digits(f.phone).slice(-9) !== d) continue;
+      f.waMedia = [...(f.waMedia || []), { kind, url, at, label }].slice(-30);
+      await setJ('fn:all', f.id, f); filed++;
+    }
+    return send(res, 200, { ok: true, filed });
+  }
+
   if (what === 'wa') {
     const items = (Array.isArray(b.items) ? b.items : []).slice(0, 100);
     const byPhone = {};
-    for (const it of items) { const d = digits(it.phone).slice(-9); if (d.length >= 8 && str(it.text, 4000).trim() && !waNotPlace(it.from, it.text)) (byPhone[d] = byPhone[d] || []).push(it); }
+    // it.mine (owner 25.11): our own message, from the linked WhatsApp (lbv-wa); it.link: came from there (no saved-contact name)
+    for (const it of items) { const d = digits(it.phone).slice(-9); if (d.length >= 8 && str(it.text, 4000).trim() && (it.mine === true || !waNotPlace(it.from, it.text)) && !WA_NOISE.test(str(it.text, 4000))) (byPhone[d] = byPhone[d] || []).push(it); }
     let filed = 0;
     for (const sv of (await allJ(K.surveys)).filter(x => mine(x, userId))) {
       const key = K.hotels(sv.id);
       for (const h of await allJ(key)) {
         const d = [h.phone, h.phone2].map(x => digits(x).slice(-9)).find(x => x.length >= 8 && byPhone[x]);
         if (!d) continue;
-        const had = new Set((h.log || []).filter(l => l.t === 'wa').map(l => waKey(l.from, l.text)));
-        const msgs = byPhone[d].filter(m => { const k = waKey(m.from, m.text); if (had.has(k)) return false; had.add(k); return true; });
+        // the phone and the linked WhatsApp may both bring the same message (with a different name): the same text is kept once
+        const had = new Set((h.log || []).filter(l => l.t === 'wa').flatMap(l => [waKey(l.from, l.text), waKey('', l.text)]));
+        const msgs = byPhone[d].filter(m => { const k = waKey('', m.text); if (had.has(k) || had.has(waKey(m.from, m.text))) return false; had.add(k); return true; });
         if (!msgs.length) continue;
-        h.log = [...(h.log || []), ...msgs.map(m => ({ t: 'wa', at: str(m.at, 40) || now(), from: str(m.from, 120), text: str(m.text, 4000) }))].slice(-80);
-        h.parse = [...(h.parse || []), { id: rid('p'), src: 'wa', at: now(), by: 'וואטסאפ', text: WA_CTX + msgs.map(m => 'הודעת וואטסאפ מ' + str(m.from, 120) + ' (' + str(m.at, 40) + '):\n' + str(m.text, 4000)).join('\n\n').slice(0, 20000) }].slice(-5);
+        // the WhatsApp lines are kept apart (the last 60), so a long chat never pushes the calls out of the history
+        const was = [...(h.log || []).filter(l => l.t === 'wa'), ...msgs.map(m => ({ t: 'wa', at: str(m.at, 40) || now(), from: m.mine === true ? 'אנחנו' : str(m.from, 120), text: str(m.text, 4000), ...(m.mine === true ? { mine: true } : {}) }))].sort((x, y) => String(x.at || '').localeCompare(String(y.at || ''))).slice(-60);
+        h.log = [...(h.log || []).filter(l => l.t !== 'wa'), ...was];
+        // read only when the place wrote something; our recent lines go with it, so the robot knows what was asked
+        if (msgs.some(m => m.mine !== true)) h.parse = [...(h.parse || []), { id: rid('p'), src: 'wa', at: now(), by: 'וואטסאפ', text: WA_CTX + was.slice(-30).map(waLine).join('\n\n').slice(0, 20000) }].slice(-5);
         h.updatedAt = now();
         await setJ(key, h.id, h);
         filed++;
@@ -1567,7 +1610,12 @@ async function script(req, res, what, userId, b) {
       const d = digits(f.phone).slice(-9);
       if (d.length >= 8) known.add(d);
       if (d.length < 8 || !byPhone[d]) continue;
-      f.waNew = [...(f.waNew || []), ...byPhone[d].map(m => ({ at: str(m.at, 40) || now(), from: str(m.from, 120), text: str(m.text, 4000) }))].slice(-20);
+      // each message once, even when it comes again (from the phone and the linked WhatsApp, or the linked WhatsApp's history)
+      const seen = new Set(f.waSeen || []);
+      const add = byPhone[d].filter(m => { const k = sha(waKey('', m.text) + '|' + String(m.at || '').slice(0, 16)).slice(0, 16), k2 = sha(waKey('', m.text)).slice(0, 16); if (seen.has(k) || (m.link && seen.has(k2))) return false; seen.add(k); seen.add(k2); return true; });
+      if (!add.length) continue;
+      f.waSeen = [...seen].slice(-300);
+      f.waNew = [...(f.waNew || []), ...add.map(m => ({ at: str(m.at, 40) || now(), from: m.mine === true ? 'אנחנו (השאלה שלנו)' : str(m.from, 120), text: str(m.text, 4000) }))].slice(-20);
       await setJ('fn:all', f.id, f); filed++;
     }
     let aside = 0;

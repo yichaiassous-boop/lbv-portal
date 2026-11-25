@@ -621,3 +621,31 @@ mark { background: #FCE7A8; color: inherit; padding: 0 2px; border-radius: 3px; 
 .hs-exp .hs-chips { margin-top: 10px; flex-wrap: wrap; }
 .hs-exp__foot { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
 @media (max-width: 560px) { .hs-exp__foot .btn { flex: 1 1 100%; } }
+
+/* owner 25.11: "הוואטסאפ שלי" (admin/walink.js) */
+.wl-link, .wl-new, .wl-camp { margin-bottom: 16px; }
+.wl-link__head { display: flex; align-items: center; gap: 10px; }
+.wl-link__head h2 { margin: 0; }
+.wl-dot { width: 12px; height: 12px; border-radius: 50%; background: #B8C0CC; flex: none; }
+.wl-link--open .wl-dot { background: #2E9E5B; box-shadow: 0 0 0 4px rgba(46,158,91,.15); }
+.wl-link--qr .wl-dot, .wl-link--starting .wl-dot, .wl-link--reconnecting .wl-dot { background: var(--gold); }
+.wl-link--down .wl-dot, .wl-link--error .wl-dot, .wl-link--off .wl-dot { background: #C8473D; }
+.wl-qr { display: block; width: min(280px, 100%); height: auto; margin: 6px 0 14px; border-radius: 12px; border: 1px solid var(--line); background: #fff; padding: 8px; }
+.wl-me { margin: 0 0 6px; }
+.wl-tip { margin-top: -8px; }
+.wl-count { margin: -4px 0 12px; }
+.wl-count ol, .wl-items { max-height: 260px; overflow: auto; margin: 8px 0; padding-inline-start: 22px; line-height: 1.8; }
+.wl-preview { margin: 0 0 14px; padding: 12px 14px; border-radius: 10px; background: #F1F8EE; border: 1px solid #D7E9CF; }
+.wl-preview p { margin: 6px 0 0; white-space: pre-wrap; }
+.wl-risk { margin-bottom: 14px; }
+.wl-camp__head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.wl-camp__head h3 { margin: 0; }
+.wl-pill { font-size: .8rem; font-weight: 700; padding: 3px 10px; border-radius: 99px; background: #EEF1F5; color: var(--ink-2); white-space: nowrap; }
+.wl-camp--run .wl-pill { background: #E6F4EC; color: #1F7A45; }
+.wl-camp--pause .wl-pill { background: #FBF1DC; color: #8A6212; }
+.wl-bar { height: 8px; border-radius: 99px; background: #EEF1F5; overflow: hidden; margin: 0 0 12px; }
+.wl-bar i { display: block; height: 100%; background: var(--gold); }
+.wl-text { white-space: pre-wrap; padding: 10px 12px; background: #FAF7F0; border-radius: 10px; }
+.wl-items small { color: var(--ink-2); }
+.wl-i--ok small { color: #1F7A45; }
+.wl-i--fail small, .wl-i--nowa small, .wl-i--bad small { color: #B0392F; }
