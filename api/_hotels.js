@@ -628,7 +628,7 @@ function onDate(x, pref, svFrom, svTo) {
   const other = Object.keys(said).filter(d => d !== pref && said[d] === 'free').sort();
   return { st: st === 'said' ? '' : st, other };
 }
-const PREF_HE = { free: 'פנוי', maybe: 'בספק', taken: 'תפוס', '': 'לא ידוע' };
+const PREF_HE = { free: 'פנוי', maybe: 'בספק', taken: 'תפוס', '': 'עוד לא ענו' };
 export { datesSaid, onDate };
 /** owner 24.11: the sheet is short and clear: one row per place. The places free on the preferred date first (cheapest first),
  *  then the ones free only on another date (those dates in a column on the side), then unknown, then taken. */
@@ -687,7 +687,7 @@ export function tableRows(sv, hotels, pref, origin) {
   const sym = c => ({ ILS: '₪', USD: '$', EUR: '€' }[c] || (c ? ' ' + c : '₪'));
   const rows = list.map(h => [
     h.name || '', (p => p ? `=HYPERLINK("${q(p.link)}","${p.k === 1 ? 'לפתוח את התמונה' : 'לפתוח ' + p.k + ' תמונות'}")` : '')(photosLink(h, origin, sv)), (v => v.length ? `=HYPERLINK("${q(v[v.length - 1])}","${v.length === 1 ? 'לצפייה בסרטון' : 'סרטון (יש ' + v.length + ')'}")` : '')(vids(h)), site(h) ? `=HYPERLINK("${q(site(h))}","לאתר")` : '',
-    h.city || '', (o => o.st === 'free' || o.st === 'maybe' || !o.other.length ? (pref ? PREF_HE[o.st] : AV_HE[h.avail] || 'לא ידוע') : (o.st === 'taken' || h.avail === 'full' ? 'תפוס, ' : '') + 'פנוי בתאריך אחר')(info.get(h)), info.get(h).other.map(dmy).join(', '),
+    h.city || '', (o => o.st === 'free' || o.st === 'maybe' || !o.other.length ? (pref ? PREF_HE[o.st] : AV_HE[h.avail] || 'עוד לא ענו') : (o.st === 'taken' || h.avail === 'full' ? 'תפוס, ' : '') + 'פנוי בתאריך אחר')(info.get(h)), info.get(h).other.map(dmy).join(', '),
     ...(b => [b?.guests || '', b?.plate || (minPrice(h) != null ? 'מ-' + Number(minPrice(h)).toLocaleString('he-IL') + ' ₪' : ''), b?.hall || '',
       b ? (b.extras || []).join('\n') : [h.availText, h.rooms ? 'חדרים: ' + h.rooms : ''].map(t => String(t || '').replace(/\s+/g, ' ').trim()).filter(Boolean).join('\n')])(briefOf(h)),
     asText([h.contact, [h.phone, h.phone2].filter(Boolean).join(' / ')].filter(Boolean).join(' · '))]);

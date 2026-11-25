@@ -1328,7 +1328,7 @@ function onDate(x, pref, svFrom, svTo) {
   const other = Object.keys(said).filter(d => d !== pref && said[d] === 'free').sort();
   return { st: st === 'said' ? '' : st, other };
 }
-const PREF_HE = { free: 'פנוי', maybe: 'בספק', taken: 'תפוס', '': 'לא ידוע' };
+const PREF_HE = { free: 'פנוי', maybe: 'בספק', taken: 'תפוס', '': 'עוד לא ענו' };
 /** owner 25.11: a place that is not free (or not known) on the card's date but said another date is free shows "פנוי בתאריך אחר", not "לא ידוע". */
 function avOf(x, sv) {
   const base = AV[x.avail] || AV.unknown;
