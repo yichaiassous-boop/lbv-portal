@@ -395,6 +395,51 @@ mark { background: #FCE7A8; color: inherit; padding: 0 2px; border-radius: 3px; 
 .sm-h__prices { margin: 6px 0 0; padding: 0; list-style: none; font-size: .88rem; color: var(--ink-2); display: grid; gap: 2px; }
 .ev--wa details summary { cursor: pointer; color: var(--ink-2); margin-top: 4px; }
 .ev--wa details .ev__wa { margin: 8px 0 0; }
+/* owner 25.11: the client's form (admin/intake.js) */
+.in-row { display: grid; gap: 0 12px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); align-items: end; }
+.in-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.in-made { margin-top: 16px; padding: 14px; border-radius: 12px; background: #FBF6EA; border: 1px solid #EAD9B0; display: grid; gap: 8px; }
+.in-made p { margin: 0; }
+.in-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.in-item { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+.in-item.is-new { border-color: var(--gold); box-shadow: 0 0 0 2px rgba(227,182,92,.25); }
+.in-item__main { flex: 1 1 220px; display: grid; min-width: 0; }
+.in-item__main small { color: var(--ink-2); }
+.in-item:not(.is-done) .in-item__main small { color: var(--ink-3); }
+.in-item__btns { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.in-badge { padding: 2px 10px; border-radius: 99px; background: var(--night); color: #F7E6C0; font-size: .78rem; font-weight: 800; }
+.in-del { border: 0; background: none; color: var(--ink-3); font: inherit; font-size: .85rem; cursor: pointer; text-decoration: underline; min-height: 36px; padding: 0 6px; }
+.in-q { margin: 12px 0 6px; font-weight: 700; color: var(--ink-2); font-size: .9rem; }
+.in-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.in-chips--end { align-self: end; margin-bottom: 12px; }
+.in-chip { position: relative; }
+.in-chip input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+.in-chip span { display: inline-flex; align-items: center; min-height: 38px; padding: 0 14px; border-radius: 99px; border: 1px solid var(--line); background: #fff; color: var(--ink); font-weight: 700; font-size: .88rem; cursor: pointer; }
+.in-chip input:checked + span { background: var(--night); border-color: var(--night); color: #fff; }
+.in-chip input:focus-visible + span { outline: 3px solid var(--gold); outline-offset: 2px; }
+.in-more { margin-top: 10px; }
+.in-back { border: 0; background: none; color: var(--ink-2); font: inherit; font-weight: 700; cursor: pointer; padding: 6px 0 12px; }
+.in-back::before { content: "→ "; }
+.in-view { display: grid; gap: 16px; }
+.in-dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 0 0 14px; }
+.in-dl div { padding: 10px 12px; border-radius: 10px; background: var(--bg); }
+.in-dl__wide { grid-column: 1 / -1; }
+.in-dl dt { font-size: .8rem; color: var(--ink-3); font-weight: 700; }
+.in-dl dd { margin: 2px 0 0; font-weight: 700; color: var(--ink); white-space: pre-line; }
+.in-rows { display: grid; gap: 8px; }
+.in-place { display: flex; gap: 12px; align-items: flex-start; padding: 10px; border: 1px solid var(--line); border-radius: 12px; cursor: pointer; background: #fff; }
+.in-place.is-info { cursor: default; }
+.in-place input { width: 20px; height: 20px; margin-top: 4px; accent-color: var(--night); flex: none; }
+.in-place img, .in-ph { width: 76px; height: 58px; border-radius: 8px; object-fit: cover; flex: none; background: var(--bg); display: block; }
+.in-place__t { display: grid; gap: 2px; min-width: 0; }
+.in-place__t small { color: var(--ink-2); }
+.in-about { color: var(--ink-3) !important; }
+.in-why { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+.in-why em { font-style: normal; font-size: .76rem; font-weight: 700; padding: 1px 8px; border-radius: 99px; background: #E9F3EC; color: #1F6B3A; }
+.in-why em.is-bad { background: #F8EAE8; color: #A3322A; }
+.in-addbar { position: sticky; bottom: 12px; display: flex; justify-content: center; }
+.in-addbar .btn { box-shadow: 0 10px 30px rgba(22,32,58,.25); }
+@media (max-width: 560px) { .in-place img, .in-ph { width: 60px; height: 48px; } }
 .sm-h--click { cursor: pointer; transition: box-shadow .15s; }
 .sm-h--click:hover { box-shadow: 0 4px 16px rgba(22, 32, 58, .12); }
 .sm-pick { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }

@@ -13,6 +13,7 @@ import { QUOTE_DEFAULTS } from "../quote/defaults.js";
 import { hotelsPage, showHotel } from "./hotels.js";
 import { callsPage, catalogPage, netsPage, funPage } from "./smart.js";
 import { ilanPage } from "./ilan.js";
+import { intakePage } from "./intake.js";
 import { artistsPage } from "./artists.js";
 import { twinPage } from "./twin.js";
 import { eventsPage, remotePage, appHome, appSite, appHolidays } from "./events.js";
@@ -332,6 +333,7 @@ const GROUPS = () => [
     { id: 'artists', title: 'אמנים', sub: 'האמנים שאנחנו מייצגים: לוח שנה בצבע של כל אחד, הלקוחות, הרשתות והשיחות עליו' },
     { id: 'fun', title: 'מאגר האטרקציות', sub: 'כל אטרקציה לימי כיף, פעם אחת: מה, איפה, לכמה אנשים, כמה עולה ולמי מתקשרים' },
     { id: 'remote', title: 'השלט של המסכים', sub: 'שליטה מהטלפון במסך של האירוע' }] },
+  { id: 'clients', name: 'כלים ללקוחות', pages: [{ id: 'intake', title: 'טופס ללקוח', sub: 'שולחים ללקוח קישור (או ממלאים בשיחה): איזה אירוע, מתי, כמה אורחים, איפה ובאיזה תקציב. כרטיס האירוע נפתח לבד, ורואים מה מתאים מהמאגר' }] },
   { id: 'hotels', name: 'מלונות ואולמות', pages: [{ id: 'hotels', title: 'בדיקת מלונות ואולמות', sub: 'מתקשרים למלונות ולאולמות, והמערכת ממלאת לבד מהשיחות: פרטים, זמינות, מחירים, מיילים וסיכום' },
     { zone: 'smart', id: 'venues', title: 'מאגר האולמות', sub: 'כל אולם וגן אירועים שדיברנו איתו, פעם אחת: חיפוש לפי אזור ומחיר, והאפשרויות הכי טובות קודם' },
     { zone: 'smart', id: 'catalog', title: 'מאגר המלונות', sub: 'כל מלון שדיברנו איתו, פעם אחת: חיפוש לפי אזור ומחיר, והאפשרויות הכי טובות קודם' }] },
@@ -368,6 +370,7 @@ function pageAllowed(id) {
   if (id === 'calls') return !!me && (me.role === 'owner' || me.id === 'cad5d8ff-c32d-4df9-918e-38cfd1d315d8');   // owner 22.11: includes the calls with Ilan → like the Ilan tab   // each sees only their own surveys and those shared with them
   if (id === 'ilan') return !!me && (me.role === 'owner' || me.id === 'cad5d8ff-c32d-4df9-918e-38cfd1d315d8');   // only the owner and מעיין (owner 19.11: Ilan must never see it, not even for a moment)
   if (id === 'remote') return has('remote');
+  if (id === 'intake') return !!me && (me.role === 'owner' || (me.areas || []).includes('intake'));   // owner 25.11: only who the owner gave it (now: owner + מעיין)
   if (['guide', 'support', 'stats', 'account'].includes(id)) return true;
   return canDo('content') && has('site');
 }
@@ -375,6 +378,7 @@ function pageAllowed(id) {
 function appTiles() {
   const open = leads.filter(l => !l.handled).length;
   return [
+    { zone: 'work', id: 'intake', title: 'טופס ללקוח', sub: 'קישור ללקוח, ומה מתאים לו', icon: 'M9 3h6a1 1 0 0 1 1 1v1h2a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h2V4a1 1 0 0 1 1-1zM9 11h6M9 15h4' },
     { zone: 'work', id: 'events', title: 'לוח אירועים', sub: 'מה, מתי ואיפה', icon: ICON.events },
     { zone: 'work', id: 'artists', title: 'אמנים', sub: 'אהרון מאיר והאמנים שלנו', icon: ICON.artists },
     { zone: 'smart', id: 'hotels', title: 'בדיקת מלונות ואולמות', sub: 'שיחות, מחירים, זמינות', icon: ICON.hotels },
@@ -459,6 +463,7 @@ function render() {
     return appHolidays(pg, actx, state.trips || [], asks);
   }
   if (page === 'appsite') return appSite(pg, actx, allPages().filter(p => p.group === 'site' || p.group === 'people' || ['contact', 'banners'].includes(p.id)));
+  if (page === 'intake') return intakePage(pg, { toast, showLogin, go, rerender: () => page === 'intake' && render(), openCard: id => { showHotel(id, null); go('hotels'); } });
   if (page === 'ilan') return ilanPage(pg, { toast, showLogin, rerender: () => page === 'ilan' && render() });
   if (page === 'venues') return catalogPage(pg, { venues: true, toast, showLogin, rerender: () => page === 'venues' && render(), openHotel: s => { if (!s) return; showHotel(s.surveyId, s.hotelId); go('hotels'); } });   // owner 24.11: the halls catalog
   if (page === 'catalog') return catalogPage(pg, { toast, showLogin, rerender: () => page === 'catalog' && render(), openHotel: s => { if (!s) return; showHotel(s.surveyId, s.hotelId); go('hotels'); } });
@@ -1306,7 +1311,7 @@ const ROLE = {
 };
 const CAN = { content: ['owner', 'admin', 'editor'], leads: ['owner', 'admin', 'sales'], mail: ['owner', 'admin', 'sales'], users: ['owner'] };
 const canDo = perm => CAN[perm].includes(me?.role || 'owner');
-const AREA_NAME = { events: 'לוח אירועים', hotels: 'בדיקת מלונות ואולמות', remote: 'השלט', simha: 'שמחה', gala: 'ערבי גאלה', booking: 'הרשמה לחגים', site: 'עריכת האתר', leads: 'פניות והצעות מחיר', nets: 'הרשתות (מספרים)' };
+const AREA_NAME = { events: 'לוח אירועים', hotels: 'בדיקת מלונות ואולמות', remote: 'השלט', simha: 'שמחה', gala: 'ערבי גאלה', booking: 'הרשמה לחגים', site: 'עריכת האתר', leads: 'פניות והצעות מחיר', nets: 'הרשתות (מספרים)', intake: 'טופס ללקוח', offers: 'הצעת מחיר מהמאגר', dayfile: 'תיק יום האירוע ותשלומים', wasend: 'תזמון הודעות וואטסאפ' };
 async function users(pg) {
   const c = card('מנהלים והרשאות', 'כל מנהל נכנס עם שם משתמש וסיסמה משלו, ורואה רק את מה שמותר לו');
   c.append(html(`<div class="roles">${Object.entries(ROLE).map(([k, [n, d]]) => `<div><b>${n}</b>${d}</div>`).join('')}</div>`));

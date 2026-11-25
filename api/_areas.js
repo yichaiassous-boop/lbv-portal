@@ -4,10 +4,13 @@
 // A manager with nothing saved gets the defaults of their role (what they had before this existed).
 import { hotelsReady, getJ, setJ } from './_hotels.js';
 
-export const AREAS = ['events', 'hotels', 'remote', 'simha', 'gala', 'booking', 'site', 'leads', 'nets'];   // nets = the social networks' numbers (owner 22.11)
+export const AREAS = ['events', 'hotels', 'remote', 'simha', 'gala', 'booking', 'site', 'leads', 'nets', 'intake', 'offers', 'dayfile', 'wasend'];
+// owner 25.11: the client tools (form, quote from our catalog, event-day file + payments, WhatsApp scheduling).
+// Nobody has them by default: the owner gives each one by hand (for now only the owner and מעיין).
+export const TOOLS = ['intake', 'offers', 'dayfile', 'wasend'];   // nets = the social networks' numbers (owner 22.11)
 /** Areas that also need the role to allow them (site = content of the site, leads = inquiries and mail). */
 const NEED = { site: ['owner', 'admin', 'editor'], leads: ['owner', 'admin', 'sales'] };
-const DEFAULT = { admin: AREAS.filter(a => a !== 'nets'), editor: ['events', 'hotels', 'site'], sales: ['events', 'hotels', 'leads'] };
+const DEFAULT = { admin: AREAS.filter(a => a !== 'nets' && !TOOLS.includes(a)), editor: ['events', 'hotels', 'site'], sales: ['events', 'hotels', 'leads'] };
 const KEY = 'app:areas';
 
 export const roleCan = (role, a) => AREAS.includes(a) && (!NEED[a] || NEED[a].includes(role));

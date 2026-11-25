@@ -1,0 +1,53 @@
+/* The client's form (owner 25.11): one sheet of paper with the logo, on the night-blue of the quotes. */
+:root {
+  --night: #0B1430; --desk: #0A1022; --gold: #D4AF6A; --gold-2: #F7E6C0; --gold-d: #8A6A32; --gold-t: #A98035;
+  --ink: #16203A; --ink-2: #4A5675; --ink-3: #7A86A2; --line: #E6E1D6; --paper: #FFFFFF; --wash: #FBF8F1; --err: #A3322A;
+  --display: 'Frank Ruhl Libre', Georgia, serif; --body: 'Assistant', system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100%; background: radial-gradient(ellipse at 50% 0%, #1B2A5C, var(--desk) 62%) fixed; color: var(--ink); font: 16px/1.6 var(--body); }
+bdi { unicode-bidi: isolate; }
+.wait, .gone { padding: 120px 24px; text-align: center; color: #C7D3E4; }
+
+.sheet { width: min(680px, 100% - 32px); margin: 28px auto 48px; background: var(--paper); border-radius: 6px; box-shadow: 0 40px 80px -40px rgba(0,0,0,.85), 0 0 0 1px rgba(214,165,77,.25); overflow: hidden; }
+.top { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 28px 14px; }
+.top::after { content: ""; position: absolute; inset-inline: 28px; bottom: 0; height: 2px; background: linear-gradient(90deg, #b38b45, #d4af6a 50%, #b38b45); }
+.top img { height: 76px; width: auto; }
+.lang { display: flex; gap: 4px; }
+.lang button { min-width: 44px; min-height: 36px; border: 1px solid var(--line); background: #fff; border-radius: 999px; font: 700 .85rem var(--body); color: var(--ink-2); cursor: pointer; }
+.lang button[aria-pressed="true"] { border-color: var(--gold); color: var(--gold-d); background: var(--wash); }
+
+.intro { padding: 26px 28px 6px; }
+.intro h1 { margin: 0 0 6px; font: 700 clamp(1.6rem, 5vw, 2.1rem)/1.2 var(--display); color: var(--ink); }
+.intro p { margin: 0; color: var(--ink-2); max-width: 52ch; }
+
+form { padding: 8px 28px 30px; }
+fieldset { border: 0; margin: 0; padding: 20px 0 6px; border-bottom: 1px solid var(--line); }
+fieldset:last-of-type { border-bottom: 0; }
+legend { padding: 0; margin-bottom: 10px; font: 700 1.15rem var(--display); color: var(--ink); }
+legend small { font: 400 .85rem var(--body); color: var(--ink-3); margin-inline-start: 6px; }
+.row { display: grid; gap: 12px; grid-template-columns: 1fr 1fr; }
+@media (max-width: 520px) { .row { grid-template-columns: 1fr; } .top { padding: 14px 16px 12px; } .top::after { inset-inline: 16px; } .intro, form { padding-inline: 16px; } }
+label.f { display: grid; gap: 4px; font-weight: 600; color: var(--ink-2); font-size: .92rem; }
+input[type=text], input[type=tel], input[type=email], input[type=number], input[type=date], textarea {
+  width: 100%; min-height: 46px; padding: 10px 12px; border: 1px solid #D9D3C4; border-radius: 4px; background: #fff; color: var(--ink); font: 400 1rem var(--body); }
+textarea { min-height: 96px; resize: vertical; }
+input:focus-visible, textarea:focus-visible, .chip input:focus-visible + span, button:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { position: relative; }
+.chip input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+.chip span { display: inline-flex; align-items: center; min-height: 42px; padding: 0 16px; border: 1px solid #D9D3C4; border-radius: 999px; background: #fff; color: var(--ink); font-weight: 600; cursor: pointer; transition: background .15s, border-color .15s; }
+.chip input:checked + span { background: var(--ink); border-color: var(--ink); color: var(--gold-2); }
+.check { display: flex; align-items: center; gap: 8px; margin-top: 10px; color: var(--ink-2); font-size: .95rem; cursor: pointer; }
+.check input { width: 20px; height: 20px; accent-color: var(--gold-d); }
+.more { margin-top: 10px; }
+.err { color: var(--err); font-weight: 700; margin: 14px 0 0; }
+.send { display: block; width: 100%; min-height: 52px; margin-top: 22px; border: 0; border-radius: 999px; cursor: pointer; font: 800 1.08rem var(--body); color: #1d1405; background: linear-gradient(180deg, #f7e6c0, #d4af6a 55%, #b38b45); }
+.send:disabled { opacity: .6; cursor: default; }
+.note { margin: 12px 0 0; text-align: center; color: var(--ink-3); font-size: .85rem; }
+
+.thanks { padding: 46px 28px 52px; text-align: center; }
+.thanks h1 { margin: 0 0 10px; font: 700 2rem var(--display); }
+.thanks p { margin: 0 auto; max-width: 44ch; color: var(--ink-2); }
+.thanks .seal { width: 64px; height: 64px; margin: 0 auto 18px; border-radius: 50%; display: grid; place-items: center; background: var(--ink); color: var(--gold-2); }
+@media (prefers-reduced-motion: no-preference) { .thanks .seal { animation: pop .5s ease-out; } @keyframes pop { from { transform: scale(.6); opacity: 0; } to { transform: none; opacity: 1; } } }
