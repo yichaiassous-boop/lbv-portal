@@ -1372,7 +1372,7 @@ function downloadCsv(sv, hotels, pref) {
   // owner 24.11: short and clear, the same columns as the Google sheet; the preferred date first, other dates on the side
   pref = pref || sv.from || '';
   // owner 25.11 (2): the sheet for Ilan: guests, price per plate, hall rental, what is included and the conditions (no call stories, no status)
-  const head = ['מקום', 'תמונה', 'כל התמונות', 'אתר', 'עיר', pref ? 'ב-' + dmy(pref) : 'זמינות', 'תאריכים חלופיים', 'כמה אורחים', 'מחיר מנה', 'השכרת אולם', 'מה כלול ומה חשוב', 'איש קשר וטלפון'];
+  const head = ['מקום', 'כל התמונות', 'אתר', 'עיר', pref ? 'ב-' + dmy(pref) : 'זמינות', 'תאריכים חלופיים', 'כמה אורחים', 'מחיר מנה', 'השכרת אולם', 'מה כלול ומה חשוב', 'איש קשר וטלפון'];
   // owner 25.11: the photos he chose in the card (or the system's), and a short link to the photo page on the site
   const own = x => [...(x.myPhotos || []), ...(x.photos || [])];
   const picsOf = x => { const ch = (x.sheetPics || []).filter(u => own(x).includes(u)); return [...new Set((ch.length ? ch : own(x)).map(u => /^media\/uploads\//.test(u || '') ? location.origin + '/' + u : safeUrl(u)).filter(u => /^https:\/\//.test(u || '')))]; };
@@ -1381,7 +1381,7 @@ function downloadCsv(sv, hotels, pref) {
   const info = new Map(hotels.map(x => [x, onDate(x, pref, sv.from || '', sv.to || '')]));
   const rank = x => { const o = info.get(x); return x.status === 'no' ? 9 : o.st === 'free' ? 0 : o.st === 'maybe' ? 1 : o.other.length ? 2 : o.st === '' ? 3 : 4; };
   const list = [...hotels].sort((a, b) => rank(a) - rank(b) || (a.min ?? 1e12) - (b.min ?? 1e12));
-  const rows = list.map(x => [x.name, firstPic(x), pic(x), safeUrl(x.website) || '', x.city, avOf(x, { from: pref, to: pref })[0], info.get(x).other.map(dmy).join(', '),
+  const rows = list.map(x => [x.name, pic(x), safeUrl(x.website) || '', x.city, avOf(x, { from: pref, to: pref })[0], info.get(x).other.map(dmy).join(', '),
     x.brief?.guests || '', x.brief?.plate || (x.min != null ? 'מ-' + money(x.min, 'ILS') : ''), x.brief?.hall || '',
     x.brief ? (x.brief.extras || []).join('\n') : [x.availText, x.rooms ? 'חדרים: ' + x.rooms : ''].map(t => String(t || '').replace(/\s+/g, ' ').trim()).filter(Boolean).join('\n'),
     [x.contact, [x.phone, x.phone2].filter(Boolean).join(' / ')].filter(Boolean).join(' · ')]);
