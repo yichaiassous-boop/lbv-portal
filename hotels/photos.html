@@ -88,13 +88,15 @@
     const im = document.createElement('img'); im.alt = alt(i); im.decoding = 'async'; im.draggable = false;
     s.append(im); k.append(s); return s;
   });
-  const load = i => { const im = slides[i] && slides[i].firstChild; if (im && !im.src) im.src = pics[i]; };
+  const small = (u, w) => '/_vercel/image?url=' + encodeURIComponent(u) + '&w=' + w + '&q=75';
+  const load = i => { const im = slides[i] && slides[i].firstChild; if (im && !im.src) { im.onerror = () => { if (!im.dataset.full) { im.dataset.full = 1; im.src = pics[i]; } }; im.src = small(pics[i], 1080); } };
 
   pics.forEach((u, i) => {
     const b = document.createElement('button'); b.type = 'button'; b.className = 'tile'; b.setAttribute('aria-label', 'לפתוח את ' + alt(i));
-    const im = document.createElement('img'); im.src = u; im.loading = i < 12 ? 'eager' : 'lazy'; im.decoding = 'async'; im.alt = alt(i);
+    // a small copy for the square (fast on the phone); if the small copy fails, the photo itself
+    const im = document.createElement('img'); im.src = small(u, 384); im.loading = i < 12 ? 'eager' : 'lazy'; im.decoding = 'async'; im.alt = alt(i);
     im.onload = () => im.classList.add('in');
-    im.onerror = () => { b.classList.add('bad'); slides[i].style.display = 'none'; };
+    im.onerror = () => { if (im.src !== u && !im.dataset.full) { im.dataset.full = 1; im.src = u; return; } b.classList.add('bad'); slides[i].style.display = 'none'; };
     b.append(im); b.onclick = () => open(i); g.append(b);
   });
 

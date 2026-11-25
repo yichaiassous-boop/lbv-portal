@@ -1,18 +1,70 @@
 {
   "rewrites": [
-    { "source": "/api/hotels", "destination": "/api/quotes?_h=1" },
-    { "source": "/api/events", "destination": "/api/quotes?_e=1" },
-    { "source": "/api/artists", "destination": "/api/quotes?_a=1" },
-    { "source": "/api/nets", "destination": "/api/quotes?_n=1" },
-    { "source": "/api/fun", "destination": "/api/quotes?_f=1" },
-    { "source": "/api/twin", "destination": "/api/quotes?_t=1" },
-    { "source": "/api/intake", "destination": "/api/quotes?_i=1" },
-    { "source": "/api/walink", "destination": "/api/quotes?_w=1" }
+    {
+      "source": "/api/hotels",
+      "destination": "/api/quotes?_h=1"
+    },
+    {
+      "source": "/api/events",
+      "destination": "/api/quotes?_e=1"
+    },
+    {
+      "source": "/api/artists",
+      "destination": "/api/quotes?_a=1"
+    },
+    {
+      "source": "/api/nets",
+      "destination": "/api/quotes?_n=1"
+    },
+    {
+      "source": "/api/fun",
+      "destination": "/api/quotes?_f=1"
+    },
+    {
+      "source": "/api/twin",
+      "destination": "/api/quotes?_t=1"
+    },
+    {
+      "source": "/api/intake",
+      "destination": "/api/quotes?_i=1"
+    },
+    {
+      "source": "/api/walink",
+      "destination": "/api/quotes?_w=1"
+    }
   ],
   "headers": [
-    { "source": "/app/(.*)\\.apk", "headers": [
-      { "key": "Content-Type", "value": "application/vnd.android.package-archive" },
-      { "key": "Cache-Control", "value": "no-cache" }
-    ] }
-  ]
+    {
+      "source": "/app/(.*)\\.apk",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/vnd.android.package-archive"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "no-cache"
+        }
+      ]
+    }
+  ],
+  "images": {
+    "sizes": [
+      256,
+      384,
+      640,
+      1080,
+      1920
+    ],
+    "remotePatterns": [
+      {
+        "protocol": "https",
+        "hostname": "**"
+      }
+    ],
+    "minimumCacheTTL": 86400,
+    "formats": [
+      "image/webp"
+    ]
+  }
 }
