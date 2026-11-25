@@ -587,7 +587,8 @@ export function tableRows(sv, hotels, pref) {
     h.city || '', pref ? PREF_HE[info.get(h).st] : AV_HE[h.avail] || 'לא ידוע', info.get(h).other.map(dmy).join(', '), minPrice(h) ?? '',
     (h.prices || []).filter(p => p.price > 0).map(p => ([p.level, p.board].filter(Boolean).join(', ') || 'מחיר') + ': ' + Number(p.price).toLocaleString('he-IL') + ' ' + sym(p.currency).trim() + (p.per ? ' ' + p.per : '') + (p.note ? ' (' + p.note + ')' : '')).join('\n'),
     // owner 25.11: everything important that was said (availability, rooms, what is included, extras), not only availability
-    (() => { const parts = [h.availText, h.rooms ? 'חדרים: ' + h.rooms : '', h.summary].map(t => String(t || '').replace(/\s+/g, ' ').trim()).filter(Boolean);
+    (() => { const open = h.followWhat ? 'מה שנשאר פתוח: ' + h.followWhat + (h.followUp ? ' (' + dmy(h.followUp) + ')' : '') : '';
+      const parts = [h.availText, h.rooms ? 'חדרים: ' + h.rooms : '', open, h.summary].map(t => String(t || '').replace(/\s+/g, ' ').trim()).filter(Boolean);
       return parts.filter((t, i) => !parts.some((o, j) => j !== i && o.length > t.length && o.includes(t))).join('\n').slice(0, 1200); })(),
     asText([h.contact, [h.phone, h.phone2].filter(Boolean).join(' / ')].filter(Boolean).join(' · ')),
     ST_HE[h.status] || '']);
@@ -1023,7 +1024,10 @@ export default async function hotelsHandler(req, res) {
       if (op === 'note') {
         const text = str(body.text, 2000);
         if (!text) return send(res, 400, { error: 'empty' });
-        old.log = [...(old.log || []), { t: 'note', at: now(), by: s.n, text }].slice(-80);
+        // owner 25.11: a note can carry the place's video (uploaded to our storage under hotels/)
+        const files = (Array.isArray(body.files) ? body.files : []).slice(0, 4).map(f => ({ name: str(f?.name, 80) || 'קובץ', url: str(f?.url, 500) }))
+          .filter(f => /^https:\/\/[a-z0-9-]+\.public\.blob\.vercel-storage\.com\/hotels\/[^\s"'<>]+$/i.test(f.url) || /^media\/uploads\/[\w.\-]+$/.test(f.url));
+        old.log = [...(old.log || []), { t: 'note', at: now(), by: s.n, text, ...(files.length ? { files } : {}) }].slice(-80);
         await setJ(key, old.id, old);
         return send(res, 200, { ...old, min: minPrice(old) });
       }

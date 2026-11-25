@@ -17,7 +17,8 @@ export default async function handler(req, res) {
         const s = isAuthed(req);
         // hotel photos (owner 19.11): anyone who works on hotels, images only, 25 MB
         if (String(pathname || '').startsWith('hotels/') && s && await hasArea(s, 'hotels')) {
-          return { allowedContentTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/heic'], maximumSizeInBytes: 25 * 1024 * 1024, addRandomSuffix: true };
+          // owner 25.11: a place's video too (from WhatsApp / the phone), up to 100 MB
+          return { allowedContentTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'video/mp4', 'video/quicktime'], maximumSizeInBytes: 100 * 1024 * 1024, addRandomSuffix: true };
         }
         // the twin (owner 24.11, api/_twin.js): Ilan's clips, photos, a reference image and his voice sample, owner only
         if (String(pathname || '').startsWith('twin/')) {

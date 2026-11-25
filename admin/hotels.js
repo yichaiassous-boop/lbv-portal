@@ -949,6 +949,7 @@ function hotelView(sv, x) {
       ${safeUrl(x.website) ? `<a class="btn btn--line btn--sm" href="${esc(x.website)}" target="_blank" rel="noopener">לאתר של המלון</a>` : ''}
       ${sv.manage && moveTargets(sv).length ? `<button class="btn btn--line btn--sm" type="button" data-move>להעביר לכרטיסייה אחרת</button><button class="btn btn--line btn--sm" type="button" data-dup>לשכפל לכרטיסייה אחרת</button>` : ''}
       ${sv.manage ? (x.booked ? '<button class="btn btn--line btn--sm" type="button" data-book="0">לבטל "סגרנו איתו"</button>' : '<button class="btn btn--gold btn--sm" type="button" data-book="1">סגרתי עם המקום הזה</button>') : ''}
+      <label class="btn btn--line btn--sm" data-vid><input type="file" accept="video/mp4,video/quicktime,video/*" hidden><span>+ להוסיף סרטון</span></label>
       <button class="btn btn--line btn--sm" type="button" data-one>גיליון של המקום הזה</button>
       <button class="btn btn--line btn--sm" type="button" data-onesum>תקציר של המקום הזה</button>
       ${sv.manage ? '<button class="btn btn--danger btn--sm" type="button" data-del>מחיקת המלון</button>' : ''}
@@ -1008,6 +1009,19 @@ function hotelView(sv, x) {
     mailOpen = !mailOpen;
     if (mailOpen) { try { mailDraft = await api('POST', '', { op: 'draft', surveyId: sv.id, id: x.id }); } catch (e) { fail(e); } }
     again();
+  });
+  // owner 25.11: a video of the place (from WhatsApp / the phone): saved in our storage, shown in the history with a "watch" button
+  $('[data-vid] input', head)?.addEventListener('change', async e => {
+    const f = e.target.files[0];
+    if (!f) return;
+    if (!ctx.upload) return ctx.toast('אי אפשר להעלות מכאן', 'err');
+    if (f.size > 100 * 1024 * 1024) return ctx.toast('הסרטון גדול מדי (עד 100MB)', 'err');
+    const lab = $('[data-vid] span', head); lab.textContent = 'מעלה את הסרטון…';
+    try {
+      const url = await ctx.upload(f);
+      await api('POST', '', { op: 'note', surveyId: sv.id, id: x.id, text: 'סרטון של המקום', files: [{ name: 'לצפייה בסרטון', url }] });
+      await refreshSurvey(); ctx.toast('הסרטון נוסף'); again();
+    } catch (e2) { fail(e2); lab.textContent = '+ להוסיף סרטון'; }
   });
   // owner 25.11: the sheet / the summary of this one place only
   const one = { ...sv, title: sv.title + ' - ' + (x.name || 'מקום') };
@@ -1210,7 +1224,7 @@ function timeline(sv, x) {
         ${(l.files || []).filter(f => safeUrl(f.url)).length ? `<div class="row-tools">${l.files.filter(f => safeUrl(f.url)).map(f => `<a class="btn btn--line btn--sm" href="${esc(f.url)}" target="_blank" rel="noopener">לפתוח את הקובץ: ${esc(f.name)}</a>`).join('')}</div>` : ''}
         ${l.quotes?.length && l.src !== 'wa' ? `<ul class="ev__q">${l.quotes.map(q => `<li>${q.who ? `<b>${esc(q.who)}:</b> ` : ''}"${esc(q.text)}"</li>`).join('')}</ul>` : ''}</li>`));
     } else {
-      ol.append(h(`<li class="ev ev--note"><div class="ev__h"><b>הערה</b><time>${when(l.at)}</time>${l.by ? `<span>${esc(l.by)}</span>` : ''}</div><p>${esc(l.text)}</p></li>`));
+      ol.append(h(`<li class="ev ev--note"><div class="ev__h"><b>הערה</b><time>${when(l.at)}</time>${l.by ? `<span>${esc(l.by)}</span>` : ''}</div><p>${esc(l.text)}</p>${(l.files || []).filter(f => safeUrl(f.url)).length ? `<div class="row-tools">${l.files.filter(f => safeUrl(f.url)).map(f => `<a class="btn btn--line btn--sm" href="${esc(f.url)}" target="_blank" rel="noopener">${esc(f.name)}</a>`).join('')}</div>` : ''}</li>`));
     }
   }
   return c;
@@ -1284,7 +1298,9 @@ function exportCard(sv, hotels) {
 /** owner 25.11: "מה חשוב לדעת" = everything important that was said: availability, rooms, and the call / mail summary
     (what is included, extras, conditions), not only the availability line. */
 function mustKnow(x) {
-  const parts = [x.availText, x.rooms ? 'חדרים: ' + x.rooms : '', x.summary].map(t => String(t || '').replace(/\s+/g, ' ').trim()).filter(Boolean);
+  // what is still open with them (e.g. "can send a price quote on Sunday") is important too
+  const open = x.followWhat ? 'מה שנשאר פתוח: ' + x.followWhat + (x.followUp ? ' (' + dmy(x.followUp) + ')' : '') : '';
+  const parts = [x.availText, x.rooms ? 'חדרים: ' + x.rooms : '', open, x.summary].map(t => String(t || '').replace(/\s+/g, ' ').trim()).filter(Boolean);
   return parts.filter((t, i) => !parts.some((o, j) => j !== i && o.length > t.length && o.includes(t))).join('\n').slice(0, 1200);
 }
 function downloadCsv(sv, hotels, pref) {
