@@ -674,9 +674,11 @@ export function tableRows(sv, hotels, pref, origin) {
   pref = /^\d{4}-\d{2}-\d{2}$/.test(pref || '') ? pref : sv.from || '';
   // owner 25.11: a photo and the place's site in the sheet; "לחזור אליהם" is for us, not in this table
   // owner 25.11 (2): the sheet for Ilan: guests, price per plate, hall rental, what is included and the conditions (no call stories, no status)
-  const head = ['מקום', 'כל התמונות', 'אתר', 'עיר', pref ? 'ב-' + dmy(pref) : 'זמינות', 'תאריכים חלופיים', 'כמה אורחים', 'מחיר מנה', 'השכרת אולם', 'מה כלול ומה חשוב', 'איש קשר וטלפון'];
+  const head = ['מקום', 'כל התמונות', 'סרטון', 'אתר', 'עיר', pref ? 'ב-' + dmy(pref) : 'זמינות', 'תאריכים חלופיים', 'כמה אורחים', 'מחיר מנה', 'השכרת אולם', 'מה כלול ומה חשוב', 'איש קשר וטלפון'];
   const q = u => String(u).replace(/"/g, '%22');
   const site = h => /^https?:\/\/[^\s"]+$/i.test(h.website || '') ? h.website : '';
+  // owner 25.11: the place's videos (uploaded to the card) open from the sheet
+  const vids = h => [...new Set((h.log || []).flatMap(l => l.files || []).map(f => f.url).filter(u => /^https:[^ ]+[.](mp4|mov|webm)([?]|$)/i.test(u || '')))];
   // a bare phone number would lose its leading 0 in the sheet: kept as text
   const asText = v => /^\+?\d[\d\s\-]*$/.test(String(v || '').trim()) ? "'" + String(v).trim() : v;
   const info = new Map(hotels.map(h => [h, onDate(h, pref, sv.from || '', sv.to || '')]));
@@ -684,7 +686,7 @@ export function tableRows(sv, hotels, pref, origin) {
   const list = [...hotels].sort((a, b) => rank(a) - rank(b) || (minPrice(a) ?? 1e12) - (minPrice(b) ?? 1e12));
   const sym = c => ({ ILS: '₪', USD: '$', EUR: '€' }[c] || (c ? ' ' + c : '₪'));
   const rows = list.map(h => [
-    h.name || '', (p => p ? `=HYPERLINK("${q(p.link)}","${p.k === 1 ? 'לפתוח את התמונה' : 'לפתוח ' + p.k + ' תמונות'}")` : '')(photosLink(h, origin, sv)), site(h) ? `=HYPERLINK("${q(site(h))}","לאתר")` : '',
+    h.name || '', (p => p ? `=HYPERLINK("${q(p.link)}","${p.k === 1 ? 'לפתוח את התמונה' : 'לפתוח ' + p.k + ' תמונות'}")` : '')(photosLink(h, origin, sv)), (v => v.length ? `=HYPERLINK("${q(v[v.length - 1])}","${v.length === 1 ? 'לצפייה בסרטון' : 'סרטון (יש ' + v.length + ')'}")` : '')(vids(h)), site(h) ? `=HYPERLINK("${q(site(h))}","לאתר")` : '',
     h.city || '', (o => o.st === 'free' || o.st === 'maybe' || !o.other.length ? (pref ? PREF_HE[o.st] : AV_HE[h.avail] || 'לא ידוע') : (o.st === 'taken' || h.avail === 'full' ? 'תפוס, ' : '') + 'פנוי בתאריך אחר')(info.get(h)), info.get(h).other.map(dmy).join(', '),
     ...(b => [b?.guests || '', b?.plate || (minPrice(h) != null ? 'מ-' + Number(minPrice(h)).toLocaleString('he-IL') + ' ₪' : ''), b?.hall || '',
       b ? (b.extras || []).join('\n') : [h.availText, h.rooms ? 'חדרים: ' + h.rooms : ''].map(t => String(t || '').replace(/\s+/g, ' ').trim()).filter(Boolean).join('\n')])(briefOf(h)),
