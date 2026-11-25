@@ -1528,7 +1528,7 @@ async function script(req, res, what, userId, b) {
     if (b.src === 'wa' && !b.error) { const lastWa = (h.log || []).filter(l => l.t === 'wa').map(l => l.at).sort().pop(); if (lastWa) h.waReadAt = lastWa; delete h.waTry; }
     // owner 25.11: WhatsApp replies are short and come without our questions ("אין לי על הטלפון"): kept only when they
     // bring a fact (a price, the availability, a detail of the place), never as a summary that says nothing
-    const emptySum = s2 => !String(s2 || '').trim() || /אין (לו|לה|להם|לי)? ?(את )?ה?מידע|לא (נמסר|צוין|ידוע|ברור)|אין לי על הטלפון|ישלח(ו)? (בהמשך|אחר כך|עוד)|בעוד כמה דק/.test(String(s2));
+    const emptySum = s2 => !String(s2 || '').trim() || /אין (לו|לה|להם|לי)? ?(את )?ה?מידע|לא (נמסר|צוין|ידוע|ברור)|אין לי על הטלפון|תמונה בלבד|ללא פרטים|^התקבלה הודעה|ישלח(ו)? (בהמשך|אחר כך|עוד)|בעוד כמה דק/.test(String(s2));
     const waFact = (r.prices || []).length || ((r.keyQuotes || []).length && !emptySum(r.summary)) || (r.availability?.status && r.availability.status !== 'unknown') || Object.values(r.hotel || {}).some(v => v !== null && v !== undefined && v !== '' && !(Array.isArray(v) && !v.length));
     if (!b.error && r && (b.src === 'wa' ? waFact : (r.summary || (r.prices || []).length || r.availability || r.hotel))) {
       const src = pick(b.src, ['paste', 'mail', 'wa'], 'paste');
