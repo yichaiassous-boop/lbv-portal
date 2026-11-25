@@ -482,11 +482,64 @@ async function moveHotel(res, s, fromId, hotelId, toId) {
 }
 
 /* ---------- merging what Gemini heard into a hotel ---------- */
+/** owner 25.11: one place = one card. The same name written a little differently ("קאי ריזורט" / "קאי רזורט") is the same place:
+ *  compared without spaces and without the letters that come and go in Hebrew spelling (ו י א ה ע). */
+const skel = v => norm(v).replace(/\s+/g, '').replace(/[ויאהע']/g, '');
+const isNoName = n => !n || /ללא שם/.test(n);
+/** A call with no place name: the place whose name is said in the call (only one, and a name long enough not to be by chance). */
+function hotelInText(hotels, text) {
+  const t = skel(String(text || '').slice(0, 6000));
+  if (t.length < 5) return null;
+  const hits = hotels.filter(x => !isNoName(x.name) && x.status !== 'no' && skel(x.name).length >= 5 && t.includes(skel(x.name)));
+  // two cards of the same name are one place (they get joined): the older one
+  const one = [...new Set(hits.map(x => skel(x.name)))];
+  return one.length === 1 ? hits.sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')))[0] : null;
+}
+/** Two cards of the same place: everything of `gone` moves into `keep` (calls, mails, notes, prices, photos, its number), then `gone` is deleted. */
+async function mergeCards(key, keep, gone, why) {
+  keep.log = [...(keep.log || []), ...(gone.log || []), { t: 'note', at: now(), by: 'המערכת', text: 'אוחד עם הכרטיס "' + (gone.name || '') + '" (' + why + '). כל השיחות והמידע עברו לכאן.' }]
+    .sort((a, b) => String(a.at).localeCompare(String(b.at))).slice(-80);
+  for (const k of ['city', 'contact', 'email', 'website', 'about', 'summary', 'rooms', 'availText', 'rating', 'reviewsCount', 'reviewsText', 'reviewsUrl', 'reviewsSource']) if (!keep[k] && gone[k]) keep[k] = gone[k];
+  if ((!keep.avail || keep.avail === 'unknown') && gone.avail) keep.avail = gone.avail;
+  const kd = [digits(keep.phone), digits(keep.phone2)];
+  for (const ph of [gone.phone, gone.phone2]) { const d = digits(ph); if (d.length >= 8 && !kd.includes(d)) { if (!keep.phone) keep.phone = ph; else if (!keep.phone2) keep.phone2 = ph; kd.push(d); } }
+  const pk = p => norm(p.level) + '|' + norm(p.board) + '|' + (p.price || '');
+  keep.prices = [...(keep.prices || []), ...(gone.prices || []).filter(p => !(keep.prices || []).some(q => pk(q) === pk(p)))];
+  keep.myPhotos = [...new Set([...(keep.myPhotos || []), ...(gone.myPhotos || [])])].slice(-40);
+  keep.photos = [...new Set([...(keep.photos || []), ...(gone.photos || [])])];
+  if (!keep.followUp && gone.followUp) { keep.followUp = gone.followUp; keep.followWhat = gone.followWhat; }
+  keep.updatedAt = now();
+  await setJ(key, keep.id, keep);
+  await kv.hdel(key, gone.id);
+}
+/** Run on every robot check: cards of the same place in one survey become one card. */
+async function joinSame(sv) {
+  const key = K.hotels(sv.id);
+  const list = await allJ(key);
+  const gone = new Set();
+  for (const a of list) {
+    if (gone.has(a.id)) continue;
+    let keep = null, why = '';
+    if (isNoName(a.name)) {
+      // a card with no name whose call says which place it was
+      const text = [a.summary, ...(a.log || []).filter(l => l.t === 'call').map(l => (l.summary || '') + ' ' + String(l.transcript || '').slice(0, 3000))].join(' ');
+      keep = hotelInText(list.filter(x => x.id !== a.id && !gone.has(x.id)), text);
+      why = 'השיחה הייתה עם אותו מקום';
+    } else {
+      const s = skel(a.name);
+      if (s.length >= 4) keep = list.find(x => x.id !== a.id && !gone.has(x.id) && !isNoName(x.name) && skel(x.name) === s && String(x.createdAt || '') < String(a.createdAt || '')) || null;
+      why = 'אותו מקום בשם אחר במקצת';
+    }
+    if (!keep) continue;
+    await mergeCards(key, keep, a, why);
+    gone.add(a.id);
+  }
+}
 function findHotel(hotels, h) {
   const d = digits(h.phone);
   if (d.length >= 8) { const m = hotels.find(x => digits(x.phone) === d || digits(x.phone2) === d); if (m) return m; }
   const n = norm(h.name);
-  if (n.length >= 3) return hotels.find(x => { const xn = norm(x.name); return xn && (xn === n || xn.includes(n) || n.includes(xn)); }) || null;
+  if (n.length >= 3) return hotels.find(x => { const xn = norm(x.name); return xn && (xn === n || xn.includes(n) || n.includes(xn)); }) || hotels.find(x => skel(x.name).length >= 4 && skel(x.name) === skel(h.name)) || null;
   return null;
 }
 function mergeCall(hotel, r, call) {
@@ -1304,6 +1357,7 @@ async function script(req, res, what, userId, b) {
       windows = windows.concat(...riders.map(([, x]) => x.windows || [])).sort((a2, b2) => String(a2.from).localeCompare(String(b2.from))).slice(-600);
       if (!mode.on) mode = (riders.map(([, x]) => x.mode).find(x => x?.on)) || mode;
     }
+    for (const sv of surveys) { try { await joinSame(sv); } catch (e) {} }   // owner 25.11: one place = one card
     const jobs = { watch: [], parses: [], mailScan: [], webLook: [], wa: [], webRedo: [], relisten: [], mailAuto: [], photoCheck: [] };
     // owner 24.11: a booking / review / news / history site on a card goes at once (no need to wait for Gemini), with its photos and text;
     // and text "about" the place that did not come from its own site (a search result: Wikipedia, a store, a map) goes too
@@ -1578,6 +1632,8 @@ async function script(req, res, what, userId, b) {
       return send(res, 200, { ok: true, hotelId: saved[0].id, name: saved[0].name, places: saved });
     }
     let h = findHotel(hotels, r.hotel || {});
+    // owner 25.11: no name in the answer and an unknown number: the place whose name is said in the call (Kai Resort called from another number)
+    if (!h && !norm(r.hotel?.name)) { h = hotelInText(hotels, (r.summary || "") + " " + String(r.transcript || "").slice(0, 3000)); }
     if (h && old && h.id === old.id && r.hotel?.name) h.name = str(r.hotel.name, 160);
     if (!h) h = { ...cleanHotel({ name: r.hotel?.name || file.name, status: 'new' }), id: rid('h'), createdAt: now(), log: [] };
     mergeCall(h, r, call);
