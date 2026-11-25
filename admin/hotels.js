@@ -927,6 +927,7 @@ function hotelForm(sv, x) {
 }
 
 let mailOpen = false, mailDraft = null;
+let pickPics = null;   // owner 25.11: choosing the photos for the sheet: { id: hotel, list: [photo, ...] in his order }
 function hotelView(sv, x) {
   const wrap = h('<div class="hs-hotel"></div>');
   const [an, ac] = avOf(x, sv);
@@ -937,7 +938,10 @@ function hotelView(sv, x) {
     ${x.about ? `<p class="hs-about">${esc(x.about)}</p>` : ''}
     ${safeUrl(x.website) ? `<p class="hs-site">האתר של המקום: <a href="${esc(x.website)}" target="_blank" rel="noopener"><bdi>${esc(siteName(x.website))}</bdi></a></p>` : ''}
     ${x.rating || x.reviewsText ? `<div class="hs-rev">${x.rating ? `<b class="hs-rate">${rateTxt(x)}</b><span>${x.reviewsCount ? x.reviewsCount.toLocaleString('he-IL') + ' ביקורות' : 'דירוג'} ב${esc(x.reviewsSource || 'גוגל')}</span>` : ''}${x.reviewsText ? `<p>${esc(x.reviewsText)}</p>` : ''}${safeUrl(x.reviewsUrl) ? `<a href="${esc(x.reviewsUrl)}" target="_blank" rel="noopener">לכל הביקורות</a>` : ''}</div>` : ''}
-    <div class="hs-photos">${[...(x.myPhotos || []), ...(x.photos || []).filter(safeUrl)].map(u => `<figure class="hs-ph"><a href="${esc(photoSrc(u))}" target="_blank" rel="noopener"><img src="${esc(photoSrc(u))}" alt="" loading="lazy" referrerpolicy="no-referrer"></a><button type="button" class="hs-ph__x" data-rm="${esc(u)}" aria-label="להסיר את התמונה">×</button></figure>`).join('')}
+    ${(x.myPhotos || []).length || (x.photos || []).length ? (pickPics && pickPics.id === x.id
+      ? `<div class="hs-pick hs-pick--on"><p>לוחצים על התמונות שייכנסו לגיליון, לפי הסדר שרוצים. נבחרו ${pickPics.list.length}.</p><span><button type="button" class="btn btn--gold btn--sm" data-pick-save>לשמור את הבחירה</button><button type="button" class="btn btn--ghost btn--sm" data-pick-auto>שהמערכת תבחר</button><button type="button" class="btn btn--ghost btn--sm" data-pick-x>ביטול</button></span></div>`
+      : `<div class="hs-pick"><p>${(x.sheetPics || []).length ? `בגיליון: ${x.sheetPics.length === 1 ? 'תמונה אחת שבחרת' : x.sheetPics.length + ' תמונות שבחרת'} (מסומנות במספר).` : 'בגיליון: המערכת בוחרת את התמונות.'}</p><button type="button" class="btn btn--ghost btn--sm" data-pick>לבחור תמונות לגיליון</button></div>`) : ''}
+    <div class="hs-photos">${[...(x.myPhotos || []), ...(x.photos || []).filter(safeUrl)].map(u => { const sel = pickPics && pickPics.id === x.id ? pickPics.list : (x.sheetPics || []); const n = sel.indexOf(u) + 1; return `<figure class="hs-ph${pickPics && pickPics.id === x.id ? ' hs-ph--pick' : ''}${n ? ' is-on' : ''}"><a href="${esc(photoSrc(u))}" target="_blank" rel="noopener" data-pu="${esc(u)}"><img src="${esc(photoSrc(u))}" alt="" loading="lazy" referrerpolicy="no-referrer"></a>${n ? `<b class="hs-ph__n" aria-label="בגיליון, מקום ${n}">${n}</b>` : ''}${pickPics && pickPics.id === x.id ? '' : `<button type="button" class="hs-ph__x" data-rm="${esc(u)}" aria-label="להסיר את התמונה">×</button>`}</figure>`; }).join('')}
       <label class="hs-ph hs-ph--add"><input type="file" accept="image/*" multiple hidden><span>+ להוסיף תמונות</span></label></div>
     ${(x.myPhotos || []).length || (x.photos || []).length ? '' : `<p class="hs-ph__hint">${x.webDone ? 'לא מצאתי תמונות של המלון ברשת.' : 'תמונות מהרשת יגיעו לבד תוך כמה דקות.'} אפשר גם להוסיף תמונות מהטלפון או מהמחשב.</p>`}
     ${x.relisten ? '<p class="hs-mailnow">קורא את השיחה מחדש. הכרטיס יתעדכן כאן תוך כמה דקות.</p>' : ''}
@@ -982,7 +986,7 @@ function hotelView(sv, x) {
     if (!on && !confirm('לבטל את הסימון שסגרתם עם המקום הזה?')) return;
     try { await api('POST', '', { op: 'booked', surveyId: sv.id, id: x.id, on }); await refreshSurvey(); await refreshHome(); ctx.toast(on ? 'סומן: סגרתם עם "' + (x.name || 'המקום') + '"' : 'הסימון בוטל'); again(); } catch (e2) { fail(e2); }
   });
-  $('[data-back]', head).addEventListener('click', () => { openHotel = null; mailOpen = false; pasteOpen = false; again(); });
+  $('[data-back]', head).addEventListener('click', () => { openHotel = null; mailOpen = false; pickPics = null; pasteOpen = false; again(); });
   $('[data-paste]', head).addEventListener('click', () => { pasteOpen = !pasteOpen; again(); });
   $('[data-relisten]', head)?.addEventListener('click', async () => {
     if (!confirm('לקרוא את השיחה מחדש? אם דיברו בה על כמה מקומות, כל מקום יקבל כרטיס משלו, והמחירים מהקריאה הקודמת יוחלפו.')) return;
@@ -1004,6 +1008,20 @@ function hotelView(sv, x) {
       if (urls.length) { await api('POST', '', { op: 'photos', surveyId: sv.id, id: x.id, add: urls }); await refreshSurvey(); ctx.toast(urls.length === 1 ? 'התמונה נוספה' : 'התמונות נוספו'); again(); }
     } catch (e2) { fail(e2); lab.textContent = '+ להוסיף תמונות'; }
   });
+  // owner 25.11: he chooses which photos go in the sheet and its photos page (or leaves it to the system)
+  $('[data-pick]', head)?.addEventListener('click', () => { pickPics = { id: x.id, list: [...(x.sheetPics || [])] }; again(); });
+  $('[data-pick-x]', head)?.addEventListener('click', () => { pickPics = null; again(); });
+  const savePick = async list => {
+    try { await api('POST', '', { op: 'sheetPics', surveyId: sv.id, id: x.id, pics: list }); pickPics = null; await refreshSurvey(); ctx.toast(list.length ? 'נשמר. אלה התמונות שייכנסו לגיליון' : 'נשמר. המערכת תבחר את התמונות'); again(); } catch (e2) { fail(e2); }
+  };
+  $('[data-pick-save]', head)?.addEventListener('click', () => savePick(pickPics.list));
+  $('[data-pick-auto]', head)?.addEventListener('click', () => savePick([]));
+  if (pickPics && pickPics.id === x.id) head.querySelectorAll('[data-pu]').forEach(a => a.addEventListener('click', e => {
+    e.preventDefault();
+    const u = a.dataset.pu, i = pickPics.list.indexOf(u);
+    if (i >= 0) pickPics.list.splice(i, 1); else if (pickPics.list.length < 24) pickPics.list.push(u); else ctx.toast('עד 24 תמונות', 'err');
+    again();
+  }));
   head.querySelectorAll('[data-rm]').forEach(b => b.addEventListener('click', async () => {
     if (!confirm('להסיר את התמונה מהמלון?')) return;
     try { await api('POST', '', { op: 'photos', surveyId: sv.id, id: x.id, remove: [b.dataset.rm] }); await refreshSurvey(); again(); } catch (e2) { fail(e2); }
@@ -1324,12 +1342,11 @@ function downloadCsv(sv, hotels, pref) {
   // owner 24.11: short and clear, the same columns as the Google sheet; the preferred date first, other dates on the side
   pref = pref || sv.from || '';
   const head = ['מקום', 'תמונה', 'כל התמונות', 'אתר', 'עיר', pref ? 'ב-' + dmy(pref) : 'זמינות', 'תאריכים חלופיים', 'הכי זול', 'המחירים', 'מה חשוב לדעת', 'איש קשר וטלפון', 'סטטוס'];
-  const firstPic = x => [...(x.myPhotos || []), ...(x.photos || [])].map(u => /^media\/uploads\//.test(u || '') ? location.origin + '/' + u : safeUrl(u)).find(u => /^https:\/\//.test(u || '')) || '';
-  // owner 25.11: a link to a photo page on the site, not a single picture
-  const pic = x => { const all = [...new Set([...(x.myPhotos || []), ...(x.photos || [])].map(u => /^media\/uploads\//.test(u || '') ? location.origin + '/' + u : safeUrl(u)).filter(u => /^https:\/\//.test(u || '')))];
-    let link = location.origin + '/hotels/photos.html?n=' + encodeURIComponent(x.name || ''), k = 0;
-    for (const u of all.slice(0, 12)) { const add = '&u=' + encodeURIComponent(u); if ((link + add).length > 1900) break; link += add; k++; }
-    return k ? link : ''; };
+  // owner 25.11: the photos he chose in the card (or the system's), and a short link to the photo page on the site
+  const own = x => [...(x.myPhotos || []), ...(x.photos || [])];
+  const picsOf = x => { const ch = (x.sheetPics || []).filter(u => own(x).includes(u)); return [...new Set((ch.length ? ch : own(x)).map(u => /^media\/uploads\//.test(u || '') ? location.origin + '/' + u : safeUrl(u)).filter(u => /^https:\/\//.test(u || '')))]; };
+  const firstPic = x => picsOf(x)[0] || '';
+  const pic = x => picsOf(x).length && x.picsT ? location.origin + '/hotels/photos.html?s=' + sv.id + '&h=' + x.id + '&t=' + x.picsT : '';
   const info = new Map(hotels.map(x => [x, onDate(x, pref, sv.from || '', sv.to || '')]));
   const rank = x => { const o = info.get(x); return x.status === 'no' ? 9 : o.st === 'free' ? 0 : o.st === 'maybe' ? 1 : o.other.length ? 2 : o.st === '' ? 3 : 4; };
   const list = [...hotels].sort((a, b) => rank(a) - rank(b) || (a.min ?? 1e12) - (b.min ?? 1e12));

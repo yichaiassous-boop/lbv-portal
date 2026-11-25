@@ -281,6 +281,7 @@ const mine = (sv, userId) => !!sv && (userId === 'owner' || sv.by?.id === userId
 const secret = () => process.env.ADMIN_SECRET || process.env.ADMIN_PASSWORD || 'local';
 /** owner 24.11: the link of a page for a client (the places we chose for him), with its own token. */
 export const offerToken = id => crypto.createHmac('sha256', secret()).update('offer:' + id).digest('base64url').slice(0, 22);
+export const picsToken = id => crypto.createHmac('sha256', secret()).update('pics:' + id).digest('base64url').slice(0, 16);
 export const viewToken = id => crypto.createHmac('sha256', secret()).update('hotels:' + id).digest('base64url').slice(0, 22);
 
 const STATUS = ['new', 'followup', 'waiting', 'good', 'closed', 'no'];
@@ -576,11 +577,21 @@ export { datesSaid, onDate };
 /** owner 24.11: the sheet is short and clear: one row per place. The places free on the preferred date first (cheapest first),
  *  then the ones free only on another date (those dates in a column on the side), then unknown, then taken. */
 /** owner 25.11: the sheet links to a photo page on the site (=IMAGE needed a Google approval and looked bad). */
-export function photosLink(h, origin) {
-  const all = [...(h.myPhotos || []), ...(h.photos || [])].map(u => /^media\/uploads\//.test(u || '') ? origin + '/' + u : u).filter(u => /^https:\/\/[^\s"<>]+$/i.test(u || ''));
-  let link = origin + '/hotels/photos.html?n=' + encodeURIComponent(h.name || ''), k = 0;
-  for (const u of [...new Set(all)].slice(0, 12)) { const add = '&u=' + encodeURIComponent(u); if ((link + add).length > 1900) break; link += add; k++; }
-  return k ? { link, k, first: all[0] } : null;
+/** owner 25.11: the photos of a place for the sheet and its photos page: the ones the owner chose in the card, in his order,
+ *  or (nothing chosen) the system's: ours first (uploaded / from WhatsApp), then the place's site. */
+export function sheetPics(h, origin) {
+  const full = u => /^media\/uploads\//.test(u || '') ? origin + '/' + u : u;
+  const ok = u => /^https:\/\/[^\s"<>]+$/i.test(u || '');
+  const own = [...(h.myPhotos || []), ...(h.photos || [])];
+  const chosen = (Array.isArray(h.sheetPics) ? h.sheetPics : []).filter(u => own.includes(u));
+  return [...new Set((chosen.length ? chosen : own).map(full).filter(ok))].slice(0, 24);
+}
+/** owner 25.11: a short link (the old one carried every photo's address and got stuck): the page reads the photos from here. */
+export function photosLink(h, origin, sv) {
+  const all = sheetPics(h, origin);
+  if (!all.length) return null;
+  const link = sv ? origin + '/hotels/photos.html?s=' + sv.id + '&h=' + h.id + '&t=' + picsToken(sv.id + '.' + h.id) : origin + '/hotels/photos.html?n=' + encodeURIComponent(h.name || '') + all.slice(0, 6).map(u => '&u=' + encodeURIComponent(u)).join('');
+  return { link, k: all.length, first: all[0] };
 }
 export function tableRows(sv, hotels, pref, origin) {
   origin = origin || 'https://lbv-portal-phi.vercel.app';
@@ -596,7 +607,7 @@ export function tableRows(sv, hotels, pref, origin) {
   const list = [...hotels].sort((a, b) => rank(a) - rank(b) || (minPrice(a) ?? 1e12) - (minPrice(b) ?? 1e12));
   const sym = c => ({ ILS: '₪', USD: '$', EUR: '€' }[c] || (c ? ' ' + c : '₪'));
   const rows = list.map(h => [
-    h.name || '', (u => u ? `=IMAGE("${q(u)}")` : '')((photosLink(h, origin) || {}).first), (p => p ? `=HYPERLINK("${q(p.link)}","${p.k === 1 ? 'לתמונה' : 'לתמונות (' + p.k + ')'}")` : '')(photosLink(h, origin)), site(h) ? `=HYPERLINK("${q(site(h))}","לאתר")` : '',
+    h.name || '', (u => u ? `=IMAGE("${q(u)}")` : '')((photosLink(h, origin, sv) || {}).first), (p => p ? `=HYPERLINK("${q(p.link)}","${p.k === 1 ? 'לפתוח את התמונה' : 'לפתוח ' + p.k + ' תמונות'}")` : '')(photosLink(h, origin, sv)), site(h) ? `=HYPERLINK("${q(site(h))}","לאתר")` : '',
     h.city || '', (o => o.st === 'free' || o.st === 'maybe' || !o.other.length ? (pref ? PREF_HE[o.st] : AV_HE[h.avail] || 'לא ידוע') : (o.st === 'taken' || h.avail === 'full' ? 'תפוס, ' : '') + 'פנוי בתאריך אחר')(info.get(h)), info.get(h).other.map(dmy).join(', '), minPrice(h) ?? '',
     (h.prices || []).filter(p => p.price > 0).map(p => ([p.level, p.board].filter(Boolean).join(', ') || 'מחיר') + ': ' + Number(p.price).toLocaleString('he-IL') + ' ' + sym(p.currency).trim() + (p.per ? ' ' + p.per : '') + (p.note ? ' (' + p.note + ')' : '')).join('\n'),
     // owner 25.11: everything important that was said (availability, rooms, what is included, extras), not only availability
@@ -636,6 +647,16 @@ export default async function hotelsHandler(req, res) {
           price: it.price || null, per: it.per || '', note: it.note || '' });
       }
       return send(res, 200, { title: o.title || sv?.title || '', date: o.date || '', intro: o.intro || '', items, at: o.at });
+    }
+
+    /* ----- owner 25.11: the photos page of a place (the link in the sheet). Photos and name only. ----- */
+    if (q('pics')) {
+      const sv = await getJ(K.surveys, str(q('pics'), 40)), hid = str(q('h'), 40);
+      if (!sv || !same(q('t'), picsToken(sv.id + '.' + hid))) return send(res, 404, { error: 'not-found' });
+      const h = await getJ(K.hotels(sv.id), hid);
+      if (!h) return send(res, 404, { error: 'not-found' });
+      res.setHeader('Cache-Control', 'public, max-age=60');
+      return send(res, 200, { name: h.name || '', city: h.city || '', photos: sheetPics(h, `https://${req.headers['x-forwarded-host'] || req.headers.host}`) });
     }
 
     /* ----- read-only link for the team ----- */
@@ -949,7 +970,7 @@ export default async function hotelsHandler(req, res) {
     if (req.method === 'GET' && q('survey')) {
       const sv = await getJ(K.surveys, q('survey'));
       if (!canSee(s, sv)) return send(res, 404, { error: 'not-found' });
-      const hotels = (await allJ(K.hotels(sv.id))).map(h => ({ ...h, min: minPrice(h) }));
+      const hotels = (await allJ(K.hotels(sv.id))).map(h => ({ ...h, min: minPrice(h), picsT: picsToken(sv.id + '.' + h.id) }));   // owner 25.11: the short photos link of the sheet
       const out = (await allJ(K.out)).filter(m => m.surveyId === sv.id);
       for (const h of hotels) for (const m of out.filter(m => m.hotelId === h.id && m.state === 'queued')) h.log.push({ t: 'mail-out', at: m.at, to: m.to, subject: m.subject, body: m.body, state: 'queued', by: m.by });
       return send(res, 200, { survey: { ...sv, manage: canManage(s, sv), token: canManage(s, sv) && sv.link ? viewToken(sv.id) : undefined }, hotels, draftFor: null });
@@ -1002,7 +1023,7 @@ export default async function hotelsHandler(req, res) {
       await setJ(key, h.id, h);
       return send(res, 200, { ok: true, photos: h.photos });
     }
-    if (op === 'hotel' || op === 'note' || op === 'mail' || op === 'draft' || op === 'paste' || op === 'photos' || op === 'mailNow' || op === 'relisten' || op === 'booked' || op === 'after') {
+    if (op === 'hotel' || op === 'note' || op === 'mail' || op === 'draft' || op === 'paste' || op === 'photos' || op === 'sheetPics' || op === 'mailNow' || op === 'relisten' || op === 'booked' || op === 'after') {
       const sv = await getJ(K.surveys, body.surveyId);
       if (!canSee(s, sv)) return send(res, 404, { error: 'not-found' });
       const key = K.hotels(sv.id);
@@ -1017,6 +1038,16 @@ export default async function hotelsHandler(req, res) {
         await setJ(key, h.id, h);
         return send(res, 200, { ...h, min: minPrice(h) });
       }
+      // owner 25.11: which photos go in the sheet and its photos page, in this order (empty = the system chooses)
+      if (op === 'sheetPics') {
+        if (!old) return send(res, 404, { error: 'not-found' });
+        const own = [...(old.myPhotos || []), ...(old.photos || [])];
+        const pics = [...new Set((Array.isArray(body.pics) ? body.pics : []).map(x => String(x || '')).filter(u => own.includes(u)))].slice(0, 24);
+        if (pics.length) old.sheetPics = pics; else delete old.sheetPics;
+        old.updatedAt = now();
+        await setJ(key, old.id, old);
+        return send(res, 200, { ...old, min: minPrice(old) });
+      }
       if (op === 'photos') {
         if (!old) return send(res, 404, { error: 'not-found' });
         const ok = u => /^https:\/\/[a-z0-9-]+\.public\.blob\.vercel-storage\.com\/hotels\/[^\s"'<>]+$/i.test(u) || /^media\/uploads\/[\w.\-]+$/.test(u);
@@ -1024,6 +1055,7 @@ export default async function hotelsHandler(req, res) {
         const rm = new Set((Array.isArray(body.remove) ? body.remove : []).map(x => String(x || '')));
         old.myPhotos = [...(old.myPhotos || []).filter(u => !rm.has(u)), ...add].filter((u, i, a) => a.indexOf(u) === i).slice(0, 40);
         if (rm.size) old.photos = (old.photos || []).filter(u => !rm.has(u));
+        if (rm.size && old.sheetPics) { old.sheetPics = old.sheetPics.filter(u => !rm.has(u)); if (!old.sheetPics.length) delete old.sheetPics; }
         if (add.length) old.log = [...(old.log || []), { t: 'note', at: now(), by: s.n, text: add.length === 1 ? 'נוספה תמונה' : `נוספו ${add.length} תמונות` }].slice(-80);
         old.updatedAt = now();
         await setJ(key, old.id, old);

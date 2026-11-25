@@ -45,10 +45,19 @@
 <main class="w" id="g"></main>
 <dialog id="d"><div class="lb"><button type="button" data-x>סגירה</button><button type="button" data-prev aria-label="התמונה הקודמת">&#8594;</button><img alt=""><button type="button" data-next aria-label="התמונה הבאה">&#8592;</button><span class="n"></span></div></dialog>
 <script>
-(() => {
+(async () => {
   const q = new URLSearchParams(location.search);
-  const name = (q.get('n') || '').slice(0, 120);
-  const pics = [...new Set(q.getAll('u'))].filter(u => /^https:\/\/[^\s"<>]+$/i.test(u)).slice(0, 12);
+  let name = (q.get('n') || '').slice(0, 120);
+  let pics = [...new Set(q.getAll('u'))];
+  // owner 25.11: the short link from the sheet (?s=&h=&t=): the photos come from the site, the ones chosen in the card
+  if (q.get('s') && q.get('h')) {
+    document.getElementById('c').textContent = 'טוען את התמונות...';
+    try {
+      const r = await fetch('/api/hotels?pics=' + encodeURIComponent(q.get('s')) + '&h=' + encodeURIComponent(q.get('h')) + '&t=' + encodeURIComponent(q.get('t') || ''));
+      if (r.ok) { const j = await r.json(); name = String(j.name || '').slice(0, 120) + (j.city ? ', ' + String(j.city).slice(0, 60) : ''); pics = Array.isArray(j.photos) ? j.photos : []; }
+    } catch (e) {}
+  }
+  pics = [...new Set(pics)].filter(u => /^https:\/\/[^\s"<>]+$/i.test(u)).slice(0, 24);
   const g = document.getElementById('g'), d = document.getElementById('d'), big = d.querySelector('img'), num = d.querySelector('.n');
   if (name) { document.getElementById('t').textContent = name; document.title = name + ' · תמונות'; }
   document.getElementById('c').textContent = pics.length ? (pics.length === 1 ? 'תמונה אחת' : pics.length + ' תמונות') + '. לוחצים על תמונה כדי להגדיל.' : '';
@@ -57,7 +66,7 @@
   const show = i => { at = (i + pics.length) % pics.length; big.src = pics[at]; big.alt = (name || 'המקום') + ', תמונה ' + (at + 1); num.textContent = (at + 1) + ' מתוך ' + pics.length; };
   pics.forEach((u, i) => {
     const b = document.createElement('button'); b.type = 'button'; b.setAttribute('aria-label', 'להגדיל תמונה ' + (i + 1));
-    const im = document.createElement('img'); im.src = u; im.loading = 'lazy'; im.alt = (name || 'המקום') + ', תמונה ' + (i + 1);
+    const im = document.createElement('img'); im.src = u; im.loading = i < 6 ? 'eager' : 'lazy'; im.decoding = 'async'; im.alt = (name || 'המקום') + ', תמונה ' + (i + 1);
     im.onerror = () => b.classList.add('bad');
     b.append(im); b.onclick = () => { show(i); d.showModal(); }; g.append(b);
   });

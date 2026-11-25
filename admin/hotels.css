@@ -649,3 +649,14 @@ mark { background: #FCE7A8; color: inherit; padding: 0 2px; border-radius: 3px; 
 .wl-items small { color: var(--ink-2); }
 .wl-i--ok small { color: #1F7A45; }
 .wl-i--fail small, .wl-i--nowa small, .wl-i--bad small { color: #B0392F; }
+
+/* choosing the photos for the sheet (25.11) */
+.hs-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 10px 0 6px; }
+.hs-pick p { margin: 0; font-size: .9rem; color: #3A4560; flex: 1 1 220px; }
+.hs-pick span { display: flex; flex-wrap: wrap; gap: 6px; }
+.hs-pick--on { padding: 10px 12px; background: #FBF7EF; border: 1px solid #E8D9B8; border-radius: 10px; }
+.hs-ph--pick a { cursor: pointer; display: block; }
+.hs-ph--pick img { opacity: .55; transition: opacity .15s; }
+.hs-ph--pick.is-on img, .hs-ph--pick a:hover img { opacity: 1; }
+.hs-ph.is-on img { outline: 3px solid #B08D57; outline-offset: -3px; border-radius: 10px; }
+.hs-ph__n { position: absolute; top: 6px; inset-inline-start: 6px; min-width: 24px; height: 24px; padding: 0 6px; border-radius: 12px; background: #B08D57; color: #fff; font-size: .85rem; line-height: 24px; text-align: center; pointer-events: none; }
