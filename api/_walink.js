@@ -33,7 +33,7 @@ export default async function walinkHandler(req, res) {
     let state = null;
     try { state = st ? JSON.parse(st) : null; } catch (e) {}
     // the service writes a heartbeat every minute: none for 3 minutes → it is not running
-    if (state && Date.now() - Date.parse(state.beat || state.at || 0) > 3 * 60e3) state = { ...state, state: 'down' };
+    if (state && state.state !== 'billing' && Date.now() -Date.parse(state.beat || state.at || 0) > 3 * 60e3) state = { ...state, state: 'down' };
     const camps = [];
     if (Array.isArray(raw)) for (let i = 0; i < raw.length; i += 2) { try { camps.push(brief(JSON.parse(raw[i + 1]))); } catch (e) {} }
     camps.sort((a, b) => String(b.made || '').localeCompare(String(a.made || '')));

@@ -629,7 +629,7 @@ mark { background: #FCE7A8; color: inherit; padding: 0 2px; border-radius: 3px; 
 .wl-dot { width: 12px; height: 12px; border-radius: 50%; background: #B8C0CC; flex: none; }
 .wl-link--open .wl-dot { background: #2E9E5B; box-shadow: 0 0 0 4px rgba(46,158,91,.15); }
 .wl-link--qr .wl-dot, .wl-link--starting .wl-dot, .wl-link--reconnecting .wl-dot { background: var(--gold); }
-.wl-link--down .wl-dot, .wl-link--error .wl-dot, .wl-link--off .wl-dot { background: #C8473D; }
+.wl-link--down .wl-dot, .wl-link--error .wl-dot, .wl-link--off .wl-dot, .wl-link--billing .wl-dot { background: #C8473D; }
 .wl-qr { display: block; width: min(280px, 100%); height: auto; margin: 6px 0 14px; border-radius: 12px; border: 1px solid var(--line); background: #fff; padding: 8px; }
 .wl-me { margin: 0 0 6px; }
 .wl-tip { margin-top: -8px; }

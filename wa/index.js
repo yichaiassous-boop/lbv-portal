@@ -7,8 +7,11 @@
 //  - Its state (the code to scan, connected or not) is in the store; the owner sees it in the admin ("הוואטסאפ שלי").
 // Env: KV_REST_API_URL + KV_REST_API_TOKEN (the portal's store), BLOB_READ_WRITE_TOKEN (the portal's photos),
 //      PORTAL_URL (default https://lbv-portal-phi.vercel.app).
+//  - On Google Cloud (owner 25.11): not one shekel. BUDGET_SUB is the Pub/Sub subscription of a budget on the project;
+//    the moment Google reports any cost, the service stops reading and sending and turns the machine off.
 import crypto from 'node:crypto';
 import http from 'node:http';
+import { execFile } from 'node:child_process';
 import makeWASocket, { DisconnectReason, fetchLatestBaileysVersion, downloadMediaMessage, normalizeMessageContent, makeCacheableSignalKeyStore } from '@whiskeysockets/baileys';
 import QRCode from 'qrcode';
 import pino from 'pino';
@@ -42,7 +45,7 @@ export function quiet(d = new Date()) {
 
 /* ---------- the state the owner sees ---------- */
 let state = { state: 'starting', at: now() };
-const setState = async s => { state = { ...s, at: now() }; await cmd('SET', K.state, JSON.stringify(state)).catch(e => log.error(e.message)); };
+const setState = async s => { if (billingStop && s.state !== 'billing') return; state ={ ...s, at: now() }; await cmd('SET', K.state, JSON.stringify(state)).catch(e => log.error(e.message)); };
 
 /* ---------- talking to the portal (as the owner's robot, with its own key) ---------- */
 async function portalKey() {
@@ -122,8 +125,30 @@ const toJid = raw => {
 };
 const fill = (text, it) => String(text).replace(/\{שם\}/g, (it.name || '').trim()).replace(/[ \t]+([,.!?])/g, '$1').replace(/[ \t]{2,}/g, ' ').trim();
 let nextSendAt = 0;
+/* ---------- Google's budget: any cost → stop everything and turn the machine off ---------- */
+let billingStop = false;
+const gmeta = p => fetch('http://metadata.google.internal/computeMetadata/v1/' + p, { headers: { 'Metadata-Flavor': 'Google' } }).then(r => (r.ok ? r.text() : ''));
+async function budgetCheck() {
+  const sub = process.env.BUDGET_SUB;
+  if (!sub || billingStop) return;
+  const tok = JSON.parse(await gmeta('instance/service-accounts/default/token') || '{}').access_token;
+  if (!tok) return;
+  const H = { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' };
+  const r = await fetch(`https://pubsub.googleapis.com/v1/${sub}:pull`, { method: 'POST', headers: H, body: JSON.stringify({ maxMessages: 50 }) });
+  if (!r.ok) throw new Error('budget pull ' + r.status);
+  const msgs = (await r.json()).receivedMessages || [];
+  let cost = 0, cur = '';
+  for (const m of msgs) { try { const d = JSON.parse(Buffer.from(m.message.data, 'base64').toString()); cost = Math.max(cost, Number(d.costAmount) || 0); cur = d.currencyCode || cur; } catch (e) {} }
+  if (msgs.length) await fetch(`https://pubsub.googleapis.com/v1/${sub}:acknowledge`, { method: 'POST', headers: H, body: JSON.stringify({ ackIds: msgs.map(m => m.ackId) }) });
+  if (cost <= 0) return;
+  billingStop = true;
+  await setState({ state: 'billing', cost, cur });
+  try { sock?.end(new Error('billing')); } catch (e) {}
+  execFile('sudo', ['/sbin/shutdown', '-h', 'now'], () => {});
+}
+
 async function sendTick() {
-  if (state.state !== 'open' || Date.now() < nextSendAt || quiet()) return;
+  if (billingStop || state.state !== 'open' || Date.now() < nextSendAt || quiet()) return;
   const camps = (await allJ(K.camps)).filter(c => c.status === 'run' && Date.parse(c.at || 0) <= Date.now()).sort((a, b) => String(a.at).localeCompare(String(b.at)));
   const c = camps[0];
   if (!c) return;
@@ -218,6 +243,8 @@ async function main() {
   setInterval(() => flush().catch(() => {}), 15000);
   setInterval(() => commands().catch(() => {}), 5000);
   setInterval(() => sendTick().catch(e => log.error('send ' + e.message)), 10000);
+  budgetCheck().catch(e => log.error(e.message));
+  setInterval(() => budgetCheck().catch(e => log.error(e.message)), 10 * 60e3);
   setInterval(() => cmd('SET', K.state, JSON.stringify({ ...state, beat: now() })).catch(() => {}), 60000);
   // a tiny page for the host's health check
   http.createServer((req, res) => { res.writeHead(200, { 'Content-Type': 'text/plain' }); res.end(state.state); }).listen(process.env.PORT || 8080);
