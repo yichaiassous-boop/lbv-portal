@@ -192,12 +192,13 @@ function formView(f) {
         ${a.email ? `<div><dt>מייל</dt><dd dir="ltr">${esc(a.email)}</dd></div>` : ''}
         ${a.notes ? `<div class="in-dl__wide"><dt>מה עוד חשוב לו</dt><dd>${esc(a.notes)}</dd></div>` : ''}
       </dl>
-      <div class="in-btns">${f.surveyId ? '<button type="button" class="btn btn--gold btn--sm" data-card>לפתוח את כרטיס האירוע</button>' : ''}${f.eventId ? '<button type="button" class="btn btn--line btn--sm" data-cal>בלוח האירועים</button>' : ''}</div>
+      <div class="in-btns">${f.surveyId ? '<button type="button" class="btn btn--gold btn--sm" data-card>לפתוח את כרטיס האירוע</button>' : ''}${f.eventId ? '<button type="button" class="btn btn--line btn--sm" data-cal>בלוח האירועים</button>' : ''}${ctx.buildOffer ? '<button type="button" class="btn btn--line btn--sm" data-offer>לבנות הצעת מחיר</button>' : ''}</div>
     </section>
     <div class="in-match"><p class="hint">מחפש במאגר מה מתאים…</p></div></div>`);
   $('[data-back]', el).addEventListener('click', () => { open = null; ctx.rerender(); });
   $('[data-card]', el)?.addEventListener('click', () => ctx.openCard(f.surveyId));
   $('[data-cal]', el)?.addEventListener('click', () => ctx.go('events'));
+  $('[data-offer]', el)?.addEventListener('click', () => ctx.buildOffer(f));
   matchInto($('.in-match', el), f, a, want);
   return el;
 }

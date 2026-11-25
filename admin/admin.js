@@ -14,6 +14,7 @@ import { hotelsPage, showHotel } from "./hotels.js";
 import { callsPage, catalogPage, netsPage, funPage } from "./smart.js";
 import { ilanPage } from "./ilan.js";
 import { intakePage } from "./intake.js";
+import { offersPage } from "./offers.js";
 import { artistsPage } from "./artists.js";
 import { twinPage } from "./twin.js";
 import { eventsPage, remotePage, appHome, appSite, appHolidays } from "./events.js";
@@ -333,7 +334,8 @@ const GROUPS = () => [
     { id: 'artists', title: 'אמנים', sub: 'האמנים שאנחנו מייצגים: לוח שנה בצבע של כל אחד, הלקוחות, הרשתות והשיחות עליו' },
     { id: 'fun', title: 'מאגר האטרקציות', sub: 'כל אטרקציה לימי כיף, פעם אחת: מה, איפה, לכמה אנשים, כמה עולה ולמי מתקשרים' },
     { id: 'remote', title: 'השלט של המסכים', sub: 'שליטה מהטלפון במסך של האירוע' }] },
-  { id: 'clients', name: 'כלים ללקוחות', pages: [{ id: 'intake', title: 'טופס ללקוח', sub: 'שולחים ללקוח קישור (או ממלאים בשיחה): איזה אירוע, מתי, כמה אורחים, איפה ובאיזה תקציב. כרטיס האירוע נפתח לבד, ורואים מה מתאים מהמאגר' }] },
+  { id: 'clients', name: 'כלים ללקוחות', pages: [{ id: 'intake', title: 'טופס ללקוח', sub: 'שולחים ללקוח קישור (או ממלאים בשיחה): איזה אירוע, מתי, כמה אורחים, איפה ובאיזה תקציב. כרטיס האירוע נפתח לבד, ורואים מה מתאים מהמאגר' },
+    { id: 'offers', title: 'הצעת מחיר מהמאגר', sub: 'בוחרים מקום, מלון, אטרקציות ואמן מהמאגר, מוסיפים עמלה ומעגלים, משנים כל מחיר ביד. הלקוח רואה רק את המחיר הסופי ומאשר בקישור' }] },
   { id: 'hotels', name: 'מלונות ואולמות', pages: [{ id: 'hotels', title: 'בדיקת מלונות ואולמות', sub: 'מתקשרים למלונות ולאולמות, והמערכת ממלאת לבד מהשיחות: פרטים, זמינות, מחירים, מיילים וסיכום' },
     { zone: 'smart', id: 'venues', title: 'מאגר האולמות', sub: 'כל אולם וגן אירועים שדיברנו איתו, פעם אחת: חיפוש לפי אזור ומחיר, והאפשרויות הכי טובות קודם' },
     { zone: 'smart', id: 'catalog', title: 'מאגר המלונות', sub: 'כל מלון שדיברנו איתו, פעם אחת: חיפוש לפי אזור ומחיר, והאפשרויות הכי טובות קודם' }] },
@@ -370,6 +372,7 @@ function pageAllowed(id) {
   if (id === 'calls') return !!me && (me.role === 'owner' || me.id === 'cad5d8ff-c32d-4df9-918e-38cfd1d315d8');   // owner 22.11: includes the calls with Ilan → like the Ilan tab   // each sees only their own surveys and those shared with them
   if (id === 'ilan') return !!me && (me.role === 'owner' || me.id === 'cad5d8ff-c32d-4df9-918e-38cfd1d315d8');   // only the owner and מעיין (owner 19.11: Ilan must never see it, not even for a moment)
   if (id === 'remote') return has('remote');
+  if (id === 'offers') return !!me && (me.role === 'owner' || (me.areas || []).includes('offers'));   // owner 25.11: only who the owner gave it
   if (id === 'intake') return !!me && (me.role === 'owner' || (me.areas || []).includes('intake'));   // owner 25.11: only who the owner gave it (now: owner + מעיין)
   if (['guide', 'support', 'stats', 'account'].includes(id)) return true;
   return canDo('content') && has('site');
@@ -379,6 +382,7 @@ function appTiles() {
   const open = leads.filter(l => !l.handled).length;
   return [
     { zone: 'work', id: 'intake', title: 'טופס ללקוח', sub: 'קישור ללקוח, ומה מתאים לו', icon: 'M9 3h6a1 1 0 0 1 1 1v1h2a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h2V4a1 1 0 0 1 1-1zM9 11h6M9 15h4' },
+    { zone: 'work', id: 'offers', title: 'הצעת מחיר מהמאגר', sub: 'עמלה, עיגול, מחיר סופי', icon: 'M4 4h10l6 6v10H4zM14 4v6h6M8 14h8M8 17h5' },
     { zone: 'work', id: 'events', title: 'לוח אירועים', sub: 'מה, מתי ואיפה', icon: ICON.events },
     { zone: 'work', id: 'artists', title: 'אמנים', sub: 'אהרון מאיר והאמנים שלנו', icon: ICON.artists },
     { zone: 'smart', id: 'hotels', title: 'בדיקת מלונות ואולמות', sub: 'שיחות, מחירים, זמינות', icon: ICON.hotels },
@@ -463,7 +467,8 @@ function render() {
     return appHolidays(pg, actx, state.trips || [], asks);
   }
   if (page === 'appsite') return appSite(pg, actx, allPages().filter(p => p.group === 'site' || p.group === 'people' || ['contact', 'banners'].includes(p.id)));
-  if (page === 'intake') return intakePage(pg, { toast, showLogin, go, rerender: () => page === 'intake' && render(), openCard: id => { showHotel(id, null); go('hotels'); } });
+  if (page === 'intake') return intakePage(pg, { toast, showLogin, go, rerender: () => page === 'intake' && render(), openCard: id => { showHotel(id, null); go('hotels'); }, buildOffer: pageAllowed('offers') ? f => { offerStart = f; go('offers'); } : null });
+  if (page === 'offers') { const st = offerStart; offerStart = null; return offersPage(pg, { toast, showLogin, start: st, rerender: () => page === 'offers' && render(), quoteFrom: quoteFromOffer, openQuote: q => { qEdit = clone(q); qCall = null; qDirty = false; qOpen.clear(); go('quotes'); } }); }
   if (page === 'ilan') return ilanPage(pg, { toast, showLogin, rerender: () => page === 'ilan' && render() });
   if (page === 'venues') return catalogPage(pg, { venues: true, toast, showLogin, rerender: () => page === 'venues' && render(), openHotel: s => { if (!s) return; showHotel(s.surveyId, s.hotelId); go('hotels'); } });   // owner 24.11: the halls catalog
   if (page === 'catalog') return catalogPage(pg, { toast, showLogin, rerender: () => page === 'catalog' && render(), openHotel: s => { if (!s) return; showHotel(s.surveyId, s.hotelId); go('hotels'); } });
@@ -1468,6 +1473,28 @@ async function startQuote(lead) {
   qCall = lead?.call || null;
   qEdit = newQuote(lead); qDirty = !!lead; qOpen.clear();
   if (page === 'quotes') render(); else go('quotes');
+}
+let offerStart = null;
+/** owner 25.11: הצעת מחיר מהמאגר → the client's quote (new, or the same one updated). Only the final prices go in. */
+async function quoteFromOffer(o, items) {
+  await loadQuoteCatalog();
+  let q = null;
+  if (o.quoteId) { try { const r = await fetch('/api/quotes?id=' + encodeURIComponent(o.quoteId), { cache: 'no-store' }); if (r.ok) q = await r.json(); } catch (e) { q = null; } }
+  if (q) {
+    delete q.token;
+    q.items = items;
+    q.client = { ...q.client, name: o.client.name, phone: o.client.phone, email: o.client.email || q.client?.email || '' };
+    q.event = { ...q.event, type: o.event.type, date: o.event.date, guests: String(o.event.guests || ''), place: o.event.place || q.event?.place || '' };
+  } else {
+    q = newQuote({ lang: o.lang, name: o.client.name, phone: o.client.phone, email: o.client.email, service: o.event.type, date: o.event.date, guests: String(o.event.guests || '') });
+    q.services = []; q.sections = q.sections.filter(s => s.afterPrice); q.items = items; q.event.place = o.event.place || '';
+  }
+  const r = await fetch('/api/quotes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(q) });
+  if (r.status === 401) { toast('פג תוקף הכניסה. היכנסו שוב', 'err'); showLogin(); return null; }
+  if (r.status === 403) { toast('כדי ליצור הצעה ללקוח צריך גם הרשאה ל"פניות והצעות מחיר"', 'err'); return null; }
+  if (!r.ok) { toast('השמירה נכשלה. נסו שוב', 'err'); return null; }
+  quotesList = null;
+  return r.json();
 }
 async function saveQuote(extra = {}) {
   const r = await fetch('/api/quotes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...qEdit, ...extra }) });

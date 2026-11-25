@@ -441,6 +441,33 @@ mark { background: #FCE7A8; color: inherit; padding: 0 2px; border-radius: 3px; 
 .in-addbar { position: sticky; bottom: 12px; display: flex; justify-content: center; }
 .in-addbar .btn { box-shadow: 0 10px 30px rgba(22,32,58,.25); }
 @media (max-width: 560px) { .in-place img, .in-ph { width: 60px; height: 48px; } }
+/* owner 25.11: the quote builder (admin/offers.js) */
+.of-rows { display: grid; gap: 10px; }
+.of-row { border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; background: #fff; }
+.of-row__head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.of-row__head small { color: var(--ink-3); }
+.of-row__head .icon--del { margin-inline-start: auto; }
+.of-src { font-size: .75rem; font-weight: 800; padding: 1px 9px; border-radius: 99px; background: var(--bg); color: var(--ink-2); }
+.of-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0 10px; }
+@media (max-width: 760px) { .of-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .of-final { grid-column: 1 / -1; } }
+.of-final input { border-color: var(--gold) !important; font-weight: 800; }
+.of-row__foot { margin: 0; color: var(--ink-2); font-size: .88rem; }
+.of-hand { font-weight: 800; color: #8A6A32; }
+.of-profit { color: #1F6B3A; }
+.of-pick { margin-top: 12px; }
+.of-pick__head { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.of-pick__head .input { flex: 1; }
+.of-pick__list { display: grid; gap: 6px; max-height: 420px; overflow: auto; }
+.of-opt { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; justify-content: space-between; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; }
+.of-opt__t { display: grid; }
+.of-opt__t small { color: var(--ink-3); }
+.of-opt__p { display: flex; flex-wrap: wrap; gap: 6px; }
+.of-bar { position: sticky; bottom: 10px; z-index: 5; display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; justify-content: space-between; padding: 12px 16px; border-radius: 14px; background: var(--night); color: #fff; box-shadow: 0 12px 30px rgba(22,32,58,.3); margin-top: 4px; }
+.of-bar__sum { display: flex; flex-wrap: wrap; gap: 4px 18px; font-size: .92rem; }
+.of-bar__sum b { font-size: 1.05rem; }
+.of-bar .of-profit { color: #9BE0B2; }
+.of-bar__btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.of-bar .btn--line { color: #fff; border-color: rgba(255,255,255,.4); background: transparent; }
 .sm-h--click { cursor: pointer; transition: box-shadow .15s; }
 .sm-h--click:hover { box-shadow: 0 4px 16px rgba(22, 32, 58, .12); }
 .sm-pick { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }

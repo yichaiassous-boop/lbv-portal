@@ -13,12 +13,18 @@
 // Client (no login, the form's signed link):
 //   GET  ?f=<id>&t=<token>       → { name, done, lang }
 //   POST ?f=<id>&t=<token> { answers, lang } → saved once; the card opens
+//
+// owner 25.11: הצעת מחיר מהמאגר (area "offers"): what each thing costs us, our fee, the rounding, and the final price.
+// Only the final prices go into the client's quote (api/quotes.js items); costs and fees stay here, never in the quote.
+//   GET ?offers=1                 → { offers }
+//   POST { op:"offer", … }        → create / update a builder (returns it)
+//   POST { op:"offerDel", id }    → delete a builder (the quote itself stays)
 import crypto from 'node:crypto';
 import { isAuthed, readBody } from './_lib.js';
 import { hotelsReady, getJ, setJ, allJ, kv } from './_hotels.js';
 import { areasOf } from './_areas.js';
 
-const KEY = 'in:all';
+const KEY = 'in:all', OFFERS = 'of:all';
 const SURVEYS = 'hs:surveys', EVENTS = 'ev:all';
 const MAAYAN = 'cad5d8ff-c32d-4df9-918e-38cfd1d315d8';   // the owner's partner in these tools (owner 25.11)
 export const IN_KINDS = {
@@ -79,6 +85,28 @@ async function openCard(f) {
   }
 }
 
+const SRC = ['venue', 'hotel', 'fun', 'artist', 'free'];
+const money = v => { const n = Number(String(v ?? '').replace(/[,\s₪€$]/g, '')); return Number.isFinite(n) && n >= 0 ? Math.min(Math.round(n * 100) / 100, 1e8) : 0; };
+/** A clean builder: rows with our cost, the fee and the final price the client sees. */
+function cleanOffer(b, old = {}) {
+  return {
+    ...old,
+    intakeId: /^i[0-9a-f]{12}$/.test(String(b.intakeId || '')) ? b.intakeId : old.intakeId || '',
+    quoteId: /^q-[a-z0-9]+$/.test(String(b.quoteId || '')) ? b.quoteId : old.quoteId || '',
+    lang: b.lang === 'fr' ? 'fr' : 'he',
+    client: { name: str(b.client?.name, 120), phone: str(b.client?.phone, 40), email: str(b.client?.email, 160) },
+    event: { type: str(b.event?.type, 80), date: str(b.event?.date, 60), guests: int(b.event?.guests, 5000), place: str(b.event?.place, 120) },
+    fee: Math.min(300, money(b.fee)), round: [0, 1, 10, 50, 100, 500].includes(Number(b.round)) ? Number(b.round) : 10,
+    rows: (Array.isArray(b.rows) ? b.rows : []).slice(0, 60).map(r => ({
+      name: str(r.name, 300), src: SRC.includes(r.src) ? r.src : 'free', from: str(r.from, 160),
+      cost: money(r.cost), per: r.per === 'guest' ? 'guest' : 'event', qty: Math.max(1, int(r.qty, 100000) || 1),
+      fee: r.fee === null || r.fee === '' || r.fee === undefined ? null : Math.min(300, money(r.fee)),
+      final: money(r.final), manual: r.manual === true, note: str(r.note, 300),
+    })).filter(r => r.name),
+    updatedAt: now(),
+  };
+}
+
 const forList = f => ({ ...f, link: '/form/?f=' + f.id + '&t=' + formToken(f.id) });
 
 export default async function intakeHandler(req, res) {
@@ -109,8 +137,30 @@ export default async function intakeHandler(req, res) {
     // ----- the managers -----
     const s = req.lbvUser || isAuthed(req);
     if (!s) return send(res, 401, { error: 'login' });
-    if (!(await areasOf(s)).includes('intake')) return send(res, 403, { error: 'forbidden' });
     const who = { id: s.id || s.n || '', name: s.n || '' };
+    const offerCall = url.searchParams.get('offers') || String(body.op || '').startsWith('offer');
+    if (!offerCall && !(await areasOf(s)).includes('intake')) return send(res, 403, { error: 'forbidden' });
+
+    // ----- the quote builder (its own permission) -----
+    if (url.searchParams.get('offers') || String(body.op || '').startsWith('offer')) {
+      if (!(await areasOf(s)).includes('offers')) return send(res, 403, { error: 'forbidden' });
+      if (req.method === 'GET') return send(res, 200, { offers: (await allJ(OFFERS)).sort((x, y) => String(y.updatedAt).localeCompare(String(x.updatedAt))) });
+      if (body.op === 'offer') {
+        const old = body.id ? await getJ(OFFERS, str(body.id, 20)) : null;
+        if (body.id && !old) return send(res, 404, { error: 'not-found' });
+        const o = cleanOffer(body, old || { id: rid('o'), by: who, createdAt: now() });
+        await setJ(OFFERS, o.id, o);
+        if (o.intakeId) { const f = await getJ(KEY, o.intakeId); if (f && f.offerId !== o.id) { f.offerId = o.id; await setJ(KEY, f.id, f); } }
+        return send(res, 200, { offer: o });
+      }
+      if (body.op === 'offerDel') {
+        const id = str(body.id, 20);
+        if (!/^o[0-9a-f]{12}$/.test(id)) return send(res, 400, { error: 'bad-id' });
+        await kv.hdel(OFFERS, id);
+        return send(res, 200, { ok: true });
+      }
+      return send(res, 400, { error: 'bad-request' });
+    }
 
     if (req.method === 'GET') {
       const forms = (await allJ(KEY)).sort((x, y) => String(y.filledAt || y.createdAt).localeCompare(String(x.filledAt || x.createdAt)));
