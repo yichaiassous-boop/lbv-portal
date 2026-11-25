@@ -548,18 +548,22 @@ function datesSaid(text, year) {
     if (d < 1 || d > 31 || mo < 1 || mo > 12) continue;
     hits.push({ iso: y + '-' + String(mo).padStart(2, '0') + '-' + String(d).padStart(2, '0'), s: m.index, e: m.index + m[0].length });
   }
-  const word = s => /בספק|אולי|בבדיקה|לבדוק|ממתינ|יבדוק|יבדקו|לא בטוח|maybe/i.test(s) ? 'maybe' : /לא פנוי|אין מקום|תפוס|תפוסה|מלא|סגור|complet|booked|not available/i.test(s) ? 'taken' : /פנוי|פנויה|יש מקום|זמין|אפשרי|libre|available|free/i.test(s) ? 'free' : '';
+  const word = s => /בספק|אולי|בבדיקה|לבדוק|ממתינ|יבדוק|יבדקו|לא בטוח|maybe/i.test(s) ? 'maybe' : /לא פנוי|אינו פנוי|אינה פנויה|אינם פנויים|לא זמין|אין פניות|אין מקום|תפוס|תפוסה|מלא|סגור|complet|booked|not available/i.test(s) ? 'taken' : /פנוי|פנויה|יש מקום|זמין|אפשרי|libre|available|free/i.test(s) ? 'free' : '';
   hits.forEach((x, i) => {
     const after = t.slice(x.e, i + 1 < hits.length ? hits[i + 1].s : t.length).split(/[.;\n]/)[0];
     const before = t.slice(i ? hits[i - 1].e : 0, x.s).split(/[.;\n,]/).pop();
     const st = word(after) || word(before) || 'said';
     if (!out[x.iso] || out[x.iso] === 'said') out[x.iso] = st;
   });
+  // owner 25.11: "28.03 ו-29.03 פנויים": a date joined to the next one by 'ו' or a comma shares its word
+  for (let i = hits.length - 2; i >= 0; i--) if (out[hits[i].iso] === 'said' && /^\s*(ו-?|,|או)\s*$/.test(t.slice(hits[i].e, hits[i + 1].s))) out[hits[i].iso] = out[hits[i + 1].iso];
   return out;
 }
 /** The place on the preferred date: from the text, or (when the text names no date and the card has this one date) from its availability. */
 function onDate(x, pref, svFrom, svTo) {
-  const said = datesSaid(x.availText, (pref || svFrom || '').slice(0, 4));
+  // owner 25.11: when the availability text names no date, the dates said in the summary count ("25.3 תפוס, 28.3 פנוי")
+  let said = datesSaid(x.availText, (pref || svFrom || '').slice(0, 4));
+  if (!Object.keys(said).length) said = datesSaid(x.summary, (pref || svFrom || '').slice(0, 4));
   let st = said[pref] || '';
   if ((!st || st === 'said') && pref && pref === svFrom && (!svTo || svTo === svFrom || !Object.keys(said).length)) st = { available: 'free', partial: 'maybe', full: 'taken' }[x.avail] || st;
   const other = Object.keys(said).filter(d => d !== pref && said[d] === 'free').sort();
