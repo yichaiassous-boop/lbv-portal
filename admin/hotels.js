@@ -152,6 +152,8 @@ function phonePanel(m, con) {
     [p.battery, 'האפליקציה רצה ברקע', 'הטלפון עלול לעצור את האפליקציה ברקע'],
     [!!m.on, 'מצב בדיקה דולק', 'מצב בדיקה כבוי: שיחות לא נקראות'],
     ...(p.wa !== undefined ? [[p.wa, 'הודעות וואטסאפ ממלונות נקלטות לבד', 'הודעות וואטסאפ ממלונות עוד לא נקלטות. לוחצים "לאשר וואטסאפ" ומדליקים את LBV']] : []),
+    // owner 25.11 (1.24): photos and videos places send on WhatsApp go to their card
+    ...(p.waMedia !== undefined ? [[p.waMedia, `תמונות וסרטונים ממקומות עולים לכרטיס שלהם${p.waMediaSent ? ' (' + p.waMediaSent + ' עד עכשיו)' : ''}`, 'תמונות וסרטונים ממקומות בוואטסאפ עוד לא עולים. לוחצים "לאשר תמונות מוואטסאפ" ובוחרים את התיקייה Media']] : []),
     // what the phone found in the folder (from 1.11): how many, the newest, how many wait for Wi-Fi
     ...(p.found >= 0 && p.lastSync ? [[p.found > 0, `בתיקייה יש ${p.found} הקלטות מחצי השנה האחרונה${p.newest ? ` · האחרונה ${ago(new Date(p.newest).toISOString())}` : ''}`, 'בתיקייה שנבחרה אין הקלטות מחצי השנה האחרונה. כנראה זו לא התיקייה של הקלטות השיחות']] : []),
     ...(p.waiting > 0 ? [[false, '', `${p.waiting} הקלטות ישנות מחכות ל-Wi-Fi. "לשלוח הכול עכשיו" שולח גם בלי Wi-Fi`]] : []),
@@ -167,9 +169,10 @@ function phonePanel(m, con) {
     ${rows.some(r => !r[0]) ? `<ul>${rows.filter(r => !r[0] && r[2]).map(([ok, yes, no]) => `<li class="is-no"><i class="dot no"></i>${no}</li>`).join('')}</ul>` : '<p class="hs-phone__ok">הכול מחובר ועובד.</p>'}
     <details class="hs-phone__more"><summary>פרטים</summary><ul>${rows.filter(r => r[0]).map(([ok, yes]) => `<li>${yes}</li>`).join('')}</ul></details>
     <small>${p.lastSync ? `בדיקה אחרונה בטלפון: ${ago(new Date(p.lastSync).toISOString())}` : ''}${p.err ? ` · תקלה אחרונה: ${esc(String(p.err).slice(0, 120))}` : ''} ${p.pairSt && !p.paired ? ` · חיבור: ${esc(String(p.pairSt).slice(0, 20))}` : ''} · גרסה ${esc(p.version)}</small>
-    <div class="hs-phone__act">${p.wa === false ? '<button type="button" class="btn btn--line btn--sm" data-wa>לאשר וואטסאפ</button>' : ''}${needFix ? '<button type="button" class="btn btn--gold btn--sm" data-fix>לסדר את ההרשאות</button>' : ''}${p.paired ? (p.waiting > 0 ? '<button type="button" class="btn btn--gold btn--sm" data-sync>לשלוח הכול עכשיו</button>' : '<button type="button" class="btn btn--line btn--sm" data-sync>לבדוק הקלטות עכשיו</button>') : con.app ? '<button type="button" class="btn btn--gold btn--sm" data-pair>לחבר את הטלפון</button>' : ''}</div>
+    <div class="hs-phone__act">${p.wa === false ? '<button type="button" class="btn btn--line btn--sm" data-wa>לאשר וואטסאפ</button>' : ''}${p.waMedia === false ? '<button type="button" class="btn btn--line btn--sm" data-wamedia>לאשר תמונות מוואטסאפ</button>' : ''}${needFix ? '<button type="button" class="btn btn--gold btn--sm" data-fix>לסדר את ההרשאות</button>' : ''}${p.paired ? (p.waiting > 0 ? '<button type="button" class="btn btn--gold btn--sm" data-sync>לשלוח הכול עכשיו</button>' : '<button type="button" class="btn btn--line btn--sm" data-sync>לבדוק הקלטות עכשיו</button>') : con.app ? '<button type="button" class="btn btn--gold btn--sm" data-pair>לחבר את הטלפון</button>' : ''}</div>
   </div>`);
   $('[data-fix]', el)?.addEventListener('click', () => window.LBVApp.approvals());
+  $('[data-wamedia]', el)?.addEventListener('click', () => { window.LBVApp.waMedia?.(); });
   $('[data-wa]', el)?.addEventListener('click', () => { window.LBVApp.waAccess?.(); ctx.toast('מדליקים את LBV ברשימה, וחוזרים לכאן', 'info'); });
   $('[data-switch]', el)?.addEventListener('click', async () => { try { await fetch('/api/login', { method: 'DELETE' }); } catch (e) {} location.href = '/admin/?out=' + Date.now() + '#apphome'; });
   $('[data-pair]', el)?.addEventListener('click', () => { (window.LBVApp.pairNow || window.LBVApp.syncNow)?.call(window.LBVApp); ctx.toast('מחברים את הטלפון לרובוט', 'info'); setTimeout(() => again(), 4000); });
