@@ -29,6 +29,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { isAuthed, readBody } from './_lib.js';
 import { redis, redisReady } from './_redis.js';
+import { generateClientTokenFromReadWriteToken } from '@vercel/blob/client';
+const WA_MEDIA_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'video/mp4', 'video/3gpp', 'video/quicktime'];
 
 /* ---------- storage: Redis hashes / keys (or a local JSON file for the preview server) ---------- */
 const LOCAL = () => process.env.LBV_LOCAL_DATA || '';
@@ -642,6 +644,43 @@ export default async function hotelsHandler(req, res) {
       if (!sv || !sv.link || !same(q('t'), viewToken(sv.id))) return send(res, 404, { error: 'not-found' });
       const hotels = (await allJ(K.hotels(sv.id))).map(h => ({ ...brief(h), notes: undefined, email: undefined }));
       return send(res, 200, { survey: { title: sv.title, from: sv.from, to: sv.to, need: sv.need, area: sv.area, levels: sv.levels }, hotels });
+    }
+
+    /* ----- owner 25.11: photos and videos a place sends on WhatsApp, from the LBV phone app (WhatsApp keeps them on the phone).
+       The phone proves itself with the robot's app secret (it has nothing else); it gets a short upload token for one file,
+       puts the file straight in Blob storage, then says whose it is. Only a number that is a place in a card is filed. ----- */
+    if (req.method === 'POST' && (body.op === 'waUp' || body.op === 'waMedia')) {
+      const sec = str(body.secret, 128);
+      let userId = null;
+      if (sec.length >= 32) for (const [id, v] of Object.entries(await kv.hgetall(K.users) || {})) { try { const u = JSON.parse(v); if (u.app?.secret && same(sec, u.app.secret)) { userId = id; break; } } catch (e) {} }
+      if (!userId) return send(res, 401, { error: 'secret' });
+      if (body.op === 'waUp') {
+        const type = str(body.type, 40).toLowerCase(), size = Number(body.size) || 0;
+        if (!WA_MEDIA_TYPES.includes(type)) return send(res, 400, { error: 'type' });
+        if (!(size > 0 && size <= 100 * 1024 * 1024)) return send(res, 400, { error: 'size' });
+        const ext = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/heic': 'heic', 'video/mp4': 'mp4', 'video/3gpp': '3gp', 'video/quicktime': 'mov' }[type];
+        const pathname = 'hotels/wa/' + new Date().toISOString().slice(0, 10) + '-' + rid('w') + '.' + ext;
+        const token = await generateClientTokenFromReadWriteToken({ token: process.env.BLOB_READ_WRITE_TOKEN, pathname, allowedContentTypes: [type], maximumSizeInBytes: 100 * 1024 * 1024, addRandomSuffix: true, validUntil: Date.now() + 20 * 60e3 });
+        return send(res, 200, { ok: true, token, pathname, storeId: token.split('_')[3] || '' });
+      }
+      const fileUrl = str(body.url, 400), kind = body.kind === 'video' ? 'video' : 'image', d = digits(body.phone).slice(-9);
+      if (!/^https:\/\/[a-z0-9]+\.public\.blob\.vercel-storage\.com\/hotels\/wa\/[\w.\-]+$/i.test(fileUrl)) return send(res, 400, { error: 'url' });
+      if (d.length < 8) return send(res, 400, { error: 'phone' });
+      let filed = 0;
+      for (const sv of (await allJ(K.surveys)).filter(x => mine(x, userId))) {
+        const key = K.hotels(sv.id);
+        for (const h of await allJ(key)) {
+          if (![h.phone, h.phone2].some(x => digits(x).slice(-9) === d)) continue;
+          if ((h.log || []).some(l => (l.files || []).some(f => f.url === fileUrl))) { filed++; continue; }
+          const who = str(body.from, 120) || h.name || '';
+          h.log = [...(h.log || []), { t: 'note', at: str(body.at, 40) || now(), by: 'וואטסאפ', text: (kind === 'video' ? 'סרטון' : 'תמונה') + ' מהוואטסאפ' + (who ? ' של ' + who : ''), files: [{ name: kind === 'video' ? 'לצפייה בסרטון' : 'לצפייה בתמונה', url: fileUrl }] }].slice(-80);
+          if (kind === 'image') h.myPhotos = [...new Set([...(h.myPhotos || []), fileUrl])].slice(-40);
+          h.updatedAt = now();
+          await setJ(key, h.id, h);
+          filed++;
+        }
+      }
+      return send(res, 200, { ok: true, filed });
     }
 
     /* ----- the Apps Script ----- */
