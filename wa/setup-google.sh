@@ -1,6 +1,6 @@
 #!/bin/bash
 # Installs the WhatsApp link service on a fresh Google Cloud e2-micro (Debian/Ubuntu). Run once:
-#   curl -fsSL https://raw.githubusercontent.com/yichaiassous-boop/lbv-portal/main/wa/setup-google.sh | sudo bash
+#   curl -fsSL https://raw.githubusercontent.com/yichaiassous-boop/lbv-portal/feat/nouvelle-page-accueil/wa/setup-google.sh | sudo bash
 # Then put the three keys in /etc/lbv-wa.env (sudo nano /etc/lbv-wa.env) and: sudo systemctl restart lbv-wa
 set -e
 apt-get update -y && apt-get install -y curl git ca-certificates
@@ -10,7 +10,7 @@ fi
 # a little swap: the micro machine has 1 GB of memory
 if [ ! -f /swapfile ]; then fallocate -l 1G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile && echo '/swapfile none swap sw 0 0' >> /etc/fstab; fi
 id lbvwa >/dev/null 2>&1 || useradd -r -m -d /opt/lbv lbvwa
-if [ -d /opt/lbv/lbv-portal ]; then sudo -u lbvwa git -C /opt/lbv/lbv-portal pull -q; else sudo -u lbvwa git clone -q https://github.com/yichaiassous-boop/lbv-portal.git /opt/lbv/lbv-portal; fi
+if [ -d /opt/lbv/lbv-portal ]; then sudo -u lbvwa git -C /opt/lbv/lbv-portal pull -q; else sudo -u lbvwa git clone -q -b feat/nouvelle-page-accueil https://github.com/yichaiassous-boop/lbv-portal.git /opt/lbv/lbv-portal; fi
 cd /opt/lbv/lbv-portal/wa && sudo -u lbvwa npm ci --omit=dev --ignore-scripts
 if [ ! -f /etc/lbv-wa.env ]; then
   printf 'KV_REST_API_URL=\nKV_REST_API_TOKEN=\nBLOB_READ_WRITE_TOKEN=\nPORTAL_URL=https://lbv-portal-phi.vercel.app\n' > /etc/lbv-wa.env
