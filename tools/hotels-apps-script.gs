@@ -1026,8 +1026,6 @@ function tidySheet(sh, rows, w) {
   all.setFontFamily('Arial').setFontSize(11).setVerticalAlignment('top').setHorizontalAlignment('right').setWrap(false);
   sh.getRange(1, 1, 1, w).setFontWeight('bold').setFontColor('#ffffff').setBackground('#1f2a44').setVerticalAlignment('middle').setWrap(true);
   sh.setRowHeight(1, 42);
-  if (n > 1) sh.getRange(1, 1, n, w).applyRowBanding(SpreadsheetApp.BandingTheme.LIGHT_GREY, true, false);
-  sh.getRange(1, 1, 1, w).setBackground('#1f2a44').setFontColor('#ffffff');
   sh.setFrozenRows(1); sh.setFrozenColumns(1);
   if (n > 1) sh.getRange(2, 1, n - 1, 1).setFontWeight('bold');
   const col = t => head.indexOf(t) + 1;
@@ -1042,8 +1040,11 @@ function tidySheet(sh, rows, w) {
     else sh.setColumnWidth(c, 120);
   }
   if (n > 1 && col('הכי זול')) sh.getRange(2, col('הכי זול'), n - 1, 1).setNumberFormat('#,##0 "₪"').setFontWeight('bold');
-  const rules = [];
-  const paint = (c, text, bg, fg) => { if (c && n > 1) rules.push(SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo(text).setBackground(bg).setFontColor(fg).setRanges([sh.getRange(2, c, n - 1, 1)]).build()); };
+  // owner 25.11: on the phone the sheet had no colours (the Sheets app on the phone does not show colour rules or banding),
+  // so every cell gets its colour itself: stripes, and the free / taken / status colours by the cell's text.
+  const bg = [], fg = [];
+  for (let r = 0; r < n; r++) { bg.push(new Array(w).fill(r === 0 ? '#1f2a44' : r % 2 ? '#ffffff' : '#f3f3f3')); fg.push(new Array(w).fill(r === 0 ? '#ffffff' : '#000000')); }
+  const paint = (c, text, b, f) => { if (!c) return; for (let r = 1; r < n; r++) if (String(rows[r][c - 1] == null ? '' : rows[r][c - 1]).trim() === text) { bg[r][c - 1] = b; fg[r][c - 1] = f; } };
   const pc = head.findIndex(t => /^ב-\d/.test(t)) + 1;   // owner 24.11: the preferred-date column
   if (pc) { paint(pc, 'פנוי', '#d9f2e3', '#0b5d2a'); paint(pc, 'בספק', '#fff1c9', '#7a5600'); paint(pc, 'תפוס', '#fbdcdc', '#8a1c1c'); sh.setColumnWidth(pc, 110); }
   // owner 25.11: free only on another date gets its own colour
@@ -1051,7 +1052,8 @@ function tidySheet(sh, rows, w) {
   if (col('תאריכים חלופיים')) sh.setColumnWidth(col('תאריכים חלופיים'), 150);
   paint(col('זמינות'), 'יש מקום', '#d9f2e3', '#0b5d2a'); paint(col('זמינות'), 'מקום חלקי', '#fff1c9', '#7a5600'); paint(col('זמינות'), 'תפוס', '#fbdcdc', '#8a1c1c');
   paint(col('סטטוס'), 'מתאים', '#d9f2e3', '#0b5d2a'); paint(col('סטטוס'), 'לחזור אליהם', '#fff1c9', '#7a5600'); paint(col('סטטוס'), 'לא רלוונטי', '#eeeeee', '#666666'); paint(col('סטטוס'), 'נסגר', '#dbe6ff', '#1f3d8a');
-  sh.setConditionalFormatRules(rules);
+  sh.setConditionalFormatRules([]);
+  all.setBackgrounds(bg).setFontColors(fg);
   all.setBorder(true, true, true, true, true, true, '#d9d9d9', SpreadsheetApp.BorderStyle.SOLID);
 }
 function sheets(st) {
