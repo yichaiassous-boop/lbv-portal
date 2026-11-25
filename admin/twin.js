@@ -156,6 +156,7 @@ function editCard() {
     if (f.size > 200 * 1024 * 1024) { st.textContent = 'הקובץ גדול מ-200MB. מקצרים או מכווצים.'; return; }
     try { clip = { file: f, ...(await readClip(f)) }; } catch (e2) { st.textContent = 'לא הצלחתי לקרוא את הקליפ. צריך MP4.'; return; }
     if (clip.secs < 3 || clip.secs > 10.05) { st.textContent = `הקליפ ${clip.secs.toFixed(1)} שניות. כאן צריך בין 3 ל-10. מקצרים ומעלים שוב.`; clip = null; return; }
+    if (Math.min(clip.w, clip.hgt) < 720) { st.textContent = `הקליפ באיכות ${clip.w}x${clip.hgt}. המנוע מקבל רק מ-720 ומעלה. מייצאים מהטלפון באיכות גבוהה יותר.`; clip = null; return; }
     pair.querySelector('img').src = URL.createObjectURL(clip.frame); pair.hidden = false;
     st.textContent = `${clip.secs.toFixed(1)} שניות. המחיר: כ-${usd(COST.edit(clip.secs))}.`;
   });
@@ -187,6 +188,7 @@ function sceneCard() {
     <p class="hint">שני שלבים. קודם תמונה של אילן במקום החדש, לאישור שלכם. אחר כך הוא זז בה: הולך, מסתובב, מרים כוסית.</p>
     <label class="f">תמונה של אילן <small>(או קליפ, ואז לוקחים ממנו פריים. הכי טוב: פנים ברורות, כל הגוף אם רוצים שילך)</small><input type="file" name="photo" accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime"></label>
     <div class="tw-pair" hidden><figure><img alt="התמונה של אילן"><figcaption>המקור</figcaption></figure></div>
+    <label class="f">עוד תמונות של אילן מזוויות אחרות <small>(לא חובה, עד 3. עוזר שהפנים יישארו בדיוק שלו)</small><input type="file" name="more" accept="image/jpeg,image/png,image/webp" multiple></label>
     <label class="f">שם לעבודה <small>(לא חובה)</small><input name="title" maxlength="80" placeholder="למשל: אילן בלובי של מלון"></label>
     <fieldset class="tw-pre"><legend>איפה</legend><div class="sm-chips" data-c="place"></div></fieldset>
     <fieldset class="tw-pre"><legend>מה הוא לובש</legend><div class="sm-chips" data-c="wear"></div></fieldset>
@@ -216,8 +218,10 @@ function sceneCard() {
     try {
       st.textContent = 'מעלה את התמונה…';
       const url = await up('photo', photo);
+      const more = [];
+      for (const f of [...el.querySelector('[name=more]').files].filter(f => f.size <= 25 * 1024 * 1024).slice(0, 3)) more.push(await up('face', f));
       st.textContent = 'שולח…';
-      const { job } = await api('POST', { step: 'scene', photo: url, prompt: parts.join(' '), title: el.querySelector('[name=title]').value });
+      const { job } = await api('POST', { step: 'scene', photo: url, more, prompt: parts.join(' '), title: el.querySelector('[name=title]').value });
       ctx.toast('נשלח. התמונה תהיה מוכנה בעוד כחצי דקה');
       ctx.rerender(); watch(job.id);
     } catch (e) { fail(e); st.textContent = ''; go.disabled = false; }
@@ -356,6 +360,8 @@ function jobCard(j) {
       acts.append(say);
     }
   }
+  const again = retry(j);
+  if (again) acts.append(again);
   const del = h('<button type="button" class="btn btn--line">למחוק מהרשימה</button>');
   del.addEventListener('click', async () => {
     if (!confirm('למחוק את העבודה מהרשימה? (מה שהורד למחשב נשאר)')) return;
@@ -363,6 +369,23 @@ function jobCard(j) {
   });
   acts.append(del);
   return el;
+}
+/** A failed job: the same work again, as a new job (the scene's movement step has its own form, it can be sent again there). */
+function retry(j) {
+  const S = j.steps || {}, bad = s => s?.state === 'failed';
+  let body = null, cost = 0;
+  if (j.kind === 'edit' && bad(S.video)) { body = { step: 'edit', video: j.video, ref: j.ref || '', prompt: j.prompt, secs: j.secs, title: j.title }; cost = COST.edit(j.secs || 10); }
+  if (j.kind === 'scene' && bad(S.still)) { body = { step: 'scene', photo: j.photo, more: j.more || [], prompt: j.prompt, title: j.title }; cost = COST.still; }
+  if (j.kind === 'talk' && (bad(S.tts) || bad(S.lips))) { body = { step: 'talk', video: j.video, text: j.text, lang: j.lang, secs: j.secs, title: j.title }; cost = COST.talk(j.secs || 10, (j.text || '').length); }
+  if (!body) return null;
+  const b = h('<button type="button" class="btn btn--gold">לנסות שוב</button>');
+  b.addEventListener('click', async () => {
+    if (!confirm(`לנסות שוב את אותה עבודה? זה עולה שוב כ-${usd(cost)}.`)) return;
+    b.disabled = true;
+    try { const { job } = await api('POST', body); ctx.toast('נשלח שוב'); ctx.rerender(); watch(job.id); }
+    catch (e) { fail(e); b.disabled = false; }
+  });
+  return b;
 }
 function moveForm(j) {
   const row = h(`<div class="tw-step2">

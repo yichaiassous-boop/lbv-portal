@@ -32,6 +32,7 @@ const src = v => {
   const s = str(v, 800);
   if (/^https:\/\/[a-z0-9-]+\.public\.blob\.vercel-storage\.com\/twin\/[^\s"'<>]+$/i.test(s)) return s;
   if (/^https:\/\/([a-z0-9-]+\.)*fal\.media\/[^\s"'<>]+$/i.test(s)) return s;
+  if (/^https:\/\/storage\.googleapis\.com\/falserverless\/[^\s"'<>]+$/i.test(s)) return s;   // some fal results live there
   if (process.env.LBV_LOCAL_DATA && /^media\/uploads\/[\w.\-]+$/.test(s)) return s;
   return '';
 };
@@ -136,10 +137,11 @@ export default async function twinHandler(req, res) {
     }
     if (b.step === 'scene') {   // a new scene, part 1: the still, to approve
       const photo = src(b.photo), prompt = str(b.prompt, 2500);
-      if (!photo) return send(res, 400, { error: 'files' });
+      const more = (Array.isArray(b.more) ? b.more : []).slice(0, 3).map(src);   // more photos of Ilan: his face stays his
+      if (!photo || more.some(x => !x)) return send(res, 400, { error: 'files' });
       if (!prompt) return send(res, 400, { error: 'prompt' });
-      const step = await submit(M.still, { prompt: 'Use this exact man: the same face, beard, hair, glasses and body, recognisable at once. ' + prompt + ' Photorealistic vertical photo taken with a real camera, natural light, natural skin.', image_urls: [photo], aspect_ratio: '9:16', output_format: 'jpeg', resolution: '2K' });
-      const job = { ...base, kind: 'scene', prompt, photo, steps: { still: step } };
+      const step = await submit(M.still, { prompt: 'Use this exact man: the same face, beard, hair, glasses and body, recognisable at once. ' + prompt + ' Photorealistic vertical photo taken with a real camera, natural light, natural skin.' + (more.length ? ' Edit the first image. The other images show the same man from other angles: use them only to keep his face exact.' : ''), image_urls: [photo, ...more], aspect_ratio: '9:16', output_format: 'jpeg', resolution: '2K' });
+      const job = { ...base, kind: 'scene', prompt, photo, more, steps: { still: step } };
       await setJ(KEY, job.id, job);
       return send(res, 200, { ok: true, job });
     }
@@ -161,7 +163,7 @@ export default async function twinHandler(req, res) {
       const video = src(b.video), text = str(b.text, 3000), lang = LANGS.includes(b.lang) ? b.lang : 'auto';
       if (!video) return send(res, 400, { error: 'files' });
       if (!text) return send(res, 400, { error: 'text' });
-      const step = await submit(M.tts, { text, voice_setting: { voice_id: voice.id, speed: b.speed ? num(b.speed, 0.8, 1.2) : 1 }, language_boost: lang, output_format: 'url' });
+      const step = await submit(M.tts, { text, voice_setting: { voice_id: voice.id, vol: 1, pitch: 0, speed: b.speed ? num(b.speed, 0.8, 1.2) : 1 }, language_boost: lang, output_format: 'url' });
       const job = { ...base, kind: 'talk', text, lang, video, secs: num(b.secs, 0, 300), steps: { tts: step } };
       await setJ(KEY, job.id, job);
       return send(res, 200, { ok: true, job });

@@ -35,6 +35,7 @@ if (process.env.FAL_FAKE === '1') {
     const done = Date.now() - j.at > 6000;
     if (m[2]) return reply(done ? 200 : 202, { status: done ? 'COMPLETED' : 'IN_PROGRESS' });
     const i = j.input, k = j.model;
+    if (JSON.stringify(i).includes('FAILTEST')) return reply(422, { detail: 'fake failure (FAILTEST)' });   // to test the failed state
     if (k.includes('nano-banana')) return reply(200, { images: [{ url: i.image_urls[0] }] });
     if (k.includes('image-to-video')) return reply(200, { video: { url: 'media/uploads/zz-fake-move.mp4' } });
     if (k.includes('voice-clone')) return reply(200, { custom_voice_id: 'fake-voice-ilan', audio: { url: 'media/uploads/zz-fake.mp3' } });
