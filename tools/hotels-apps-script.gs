@@ -88,7 +88,8 @@ function tick() {
     try { sortCalls(st); } catch (e) { console.error('sortCalls', e); }   // owner 24.11 (early, so a long run never skips it): who an unknown call is with
     try { photoChecks(st); } catch (e) { console.error('photoChecks', e); }   // owner 24.11 (early): only the place's own site and real photos of it
     try { recordings(st); } catch (e) { console.error('recordings', e); }
-    try { placeCallsRun(st); } catch (e) { console.error('placeCalls', e); }   // owner 25.11: calls with a place that were filed nowhere
+    try { placeCallsRun(st); } catch (e) { console.error('placeCalls', e); }
+    try { briefsRun(st); } catch (e) { console.error('briefs', e); }   // owner 25.11: the short facts of each place for the sheet (Ilan)   // owner 25.11: calls with a place that were filed nowhere
     try { relistens(st); } catch (e) { console.error('relistens', e); }   // early: it needs minutes
     try { answerAsks(st); } catch (e) { console.error('asks', e); }
     try { outbox(st); } catch (e) { console.error('outbox', e); }
@@ -445,6 +446,27 @@ function sortCalls(st) {
 /** "לקרוא את השיחה מחדש": the hotel's calls read again with today's rules; the answer replaces the old reading. */
 /** owner 25.11: a call with a place (sorted "hotel") made outside the survey times was filed nowhere, so its card said "לא ידוע".
  *  It is read like any survey call and the site puts it in the right card (or asks which event). One per run: a reading takes minutes. */
+/** owner 25.11: the sheet goes to Ilan: for each place only the facts it gave (how many guests, price per plate, hall rental,
+ *  what is included, conditions), written from everything in the card, never who called whom. The site asks again when something new came in. */
+function briefsRun(st) {
+  for (const j of (st.briefs || []).slice(0, 2)) {
+    if (elapsed() > 200) return;
+    let result = null, error = '';
+    try {
+      result = gemini({ text: j.text }, [
+        'Everything we have about one event place (hall / hotel / venue) that La Belle Vie, an Israeli events company, is checking for: ' + (j.need || 'an event') + '.',
+        'Write in Hebrew a short brief for the client of the company, with ONLY the facts the place gave. Never write who called whom or who asked (no "מעיין", no "La Belle Vie", no "ביררה", no "הנציגה אמרה"): only the facts themselves.',
+        'guests: how many guests the place takes (e.g. "200 עד 300 איש", "עד 400 איש", "מינימום 150 איש").',
+        'plate: the price per plate / per guest for the meal, with what it depends on (e.g. "370 ₪ למנה, מינימום 200 מנות"). If several, the main one and the range.',
+        'hall: hall rental: its price, or "אין השכרת אולם" / "כלול במחיר המנה" when said.',
+        'extras: short lines, each one fact: what is included or given (e.g. "חדר כלה בחינם", "חדרים ללינה לבני הזוג"), conditions and limits (e.g. "בסוף שבוע רק אם לוקחים את כל המקום", "כשרות בד"ץ", "מינימום הזמנה"), and anything else important for choosing the place. Not the availability (it has its own column).',
+        'BE EXACT: numbers as said, never guess or round. Leave a field empty ("") when it was not said.',
+      ].join('\n'), { type: 'OBJECT', properties: { guests: { type: 'STRING' }, plate: { type: 'STRING' }, hall: { type: 'STRING' }, extras: { type: 'ARRAY', items: { type: 'STRING' } } }, required: ['guests', 'plate', 'hall', 'extras'] });
+    } catch (e) { error = String(e).slice(0, 200); }
+    site('post', 'brief', { surveyId: j.surveyId, hotelId: j.hotelId, sig: j.sig, result: result, error: error });
+    console.log('brief: ' + j.name + (error ? ' ' + error : ''));
+  }
+}
 function placeCallsRun(st) {
   for (const c of (st.placeCalls || []).slice(0, 1)) {
     if (elapsed() > 90) return;   // one reading per run (two readings ran past the 6 minutes)
@@ -1051,10 +1073,10 @@ function tidySheet(sh, rows, w) {
   sh.setFrozenRows(1); sh.setFrozenColumns(1);
   if (n > 1) sh.getRange(2, 1, n - 1, 1).setFontWeight('bold');
   const col = t => head.indexOf(t) + 1;
-  const long = ['המחירים', 'מה חשוב לדעת', 'לחזור אליהם', 'פירוט זמינות', 'סיכום', 'הערות', 'מה לבדוק'];
+  const long = ['מה כלול ומה חשוב', 'מחיר מנה', 'השכרת אולם', 'כמה אורחים', 'המחירים', 'מה חשוב לדעת', 'לחזור אליהם', 'פירוט זמינות', 'סיכום', 'הערות', 'מה לבדוק'];
   for (let c = 1; c <= w; c++) {
     const t = head[c - 1];
-    if (long.indexOf(t) >= 0) { sh.setColumnWidth(c, t === 'סיכום' || t === 'מה חשוב לדעת' ? 340 : 240); if (n > 1) sh.getRange(2, c, n - 1, 1).setWrap(true); }
+    if (long.indexOf(t) >= 0) { sh.setColumnWidth(c, t === 'סיכום' || t === 'מה חשוב לדעת' || t === 'מה כלול ומה חשוב' ? 340 : t === 'כמה אורחים' ? 150 : 240); if (n > 1) sh.getRange(2, c, n - 1, 1).setWrap(true); }
     else if (t === 'מלון' || t === 'מקום') sh.setColumnWidth(c, 190);
     else if (t === 'איש קשר וטלפון') sh.setColumnWidth(c, 200);
     else if (t === 'מייל') sh.setColumnWidth(c, 200);
@@ -1071,6 +1093,16 @@ function tidySheet(sh, rows, w) {
   if (pc) { paint(pc, 'פנוי', '#d9f2e3', '#0b5d2a'); paint(pc, 'בספק', '#fff1c9', '#7a5600'); paint(pc, 'תפוס', '#fbdcdc', '#8a1c1c'); sh.setColumnWidth(pc, 110); }
   // owner 25.11: free only on another date gets its own colour
   if (pc) { paint(pc, 'פנוי בתאריך אחר', '#e3ecff', '#1f3d8a'); paint(pc, 'תפוס, פנוי בתאריך אחר', '#e3ecff', '#1f3d8a'); }
+  // owner 25.11 (2): one coloured column is lost on the phone screen: the whole row takes a light tint of its date answer,
+  // and "לא ידוע" (no answer yet) is grey, so on the phone each place shows at once if it is free, taken or still open.
+  if (pc) {
+    const tint = { 'פנוי': '#eef9f2', 'בספק': '#fff8e1', 'תפוס': '#fdeeee', 'פנוי בתאריך אחר': '#eef3ff', 'תפוס, פנוי בתאריך אחר': '#eef3ff' };
+    for (let r = 1; r < n; r++) {
+      const v = String(rows[r][pc - 1] == null ? '' : rows[r][pc - 1]).trim();
+      if (tint[v]) for (let c = 0; c < w; c++) if (c !== pc - 1) bg[r][c] = tint[v];
+    }
+    paint(pc, 'לא ידוע', '#e6e6e6', '#555555');
+  }
   if (col('תאריכים חלופיים')) sh.setColumnWidth(col('תאריכים חלופיים'), 150);
   paint(col('זמינות'), 'יש מקום', '#d9f2e3', '#0b5d2a'); paint(col('זמינות'), 'מקום חלקי', '#fff1c9', '#7a5600'); paint(col('זמינות'), 'תפוס', '#fbdcdc', '#8a1c1c');
   paint(col('סטטוס'), 'מתאים', '#d9f2e3', '#0b5d2a'); paint(col('סטטוס'), 'לחזור אליהם', '#fff1c9', '#7a5600'); paint(col('סטטוס'), 'לא רלוונטי', '#eeeeee', '#666666'); paint(col('סטטוס'), 'נסגר', '#dbe6ff', '#1f3d8a');

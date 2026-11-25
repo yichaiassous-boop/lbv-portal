@@ -646,11 +646,32 @@ export function photosLink(h, origin, sv) {
   const link = sv ? origin + '/hotels/photos.html?s=' + sv.id + '&h=' + h.id + '&t=' + picsToken(sv.id + '.' + h.id) : origin + '/hotels/photos.html?n=' + encodeURIComponent(h.name || '') + all.slice(0, 6).map(u => '&u=' + encodeURIComponent(u)).join('');
   return { link, k: all.length, first: all[0] };
 }
+/** owner 25.11: the sheet goes to Ilan: only the facts the place gave (guests, price per plate, hall rental, what is included,
+ *  conditions), never "מעיין ביררה..." (who called whom). The robot writes this short brief from everything in the card. */
+const INFO_T = ['call', 'text', 'mail-in', 'wa'];
+export const briefSig = h => { const L = (h.log || []).filter(l => INFO_T.includes(l.t)); return [L.length, L.map(l => l.at || '').sort().pop() || '', (h.prices || []).length, String(h.notes || '').length, String(h.availText || '').length].join('|'); };
+export function briefText(h) {
+  const cut = (v, n) => String(v || '').trim().slice(0, n);
+  const out = ['המקום: ' + (h.name || '') + (h.city ? ', ' + h.city : '')];
+  if (h.availText) out.push('זמינות: ' + cut(h.availText, 400));
+  if (h.rooms) out.push('חדרים: ' + cut(h.rooms, 200));
+  const pr = (h.prices || []).filter(p => p.price > 0).map(p => [p.level, p.board].filter(Boolean).join(', ') + ': ' + p.price + ' ' + (p.currency || 'ILS') + (p.per ? ' ' + p.per : '') + (p.note ? ' (' + p.note + ')' : ''));
+  if (pr.length) out.push('מחירים שנרשמו: ' + pr.join('; '));
+  if (h.notes) out.push('הערות: ' + cut(h.notes, 1500));
+  for (const l of (h.log || []).filter(l => INFO_T.includes(l.t)).slice(-12)) {
+    const kind = { call: 'שיחה', text: 'הודעה / הצעה', 'mail-in': 'מייל מהמקום', wa: l.mine ? 'וואטסאפ מאיתנו' : 'וואטסאפ מהמקום' }[l.t];
+    out.push('--- ' + kind + ' ' + String(l.at || '').slice(0, 10) + '\n' + [l.summary, l.t === 'call' ? cut(l.transcript, 5000) : cut(l.text || l.body, 3000)].filter(Boolean).join('\n'));
+  }
+  return out.join('\n').slice(0, 26000);
+}
+const briefOf = h => (h.brief && typeof h.brief === 'object') ? h.brief : null;
+
 export function tableRows(sv, hotels, pref, origin) {
   origin = origin || 'https://lbv-portal-phi.vercel.app';
   pref = /^\d{4}-\d{2}-\d{2}$/.test(pref || '') ? pref : sv.from || '';
   // owner 25.11: a photo and the place's site in the sheet; "לחזור אליהם" is for us, not in this table
-  const head = ['מקום', 'תמונה', 'כל התמונות', 'אתר', 'עיר', pref ? 'ב-' + dmy(pref) : 'זמינות', 'תאריכים חלופיים', 'הכי זול', 'המחירים', 'מה חשוב לדעת', 'איש קשר וטלפון', 'סטטוס'];
+  // owner 25.11 (2): the sheet for Ilan: guests, price per plate, hall rental, what is included and the conditions (no call stories, no status)
+  const head = ['מקום', 'תמונה', 'כל התמונות', 'אתר', 'עיר', pref ? 'ב-' + dmy(pref) : 'זמינות', 'תאריכים חלופיים', 'כמה אורחים', 'מחיר מנה', 'השכרת אולם', 'מה כלול ומה חשוב', 'איש קשר וטלפון'];
   const q = u => String(u).replace(/"/g, '%22');
   const site = h => /^https?:\/\/[^\s"]+$/i.test(h.website || '') ? h.website : '';
   // a bare phone number would lose its leading 0 in the sheet: kept as text
@@ -661,14 +682,10 @@ export function tableRows(sv, hotels, pref, origin) {
   const sym = c => ({ ILS: '₪', USD: '$', EUR: '€' }[c] || (c ? ' ' + c : '₪'));
   const rows = list.map(h => [
     h.name || '', (u => u ? `=IMAGE("${q(u)}")` : '')((photosLink(h, origin, sv) || {}).first), (p => p ? `=HYPERLINK("${q(p.link)}","${p.k === 1 ? 'לפתוח את התמונה' : 'לפתוח ' + p.k + ' תמונות'}")` : '')(photosLink(h, origin, sv)), site(h) ? `=HYPERLINK("${q(site(h))}","לאתר")` : '',
-    h.city || '', (o => o.st === 'free' || o.st === 'maybe' || !o.other.length ? (pref ? PREF_HE[o.st] : AV_HE[h.avail] || 'לא ידוע') : (o.st === 'taken' || h.avail === 'full' ? 'תפוס, ' : '') + 'פנוי בתאריך אחר')(info.get(h)), info.get(h).other.map(dmy).join(', '), minPrice(h) ?? '',
-    (h.prices || []).filter(p => p.price > 0).map(p => ([p.level, p.board].filter(Boolean).join(', ') || 'מחיר') + ': ' + Number(p.price).toLocaleString('he-IL') + ' ' + sym(p.currency).trim() + (p.per ? ' ' + p.per : '') + (p.note ? ' (' + p.note + ')' : '')).join('\n'),
-    // owner 25.11: everything important that was said (availability, rooms, what is included, extras), not only availability
-    (() => { const open = h.followWhat ? 'מה שנשאר פתוח: ' + h.followWhat + (h.followUp ? ' (' + dmy(h.followUp) + ')' : '') : '';
-      const parts = [h.availText, h.rooms ? 'חדרים: ' + h.rooms : '', open, h.summary].map(t => String(t || '').replace(/\s+/g, ' ').trim()).filter(Boolean);
-      return parts.filter((t, i) => !parts.some((o, j) => j !== i && o.length > t.length && o.includes(t))).join('\n').slice(0, 1200); })(),
-    asText([h.contact, [h.phone, h.phone2].filter(Boolean).join(' / ')].filter(Boolean).join(' · ')),
-    ST_HE[h.status] || '']);
+    h.city || '', (o => o.st === 'free' || o.st === 'maybe' || !o.other.length ? (pref ? PREF_HE[o.st] : AV_HE[h.avail] || 'לא ידוע') : (o.st === 'taken' || h.avail === 'full' ? 'תפוס, ' : '') + 'פנוי בתאריך אחר')(info.get(h)), info.get(h).other.map(dmy).join(', '),
+    ...(b => [b?.guests || '', b?.plate || (minPrice(h) != null ? 'מ-' + Number(minPrice(h)).toLocaleString('he-IL') + ' ₪' : ''), b?.hall || '',
+      b ? (b.extras || []).join('\n') : [h.availText, h.rooms ? 'חדרים: ' + h.rooms : ''].map(t => String(t || '').replace(/\s+/g, ' ').trim()).filter(Boolean).join('\n')])(briefOf(h)),
+    asText([h.contact, [h.phone, h.phone2].filter(Boolean).join(' / ')].filter(Boolean).join(' · '))]);
   return [head, ...rows];
 }
 
@@ -1411,6 +1428,18 @@ async function script(req, res, what, userId, b) {
         placeCalls.push({ id: c.id, name: c.name || '', url: c.url || '', at: c.at, phone: c.phone || '' });
       }
     }
+    // owner 25.11: the short brief of each place for the sheet (for Ilan), written again whenever something new came in
+    const briefs = [];
+    for (const sv of surveys) {
+      if (briefs.length >= 2 || !cardLive(sv)) continue;
+      for (const h of await allJ(K.hotels(sv.id))) {
+        if (briefs.length >= 2) break;
+        if (!h.name || !(h.log || []).some(l => INFO_T.includes(l.t))) continue;
+        const sig = briefSig(h);
+        if (h.brief?.sig === sig || (h.briefFail?.sig === sig && h.briefFail.n >= 3)) continue;
+        briefs.push({ surveyId: sv.id, hotelId: h.id, sig, name: h.name, need: sv.need || sv.title || '', text: briefText(h) });
+      }
+    }
     const inboxPlaces = new Map(), mailKnown = new Set();
     for (const sv of surveys) {
       if (!cardLive(sv)) continue;
@@ -1467,7 +1496,7 @@ async function script(req, res, what, userId, b) {
         .sort((a2, b2) => String(b2.at).localeCompare(String(a2.at))).slice(0, 3)
         .map(c => ({ id: c.id, at: c.at, name: c.name || '', phone: whoOf(c).d, local: !!c.local, text: c.local ? str(c.sum?.transcript || '', 30000) : '' }));
     }
-    return send(res, 200, { placeCalls, inboxPlaces: [...inboxPlaces.values()].slice(0, 200), mailKnown: [...mailKnown].slice(-3000), sortCalls, sortExamples: sortExamplesOut, funMail, funRead, ilan, windows, mode, surveys: active, outbox, threads, asks, watch: jobs.watch.slice(0, 300), parses: jobs.parses.slice(0, 5), mailScan: jobs.mailScan.concat(jobs.mailAuto).slice(0, 5), photoCheck: jobs.photoCheck.slice(0, 4), webLook: jobs.webLook.slice(0, 3), webRedo: jobs.webRedo.slice(0, 2), relisten: jobs.relisten.slice(0, 1), wa: jobs.wa.slice(0, 300) });
+    return send(res, 200, { briefs, placeCalls, inboxPlaces: [...inboxPlaces.values()].slice(0, 200), mailKnown: [...mailKnown].slice(-3000), sortCalls, sortExamples: sortExamplesOut, funMail, funRead, ilan, windows, mode, surveys: active, outbox, threads, asks, watch: jobs.watch.slice(0, 300), parses: jobs.parses.slice(0, 5), mailScan: jobs.mailScan.concat(jobs.mailAuto).slice(0, 5), photoCheck: jobs.photoCheck.slice(0, 4), webLook: jobs.webLook.slice(0, 3), webRedo: jobs.webRedo.slice(0, 2), relisten: jobs.relisten.slice(0, 1), wa: jobs.wa.slice(0, 300) });
   }
 
   // The robot's web-app address (for the phone app) + when the app last sent a recording
@@ -1512,6 +1541,23 @@ async function script(req, res, what, userId, b) {
     return send(res, 200, { ok: true });
   }
   // owner 25.11: the robot is about to read a call with a place that was filed nowhere: counted, so a call that always fails stops after 3
+  if (what === 'brief') {
+    const sv = await getJ(K.surveys, b.surveyId);
+    if (!mine(sv, userId)) return send(res, 404, { error: 'not-found' });
+    const key = K.hotels(sv.id), h = await getJ(key, str(b.hotelId, 40));
+    if (!h) return send(res, 404, { error: 'not-found' });
+    const sig = str(b.sig, 200), r = b.result;
+    if (!r || typeof r !== 'object') { h.briefFail = { sig, n: (h.briefFail?.sig === sig ? h.briefFail.n : 0) + 1, error: str(b.error, 200) }; }
+    else {
+      // who called whom is not for this sheet: a line about our side ("מעיין", "La Belle Vie", "ביררה") is dropped
+      const ours = t => /מעיין|לה בל|la belle|ביררה|בירר|התקשר|שיחה עם|הנציג/i.test(t);
+      const line = (v, n) => { const t = str(v, n).replace(/\s+/g, ' ').trim(); return t && !ours(t) && !/^(לא נאמר|לא צוין|לא ידוע|אין מידע)/.test(t) ? t : ''; };
+      h.brief = { guests: line(r.guests, 120), plate: line(r.plate, 160), hall: line(r.hall, 160), extras: (Array.isArray(r.extras) ? r.extras : []).map(x => line(x, 220)).filter(Boolean).slice(0, 8), sig, at: now() };
+      delete h.briefFail;
+    }
+    await setJ(key, h.id, h);
+    return send(res, 200, { ok: true });
+  }
   if (what === 'placeTry') {
     const c = await getJ(K.calls, str(b.id, 120));
     if (!c) return send(res, 404, { error: 'not-found' });
