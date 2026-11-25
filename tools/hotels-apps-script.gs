@@ -1073,19 +1073,19 @@ function tidySheet(sh, rows, w) {
   all.clearFormat();
   all.setFontFamily('Arial').setFontSize(11).setVerticalAlignment('top').setHorizontalAlignment('right').setWrap(true);   // owner 25.11: on the phone long text ran over the next cells: every cell wraps inside itself
   sh.getRange(1, 1, 1, w).setFontWeight('bold').setFontColor('#ffffff').setBackground('#1f2a44').setVerticalAlignment('middle').setWrap(true);
-  sh.setRowHeight(1, 42);
+  sh.setRowHeight(1, 48);
   sh.setFrozenRows(1); sh.setFrozenColumns(1);
   if (n > 1) sh.getRange(2, 1, n - 1, 1).setFontWeight('bold');
   const col = t => head.indexOf(t) + 1;
   const long = ['מה כלול ומה חשוב', 'מחיר מנה', 'השכרת אולם', 'כמה אורחים', 'המחירים', 'מה חשוב לדעת', 'לחזור אליהם', 'פירוט זמינות', 'סיכום', 'הערות', 'מה לבדוק'];
   for (let c = 1; c <= w; c++) {
     const t = head[c - 1];
-    if (long.indexOf(t) >= 0) { sh.setColumnWidth(c, t === 'סיכום' || t === 'מה חשוב לדעת' || t === 'מה כלול ומה חשוב' ? 460 : t === 'כמה אורחים' ? 220 : 300); if (n > 1) sh.getRange(2, c, n - 1, 1).setWrap(true); }
-    else if (t === 'מלון' || t === 'מקום') sh.setColumnWidth(c, 200);
-    else if (t === 'איש קשר וטלפון') sh.setColumnWidth(c, 240);
+    if (long.indexOf(t) >= 0) { sh.setColumnWidth(c, t === 'סיכום' || t === 'מה חשוב לדעת' || t === 'מה כלול ומה חשוב' ? 280 : t === 'כמה אורחים' ? 150 : 190); if (n > 1) sh.getRange(2, c, n - 1, 1).setWrap(true); }
+    else if (t === 'מלון' || t === 'מקום') sh.setColumnWidth(c, 115);
+    else if (t === 'איש קשר וטלפון') sh.setColumnWidth(c, 150);
     else if (t === 'מייל') sh.setColumnWidth(c, 200);
     else if (t === 'טלפון' || t === 'שיחה אחרונה') sh.setColumnWidth(c, 140);
-    else sh.setColumnWidth(c, 150);
+    else sh.setColumnWidth(c, 100);   // owner 25.11 (4): narrow enough for the phone; the text wraps down instead
   }
   if (n > 1 && col('הכי זול')) sh.getRange(2, col('הכי זול'), n - 1, 1).setNumberFormat('#,##0 "₪"').setFontWeight('bold');
   // owner 25.11: on the phone the sheet had no colours (the Sheets app on the phone does not show colour rules or banding),
@@ -1094,7 +1094,7 @@ function tidySheet(sh, rows, w) {
   for (let r = 0; r < n; r++) { bg.push(new Array(w).fill(r === 0 ? '#1f2a44' : r % 2 ? '#ffffff' : '#f3f3f3')); fg.push(new Array(w).fill(r === 0 ? '#ffffff' : '#000000')); }
   const paint = (c, text, b, f) => { if (!c) return; for (let r = 1; r < n; r++) if (String(rows[r][c - 1] == null ? '' : rows[r][c - 1]).trim() === text) { bg[r][c - 1] = b; fg[r][c - 1] = f; } };
   const pc = head.findIndex(t => /^ב-\d/.test(t)) + 1;   // owner 24.11: the preferred-date column
-  if (pc) { paint(pc, 'פנוי', '#d9f2e3', '#0b5d2a'); paint(pc, 'בספק', '#fff1c9', '#7a5600'); paint(pc, 'תפוס', '#fbdcdc', '#8a1c1c'); sh.setColumnWidth(pc, 170); }
+  if (pc) { paint(pc, 'פנוי', '#d9f2e3', '#0b5d2a'); paint(pc, 'בספק', '#fff1c9', '#7a5600'); paint(pc, 'תפוס', '#fbdcdc', '#8a1c1c'); sh.setColumnWidth(pc, 115); }
   // owner 25.11: free only on another date gets its own colour
   if (pc) { paint(pc, 'פנוי בתאריך אחר', '#e3ecff', '#1f3d8a'); paint(pc, 'תפוס, פנוי בתאריך אחר', '#e3ecff', '#1f3d8a'); }
   // owner 25.11 (2): one coloured column is lost on the phone screen: the whole row takes a light tint of its date answer,
@@ -1107,7 +1107,7 @@ function tidySheet(sh, rows, w) {
     }
     paint(pc, 'לא ידוע', '#e6e6e6', '#555555'); paint(pc, 'עוד לא ענו', '#e6e6e6', '#555555');
   }
-  if (col('תאריכים חלופיים')) sh.setColumnWidth(col('תאריכים חלופיים'), 190);
+  if (col('תאריכים חלופיים')) sh.setColumnWidth(col('תאריכים חלופיים'), 110);
   paint(col('זמינות'), 'יש מקום', '#d9f2e3', '#0b5d2a'); paint(col('זמינות'), 'מקום חלקי', '#fff1c9', '#7a5600'); paint(col('זמינות'), 'תפוס', '#fbdcdc', '#8a1c1c');
   paint(col('סטטוס'), 'מתאים', '#d9f2e3', '#0b5d2a'); paint(col('סטטוס'), 'לחזור אליהם', '#fff1c9', '#7a5600'); paint(col('סטטוס'), 'לא רלוונטי', '#eeeeee', '#666666'); paint(col('סטטוס'), 'נסגר', '#dbe6ff', '#1f3d8a');
   sh.setConditionalFormatRules([]);
