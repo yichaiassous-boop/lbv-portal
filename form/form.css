@@ -25,7 +25,8 @@ bdi { unicode-bidi: isolate; }
 form { padding: 8px 28px 30px; }
 fieldset { border: 0; margin: 0; padding: 20px 0 6px; border-bottom: 1px solid var(--line); }
 fieldset:last-of-type { border-bottom: 0; }
-legend { padding: 0; margin-bottom: 10px; font: 700 1.15rem var(--display); color: var(--ink); }
+legend + * { clear: both; }
+legend { float: inline-start; width: 100%; padding: 0; margin-bottom: 10px; font: 700 1.15rem var(--display); color: var(--ink); }
 legend small { font: 400 .85rem var(--body); color: var(--ink-3); margin-inline-start: 6px; }
 .row { display: grid; gap: 12px; grid-template-columns: 1fr 1fr; }
 @media (max-width: 520px) { .row { grid-template-columns: 1fr; } .top { padding: 14px 16px 12px; } .top::after { inset-inline: 16px; } .intro, form { padding-inline: 16px; } }
