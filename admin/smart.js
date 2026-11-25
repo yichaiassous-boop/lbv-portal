@@ -319,6 +319,7 @@ function funCard(x) {
         ${size ? `<span class="sm-fun__f">${esc(size)}</span>` : ''}${x.hours ? `<span class="sm-fun__f">${esc(x.hours)}</span>` : ''}${FPLACE[x.place] ? `<span class="sm-fun__f">${FPLACE[x.place]}</span>` : ''}${x.kids ? '<span class="sm-fun__f">מתאים לילדים</span>' : ''}
       </div>
       ${x.notes ? `<p class="sm-h__txt">${esc(x.notes)}</p>` : ''}
+      ${x.waText ? `<details class="sm-fun__calls"><summary>מה הם כתבו בוואטסאפ</summary><pre class="sm-fun__wa" dir="auto">${esc(x.waText)}</pre></details>` : ''}
       ${(x.calls || []).length ? `<details class="sm-fun__calls"><summary>מהשיחות, מהמייל ומהוואטסאפ (${x.calls.length})${x.by === 'המערכת' ? ' · נוסף לבד' : ''}</summary>${x.calls.slice().reverse().map(k => `<div class="sm-fun__call"><b>${k.src === 'mail' ? 'מייל' : k.src === 'wa' ? 'וואטסאפ' : 'שיחה'} · ${esc(when(k.at))}${k.from ? ' · ' + esc(k.from) : ''}</b>${k.dates?.length ? `<span>תאריכים: ${esc(k.dates.join(', '))}</span>` : ''}${k.price ? `<span>מחיר / הצעה: ${esc(k.price)}</span>` : ''}${k.summary ? `<p>${esc(k.summary)}</p>` : ''}${safeUrl(k.url) ? `<a href="${esc(safeUrl(k.url))}" target="_blank" rel="noopener">להקשיב לשיחה</a>` : ''}${(k.files || []).filter(y => safeUrl(y.url)).map(y => `<a href="${esc(y.url)}" target="_blank" rel="noopener">לפתוח את הקובץ: ${esc(y.name)}</a>`).join('')}</div>`).join('')}</details>` : ''}
       <div class="sm-h__acts">
         ${x.phone ? `<a class="btn btn--line" href="tel:${esc(x.phone.replace(/[^\d+]/g, ''))}" dir="ltr">${esc(x.phone)}</a>` : ''}
@@ -328,6 +329,9 @@ function funCard(x) {
     </div>
   </article>`);
   el.querySelector('[data-edit]').addEventListener('click', () => funSheet(x));
+  // owner 25.11: a click anywhere on the card opens it (not on a link, a button or the lists that open by themselves)
+  el.classList.add('sm-h--click');
+  el.addEventListener('click', e => { if (!e.target.closest('a, button, summary, details, input, select, textarea')) funSheet(x); });
   return el;
 }
 

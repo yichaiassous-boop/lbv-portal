@@ -1251,7 +1251,7 @@ async function script(req, res, what, userId, b) {
       // owner 25.11: a new number on WhatsApp (not in the system, not saved in the phone): is it a supplier? (the robot's reading decides)
       for (const w of (await allJ(K.waNew)).filter(w => (w.msgs || []).length).slice(0, 2)) {
         const d = digits(w.phone).slice(-9);
-        funRead.push({ id: 'wn' + d, name: w.from || w.phone, text: 'מספר חדש שכתב לנו בוואטסאפ (' + w.phone + '). אם זה ספק, אטרקציה, מקום לאירועים, מלון או אמן שמציע לנו משהו, זה רלוונטי. אם זו שיחה אישית, זה לא רלוונטי.\n\n' + w.msgs.map(m => 'הודעת וואטסאפ מ' + m.from + ' (' + m.at + '):\n' + m.text).join('\n\n').slice(0, 20000) });
+        funRead.push({ id: 'wn' + d, name: w.from || w.phone, text: 'מספר חדש שכתב לנו בוואטסאפ (' + w.phone + '). אם זה ספק, אטרקציה, מקום לאירועים, מלון או אמן שמציע לנו משהו, זה רלוונטי. אם זו שיחה אישית, זה לא רלוונטי. שימו לב: אלה רק ההודעות שהם שלחו. את מה שאנחנו כתבנו להם לא רואים, אז מסכמים רק מה שכתוב בהודעות שלהם, בלי להסיק דברים שלא נאמרו (למשל "כשר" יכול להיות תשובה לשאלה שלנו).\n\n' + w.msgs.map(m => 'הודעת וואטסאפ מ' + m.from + ' (' + m.at + '):\n' + m.text).join('\n\n').slice(0, 20000) });
       }
       funMail = funMail.slice(0, 2); funRead = funRead.slice(0, 3);
     }

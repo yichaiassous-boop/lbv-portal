@@ -470,6 +470,7 @@ mark { background: #FCE7A8; color: inherit; padding: 0 2px; border-radius: 3px; 
 .of-bar .btn--line { color: #fff; border-color: rgba(255,255,255,.4); background: transparent; }
 .sm-add { display: flex; flex-wrap: wrap; gap: 8px; }
 .sm-fun__wait { font-size: .75rem; font-weight: 800; padding: 1px 9px; border-radius: 99px; background: #FBF1DC; color: #8A6A32; }
+.sm-fun__wa { white-space: pre-wrap; font: inherit; font-size: .92rem; line-height: 1.6; margin: 8px 0 0; max-height: 320px; overflow: auto; background: #FAF7F0; border-radius: 10px; padding: 10px 12px; }
 .sm-fun__wait--new { background: #E9F3EC; color: #1F6B3A; }
 .sm-h--click { cursor: pointer; transition: box-shadow .15s; }
 .sm-h--click:hover { box-shadow: 0 4px 16px rgba(22, 32, 58, .12); }
