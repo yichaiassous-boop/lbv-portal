@@ -421,13 +421,14 @@ function cardScore(sv, text, hotels, h) {
   let score = 0; const why = [];
   const kw = KIND_WORDS[sv.kind] || (/חתן/.test(sv.title) ? KIND_WORDS['שבת חתן'] : /חתונ|אולמ/.test(sv.title) ? KIND_WORDS['חתונה'] : []);
   let kindPts = 0;
-  for (const [w, p] of kw) if (t.includes(w)) { kindPts += p; if (p >= 3) why.push(w); }
+  let said = false;
+  for (const [w, p] of kw) if (t.includes(w)) { kindPts += p; if (p >= 3) why.push(w); if (p >= 4) said = true; }
   score += Math.min(kindPts, 6);
   for (const w of flat(sv.title + ' ' + (sv.area || '')).split(/[\s,.\-/]+/)) if (w.length >= 3 && !CARD_SKIP.has(w) && t.includes(w)) { score += 2; if (!why.includes(w)) why.push(w); }
   // owner 24.11: the card's date said in the call (25.3, 25/03, 25 במרץ…) is a strong sign
   if (sv.from && cardDates(sv).some(re => re.test(t))) { score += 4; why.push('התאריך ' + sv.from.slice(8, 10).replace(/^0/, '') + '.' + sv.from.slice(5, 7).replace(/^0/, '')); }
   if (h && hotels && findHotel(hotels, h)) { score += 4; why.push('המקום כבר בכרטיסייה'); }
-  return { surveyId: sv.id, title: sv.title, score, why: why.slice(0, 4) };
+  return { surveyId: sv.id, title: sv.title, score, why: why.slice(0, 4), said };
 }
 /** The best card, or null when it is not clear. */
 function bestCard(scores) {
@@ -1057,10 +1058,16 @@ export default async function hotelsHandler(req, res) {
       if (!canSee(s, sv) || !canSee(s, from)) return send(res, 404, { error: 'not-found' });
       const src = await getJ(K.hotels(from.id), body.id);
       if (!src) return send(res, 404, { error: 'not-found' });
-      const h = { ...src, id: rid('h'), avail: 'unknown', availText: '', prices: [], status: 'new', followUp: '', followWhat: '', createdAt: now(), updatedAt: now(),
-        log: [...(src.log || []), { t: 'note', at: now(), by: s.n, text: `הועתק מהכרטיסייה "${from.title}". הזמינות והמחירים שם היו לתאריכים אחרים.` }].slice(-80) };
+      if (sv.id === from.id) return send(res, 400, { error: 'same' });
+      const there = findHotel(await allJ(K.hotels(sv.id)), src);   // owner 24.11: already in that card → not a second copy
+      if (there) return send(res, 200, { ...there, min: minPrice(there), already: true, toTitle: sv.title });
+      const keep = body.keep === true;   // owner 24.11 "לשכפל": the same place for the same event, so what was said stays
+      const h = keep ? { ...src, id: rid('h'), createdAt: now(), updatedAt: now(),
+          log: [...(src.log || []), { t: 'note', at: now(), by: s.n, text: `שוכפל מהכרטיסייה "${from.title}". הוא נמצא בשתיהן.` }].slice(-80) }
+        : { ...src, id: rid('h'), avail: 'unknown', availText: '', prices: [], status: 'new', followUp: '', followWhat: '', createdAt: now(), updatedAt: now(),
+          log: [...(src.log || []), { t: 'note', at: now(), by: s.n, text: `הועתק מהכרטיסייה "${from.title}". הזמינות והמחירים שם היו לתאריכים אחרים.` }].slice(-80) };
       await setJ(K.hotels(sv.id), h.id, h);
-      return send(res, 200, { ...h, min: minPrice(h) });
+      return send(res, 200, { ...h, min: minPrice(h), toTitle: sv.title });
     }
 
     if (op === 'mode') {
@@ -1301,13 +1308,28 @@ async function script(req, res, what, userId, b) {
     }
     let sv = await getJ(K.surveys, b.surveyId);
     if (!mine(sv, userId)) return send(res, 400, { error: 'survey' });
+    let alsoIn = [];   // owner 24.11: the call talked about two events (a wedding and a שבת חתן) → the place goes in both cards
+    const mirror = async (h0, sub, c) => {
+      for (const id of alsoIn) {
+        const k2 = K.hotels(id), list2 = await allJ(k2);
+        let h2 = findHotel(list2, { name: h0.name, phone: h0.phone || '' });
+        if (!h2) h2 = { ...cleanHotel({ name: h0.name, status: 'new' }), id: rid('h'), createdAt: now(), log: [] };
+        if ((h2.log || []).some(l => l.t === 'call' && l.file?.id === file.id)) continue;
+        mergeCall(h2, sub, c);
+        for (const k of ['website', 'photos', 'photosOk', 'webDone', 'webV', 'rating', 'reviewsCount', 'reviewsText', 'reviewsSource', 'reviewsUrl', 'about']) if (h2[k] === undefined && h0[k] !== undefined) h2[k] = h0[k];
+        h2.updatedAt = now();
+        await setJ(k2, h2.id, h2);
+      }
+    };
     if (!b.replace && !b.placed) {
       const cards = await openCards(userId);
       if (cards.length > 1) {
         const text = callText(r);
         const scores = await Promise.all(cards.map(async c => cardScore(c, text, await allJ(K.hotels(c.id)), r.hotel || {})));
         const best = bestCard(scores);
-        if (best) sv = cards.find(c => c.id === best.surveyId) || sv;
+        const both = scores.filter(x => x.said && x.score >= 4).sort((x, y) => y.score - x.score);   // each event named outright in the call
+        if (best) { sv = cards.find(c => c.id === best.surveyId) || sv; alsoIn = both.filter(x => x.surveyId !== best.surveyId).map(x => x.surveyId); }
+        else if (both.length >= 2) { sv = cards.find(c => c.id === both[0].surveyId) || sv; alsoIn = both.slice(1).map(x => x.surveyId); }
         else {
           const id = 'w' + sha(file.id).slice(0, 14);
           await setJ(K.wait, id, { id, type: 'call', userId, at: str(b.at, 40) || now(), name: str(r.hotel?.name, 160) || file.name, summary: str(r.summary, 1500), transcript: str(r.transcript, 30000),
@@ -1363,6 +1385,7 @@ async function script(req, res, what, userId, b) {
         mergeCall(h, sub, c);
         h.updatedAt = now();
         await setJ(key, h.id, h);
+        await mirror(h, sub, c);
         saved.push({ id: h.id, name: h.name });
       }
       await kv.hset(K.files, file.id, saved[0].id);
@@ -1376,6 +1399,7 @@ async function script(req, res, what, userId, b) {
     mergeCall(h, r, call);
     h.updatedAt = now();
     await setJ(key, h.id, h);
+    await mirror(h, r, call);
     await kv.hset(K.files, file.id, h.id);
     await finish([h.id]);
     u.lastCall = now(); await saveUser(userId, u);

@@ -77,7 +77,8 @@ function taskRow(t) {
 function tasksCard() {
   const all = data.tasks || [];
   const open = all.filter(t => !t.done).sort((a, b) => (a.due || '9999').localeCompare(b.due || '9999') || String(b.at).localeCompare(String(a.at)));
-  const done = all.filter(t => t.done);
+  const weekAgo = new Date(Date.now() - 7 * 864e5).toISOString();
+  const done = all.filter(t => t.done && (!t.doneAt || t.doneAt >= weekAgo));   // owner 25.11: the done list starts over every week
   const el = h(`<section class="il-card">
     <header class="il-head"><h3>מה לעשות</h3><span>${open.length ? `${open.length} פתוחות` : 'אין מטלות פתוחות'}</span></header>
     <form class="il-add"><input class="input" name="t" placeholder="להוסיף מטלה בעצמי" aria-label="מטלה חדשה"><input class="input" type="date" name="d" aria-label="עד מתי"><button class="btn btn--gold">להוסיף</button></form>

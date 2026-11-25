@@ -581,7 +581,7 @@ function surveyForm(sv) {
     try {
       const r = await api('POST', '', { op: 'survey', id: sv?.id, title: d.title, kind: d.kind, area: d.area, from: d.from, to: d.to, need: d.need, note: d.note, mailLang: d.mailLang, sheet: !!d.sheet, levels: d.levels.split(/[,،]/).map(x => x.trim()).filter(Boolean) });
       newOpen = false; editSurvey = false; await refreshHome();
-      if (!sv) { openSurvey = r.id; ctx.toast('הכרטיסייה נפתחה. עכשיו מוסיפים מלונות'); } else { await refreshSurvey(); ctx.toast('נשמר'); }
+      if (!sv) { openSurvey = r.id; importOpen = true; ctx.toast('הכרטיסייה נפתחה. אפשר לייבא מקומות מהמאגר, או להוסיף מלון חדש'); } else { await refreshSurvey(); ctx.toast('נשמר'); }
       again();
     } catch (e2) { fail(e2); }
   });
@@ -750,11 +750,14 @@ function surveyView(pg) {
   // The two main actions inside a card
   const acts = h(`<section class="hs-acts">
     <button type="button" class="hs-act ${addOpen ? 'on' : ''}" data-a="add"><b>+ הוספת מלון</b><span>שם וטלפון, השאר מתמלא מהשיחה</span></button>
+    ${sv.manage ? `<button type="button" class="hs-act ${importOpen ? 'on' : ''}" data-a="imp"><b>+ מהמאגר שלי</b><span>מלונות ואולמות שכבר דיברנו איתם</span></button>` : ''}
   </section>`);
-  $('[data-a=add]', acts).addEventListener('click', () => { addOpen = !addOpen; addPrefill = null; lookOpen = false; again(); });
+  $('[data-a=add]', acts).addEventListener('click', () => { addOpen = !addOpen; importOpen = false; addPrefill = null; lookOpen = false; again(); });
+  $('[data-a=imp]', acts)?.addEventListener('click', () => { importOpen = !importOpen; addOpen = false; again(); });
   pg.append(lookupCard());
   pg.append(acts);
   if (addOpen) pg.append(hotelForm(sv, null));
+  if (importOpen && sv.manage) pg.append(importCard(sv, hotels));
 
   // Search across everything that was said and written
   const bar = h(`<section class="hs-bar">
@@ -914,16 +917,22 @@ function hotelView(sv, x) {
       <button class="btn btn--line btn--sm" type="button" data-paste>להדביק הצעת מחיר או הודעה</button>
       ${(x.log || []).some(l => l.t === 'call') ? `<button class="btn btn--line btn--sm" type="button" data-relisten ${x.relisten ? 'disabled' : ''}>${x.relisten ? 'קורא את השיחה מחדש…' : 'לקרוא את השיחה מחדש'}</button>` : ''}
       ${safeUrl(x.website) ? `<a class="btn btn--line btn--sm" href="${esc(x.website)}" target="_blank" rel="noopener">לאתר של המלון</a>` : ''}
-      ${sv.manage && moveTargets(sv).length ? `<button class="btn btn--line btn--sm" type="button" data-move>להעביר לכרטיסייה אחרת</button>` : ''}
+      ${sv.manage && moveTargets(sv).length ? `<button class="btn btn--line btn--sm" type="button" data-move>להעביר לכרטיסייה אחרת</button><button class="btn btn--line btn--sm" type="button" data-dup>לשכפל לכרטיסייה אחרת</button>` : ''}
       ${sv.manage ? '<button class="btn btn--danger btn--sm" type="button" data-del>מחיקת המלון</button>' : ''}
     </div>
-    ${moveOpen === x.id ? `<div class="hs-move"><p>לאיזו כרטיסייה להעביר את "${esc(x.name || 'המקום')}"? הוא עובר עם כל השיחות, המיילים וההערות.</p><div class="hs-wait__btns">${moveTargets(sv).map(t => `<button class="btn btn--gold btn--sm" type="button" data-to="${esc(t.id)}">${esc(t.title)}${t.from ? ' · ' + dmy(t.from) : ''}</button>`).join('')}<button class="btn btn--line btn--sm" type="button" data-nomove>ביטול</button></div></div>` : ''}
+    ${moveOpen === x.id ? `<div class="hs-move"><p>${moveMode === 'dup' ? `לאיזו כרטיסייה לשכפל את "${esc(x.name || 'המקום')}"? הוא יישאר גם כאן, ויופיע גם שם עם כל השיחות, המיילים וההערות.` : `לאיזו כרטיסייה להעביר את "${esc(x.name || 'המקום')}"? הוא עובר עם כל השיחות, המיילים וההערות.`}</p><div class="hs-wait__btns">${moveTargets(sv).map(t => `<button class="btn btn--gold btn--sm" type="button" data-to="${esc(t.id)}">${esc(t.title)}${t.from ? ' · ' + dmy(t.from) : ''}</button>`).join('')}<button class="btn btn--line btn--sm" type="button" data-nomove>ביטול</button></div></div>` : ''}
   </section>`);
-  $('[data-move]', head)?.addEventListener('click', () => { moveOpen = moveOpen === x.id ? null : x.id; again(); });
+  $('[data-move]', head)?.addEventListener('click', () => { moveOpen = moveOpen === x.id && moveMode === 'move' ? null : x.id; moveMode = 'move'; again(); });
+  $('[data-dup]', head)?.addEventListener('click', () => { moveOpen = moveOpen === x.id && moveMode === 'dup' ? null : x.id; moveMode = 'dup'; again(); });
   $('[data-nomove]', head)?.addEventListener('click', () => { moveOpen = null; again(); });
   head.querySelectorAll('[data-to]').forEach(b => b.addEventListener('click', async () => {
     b.disabled = true;
     try {
+      if (moveMode === 'dup') {   // owner 24.11: the same place in two cards (e.g. the wedding and the שבת חתן)
+        const r = await api('POST', '', { op: 'copy', surveyId: b.dataset.to, fromSurvey: sv.id, id: x.id, keep: true });
+        moveOpen = null; await refreshHome();
+        ctx.toast(r.already ? 'הוא כבר נמצא ב"' + r.toTitle + '"' : 'שוכפל ל"' + r.toTitle + '". הוא נמצא בשתיהן'); again(); return;
+      }
       const r = await api('POST', '', { op: 'move', surveyId: sv.id, id: x.id, toSurvey: b.dataset.to });
       moveOpen = null; openHotel = null; await refreshSurvey(); await refreshHome();
       ctx.toast('הועבר ל"' + r.toTitle + '"'); again();
@@ -978,8 +987,55 @@ function hotelView(sv, x) {
   return wrap;
 }
 
+/* ---------- owner 24.11: import places from my catalogs (hotels + halls) into this card ---------- */
+let importOpen = false, impData = null, impQ = '', impKind = '';
+function importCard(sv, hotels) {
+  const box = h('<section class="card hs-imp"><div class="card__head"><div><h2>לייבא מהמאגר שלי</h2><p>מסמנים את המקומות שרוצים בכרטיסייה הזאת. הם נכנסים עם הפרטים, התמונות וההיסטוריה. הזמינות מתחילה כ"לא ידוע", עד שמתקשרים לתאריך הזה.</p></div></div><p class="hint">טוען…</p></section>');
+  const hall = /אולם|חתונ/.test((sv.kind || '') + ' ' + (sv.title || ''));
+  if (!impKind) impKind = hall ? 'venues' : 'hotels';
+  (async () => {
+    try {
+      if (!impData) { const [a, b] = await Promise.all([api('GET', '?catalog=1'), api('GET', '?catalog=venues')]); impData = { hotels: a.hotels || [], venues: b.hotels || [] }; }
+    } catch (e) { fail(e); return; }
+    box.querySelector('.hint')?.remove();
+    const has = x => x.surveys.some(s => s.surveyId === sv.id) || hotels.some(y => (y.phone && x.phone && y.phone.replace(/\D/g, '').slice(-9) === x.phone.replace(/\D/g, '').slice(-9)) || (y.name && y.name === x.name));
+    const bar = h(`<div class="hs-imp__bar"><input class="input" type="search" placeholder="שם, עיר או אזור" value="${esc(impQ)}" aria-label="חיפוש במאגר">
+      <div class="hs-chips">${[['hotels', 'מלונות'], ['venues', 'אולמות']].map(([k, n]) => `<button type="button" class="chip ${impKind === k ? 'on' : ''}" data-k="${k}">${n}</button>`).join('')}</div></div>`);
+    const list = h('<div class="hs-imp__list"></div>');
+    const go = h('<div class="hs-wait__btns"><button class="btn btn--gold btn--sm" type="button" data-go disabled>לייבא</button><button class="btn btn--line btn--sm" type="button" data-close>סגירה</button></div>');
+    const picked = new Map();
+    const count = () => { const b = $('[data-go]', go); b.disabled = !picked.size; b.textContent = picked.size ? (picked.size === 1 ? 'לייבא מקום אחד' : 'לייבא ' + picked.size + ' מקומות') : 'לייבא'; };
+    const draw = () => {
+      const words = impQ.trim().toLowerCase().split(/\s+/).filter(Boolean);
+      const rows = (impData[impKind] || []).filter(x => words.every(w => [x.name, x.city, x.area, x.contact].join(' ').toLowerCase().includes(w))).sort((a, b) => (has(a) - has(b)) || a.name.localeCompare(b.name, 'he'));
+      list.innerHTML = rows.length ? '' : '<p class="hint">לא נמצא במאגר.</p>';
+      for (const x of rows) {
+        const there = has(x), ph = photoSrc(x.photo) || "";
+        const row = h(`<label class="hs-imp__row"><input type="checkbox" ${there ? 'disabled checked' : picked.has(x.key) ? 'checked' : ''}>${ph ? `<img src="${esc(ph)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : '<i class="hs-imp__ph"></i>'}<span><b>${esc(x.name)}</b><small>${esc([x.city, x.min ? 'מ-' + money(x.min.price, x.min.currency) + ' ' + (x.min.per || '') : '', there ? 'כבר בכרטיסייה' : ''].filter(Boolean).join(' · '))}</small></span></label>`);
+        $('img', row)?.addEventListener('error', e => { e.target.replaceWith(h('<i class="hs-imp__ph"></i>')); });
+        $('input', row).addEventListener('change', e => { if (e.target.checked) picked.set(x.key, x); else picked.delete(x.key); count(); });
+        list.append(row);
+      }
+    };
+    $('input', bar).addEventListener('input', e => { impQ = e.target.value; draw(); });
+    $$('[data-k]', bar).forEach(b => b.addEventListener('click', () => { impKind = b.dataset.k; $$('[data-k]', bar).forEach(y => y.classList.toggle('on', y === b)); draw(); }));
+    $('[data-close]', go).addEventListener('click', () => { importOpen = false; again(); });
+    $('[data-go]', go).addEventListener('click', async e => {
+      e.target.disabled = true; let n = 0;
+      for (const x of picked.values()) {
+        const src = x.surveys[x.surveys.length - 1];
+        try { const r = await api('POST', '', { op: 'copy', surveyId: sv.id, fromSurvey: src.surveyId, id: src.hotelId }); if (!r.already) n++; } catch (e2) { fail(e2); }
+      }
+      impData = null; importOpen = false; await refreshSurvey(); await refreshHome();
+      ctx.toast(n === 1 ? 'מקום אחד יובא' : n + ' מקומות יובאו'); again();
+    });
+    box.append(bar, list, go); draw();
+  })();
+  return box;
+}
+
 let pasteOpen = false;
-let moveOpen = null;
+let moveOpen = null, moveMode = 'move';
 const moveTargets = sv => (home?.surveys || []).filter(t => t.manage && t.id !== sv.id);
 /** Paste a price quote / a WhatsApp message / notes: the robot reads it and fills prices, rooms, hours, conditions. */
 function pasteForm(sv, x) {
@@ -1132,10 +1188,11 @@ function exportCard(sv, hotels) {
   const c = h(`<section class="card hs-exp">
     <div class="card__head"><div><h2>ייצוא לגיליון</h2><p>איזה תאריך הלקוח מעדיף? המקומות שפנויים בו יופיעו ראשונים. מקומות שפנויים רק בתאריך אחר יופיעו אחריהם, עם התאריך בעמודה בצד.</p></div></div>
     ${ds.length ? `<div class="hs-chips" role="radiogroup" aria-label="התאריך המועדף">${ds.map(d => `<button type="button" role="radio" aria-checked="${d === exportPref}" class="chip ${d === exportPref ? 'on' : ''}" data-d="${d}">${dmy(d)}${d === sv.from ? ' (התאריך של הכרטיסייה)' : ''}</button>`).join('')}</div>` : '<p>בכרטיסייה אין תאריכים, הגיליון יסודר לפי זמינות ומחיר.</p>'}
-    <div class="hs-exp__foot"><button class="btn btn--gold" type="button" data-go>הורדת הגיליון</button><button class="btn btn--line" type="button" data-x>סגירה</button></div>
+    <div class="hs-exp__foot"><button class="btn btn--gold" type="button" data-go>הורדת הגיליון</button><button class="btn btn--gold" type="button" data-sum>הורדת תקציר</button><button class="btn btn--line" type="button" data-x>סגירה</button></div>
   </section>`);
   c.querySelectorAll('[data-d]').forEach(b => b.addEventListener('click', () => { exportPref = b.dataset.d; again(); }));
   $('[data-go]', c).addEventListener('click', () => downloadCsv(sv, hotels, exportPref));
+  $('[data-sum]', c).addEventListener('click', () => downloadSummary(sv, hotels, exportPref));
   $('[data-x]', c).addEventListener('click', () => { exportOpen = false; again(); });
   return c;
 }
@@ -1150,11 +1207,31 @@ function downloadCsv(sv, hotels, pref) {
     (x.prices || []).filter(p => p.price > 0).map(p => ([p.level, p.board].filter(Boolean).join(', ') || 'מחיר') + ': ' + money(p.price, p.currency) + (p.per ? ' ' + p.per : '')).join('\n'),
     x.availText, [x.contact, [x.phone, x.phone2].filter(Boolean).join(' / ')].filter(Boolean).join(' · '),
     [dmy(x.followUp), x.followWhat].filter(Boolean).join(': '), ST[x.status] || '']);
-  const csv = '﻿' + [head, ...rows].map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\r\n');
-  if (window.LBVApp?.share) { window.LBVApp.share(`${sv.title}.csv`, csv); return; }   // inside the phone app: share / save the file
+  saveCsv(sv.title, [head, ...rows]);
+}
+/** owner 25.11: the summary sheet: site, photos, price, availability and one line about the place. Same order as the full sheet. */
+function downloadSummary(sv, hotels, pref) {
+  pref = pref || sv.from || '';
+  const head = ['מקום', 'אתר', 'תמונות', 'מחיר', 'זמינות', 'בקצרה על המקום'];
+  const info = new Map(hotels.map(x => [x, onDate(x, pref, sv.from || '', sv.to || '')]));
+  const rank = x => { const o = info.get(x); return x.status === 'no' ? 9 : o.st === 'free' ? 0 : o.st === 'maybe' ? 1 : o.other.length ? 2 : o.st === '' ? 3 : 4; };
+  const full = u => /^media\/uploads\//.test(u) ? location.origin + '/' + u : safeUrl(u);
+  const line = x => { const t = String(x.about || x.summary || '').replace(/\s+/g, ' ').trim(); const m = t.match(/^.{20,220}?[.!?](\s|$)/); return m ? m[0].trim() : t.slice(0, 220); };
+  const rows = [...hotels].sort((a, b) => rank(a) - rank(b) || (a.min ?? 1e12) - (b.min ?? 1e12)).map(x => {
+    const o = info.get(x), cheap = (x.prices || []).filter(p => p.price > 0).sort((a, b) => a.price - b.price)[0];
+    const av = (pref ? PREF_HE[o.st] + ' ב-' + dmy(pref) : (AV[x.avail] || AV.unknown)[0]) + (o.other.length ? '. פנוי גם ב-' + o.other.map(dmy).join(', ') : '');
+    return [x.name + (x.city ? ', ' + x.city : ''), safeUrl(x.website) || '', [...(x.myPhotos || []), ...(x.photos || [])].map(full).filter(Boolean).slice(0, 3).join('\n'),
+      cheap ? money(cheap.price, cheap.currency) + (cheap.per ? ' ' + cheap.per : '') + ([cheap.level, cheap.board].filter(Boolean).length ? ' (' + [cheap.level, cheap.board].filter(Boolean).join(', ') + ')' : '') : 'עוד אין מחיר',
+      av, line(x)];
+  });
+  saveCsv(sv.title + ' - תקציר', [head, ...rows]);
+}
+function saveCsv(name, table) {
+  const csv = '\uFEFF' + table.map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\r\n');
+  if (window.LBVApp?.share) { window.LBVApp.share(`${name}.csv`, csv); return; }   // inside the phone app: share / save the file
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-  a.download = `${sv.title}.csv`;
+  a.download = `${name}.csv`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   ctx.toast('הקובץ ירד. בגוגל שיטס: קובץ ← ייבוא ← העלאה');

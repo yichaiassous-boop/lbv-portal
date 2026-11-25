@@ -117,9 +117,7 @@ function tagSheet(x) {
 }
 
 /* ---------------- מאגר המלונות ---------------- */
-const AV = { available: ['יש מקום', 'ok'], partial: ['מקום חלקי', 'mid'], full: ['תפוס', 'no'], unknown: ['לא ידוע', 'unk'] };
-const AV_RANK = { available: 0, partial: 1, unknown: 2, full: 3 };
-let cat = null, cq = '', cmax = '', cavail = false;
+let cat = null, cq = '', cmax = '';
 
 export async function catalogPage(pg, c) {
   ctx = c;
@@ -132,46 +130,75 @@ export async function catalogPage(pg, c) {
   const bar = h(`<form class="sm-bar sm-bar--cat" role="search">
     <input class="input" name="q" type="search" placeholder="אזור, עיר או שם ${W.one}" value="${esc(cq)}" aria-label="חיפוש לפי אזור, עיר או שם">
     <label class="sm-max">עד <input class="input" name="max" type="number" inputmode="numeric" min="0" step="50" value="${esc(cmax)}" placeholder="מחיר" aria-label="מחיר מקסימלי"> ₪</label>
-    <label class="sm-check"><input type="checkbox" name="av"${cavail ? ' checked' : ''}> רק עם מקום</label>
   </form>`);
   const box = h('<div class="sm-cat"></div>'), sum = h('<p class="hint sm-note"></p>');
   bar.addEventListener('submit', e => e.preventDefault());
-  bar.addEventListener('input', () => { cq = bar.q.value; cmax = bar.max.value; cavail = bar.av.checked; draw(); });
+  bar.addEventListener('input', () => { cq = bar.q.value; cmax = bar.max.value; draw(); });
   pg.append(bar, sum, box);
   function draw() {
     const words = cq.trim().toLowerCase().split(/\s+/).filter(Boolean), max = Number(cmax) || 0;
     const rows = all.filter(x => words.every(w => [x.name, x.city, x.area, x.contact, x.summary].join(' ').toLowerCase().includes(w))
-      && (!max || (x.min && x.min.price <= max)) && (!cavail || x.avail === 'available' || x.avail === 'partial'))
-      .sort((a, b) => (AV_RANK[a.avail] - AV_RANK[b.avail]) || ((a.min ? a.min.price : 1e9) - (b.min ? b.min.price : 1e9)) || String(b.lastAt).localeCompare(String(a.lastAt)));
-    sum.textContent = `${rows.length} מתוך ${all.length} ${W.many}. הכי טובים קודם: יש מקום, ואז הכי זול.`;
+      && (!max || (x.min && x.min.price <= max)))
+      .sort((a, b) => ((a.min ? a.min.price : 1e9) - (b.min ? b.min.price : 1e9)) || String(b.lastAt).localeCompare(String(a.lastAt)));
+    sum.textContent = `${rows.length} מתוך ${all.length} ${W.many}, מהזול ליקר. "להוסיף לאירוע" מכניס ${W.one} לכרטיסייה של אירוע.`;
     box.innerHTML = rows.length ? '' : `<p class="hint">אין ${W.one} שמתאים. נסו מחיר גבוה יותר או אזור אחר.</p>`;
-    rows.forEach((x, i) => box.append(hotelCard(x, i < 3 && x.avail !== 'full' && x.min && !words.length ? i + 1 : 0)));
+    rows.forEach((x, i) => box.append(hotelCard(x, i < 3 && x.min && !words.length ? i + 1 : 0)));
   }
   draw();
 }
 
 function hotelCard(x, best) {
-  const av = AV[x.avail] || AV.unknown, photo = safeUrl(x.photo);
+  const photo = String(x.photo || '').startsWith('media/uploads/') ? '/' + x.photo : safeUrl(x.photo);   // my own photos too
   const el = h(`<article class="sm-h">
     ${photo ? `<img class="sm-h__img" src="${esc(photo)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : '<div class="sm-h__img sm-h__img--none" aria-hidden="true"></div>'}
     <div class="sm-h__body">
       <div class="sm-h__top"><h3>${esc(x.name)}</h3>${best ? `<span class="sm-best">בחירה ${best}</span>` : ''}</div>
       <p class="sm-h__where">${esc([x.city, x.area && x.area !== x.city ? x.area : ''].filter(Boolean).join(', '))}${x.rating ? ` · ${esc(x.rating)}★` : ''}</p>
       <div class="sm-h__facts">
-        <span class="sm-av sm-av--${av[1]}">${av[0]}</span>
         ${x.min ? `<span class="sm-price"><b>${money(x.min.price, x.min.currency)}</b> ${esc(x.min.per)}${x.min.what ? ` <small>(${esc(x.min.what)})</small>` : ''}</span>` : '<span class="hint">עוד אין מחיר</span>'}
       </div>
-      ${x.availText ? `<p class="sm-h__txt">${esc(x.availText)}</p>` : ''}
       <p class="sm-h__meta">${[x.calls ? `${x.calls} שיחות` : '', x.lastAt ? 'קשר אחרון ' + day(x.lastAt) : '', x.surveys.map(s => s.title).filter(Boolean).join(', ')].filter(Boolean).map(esc).join(' · ')}</p>
       <div class="sm-h__acts">
         ${x.phone ? `<a class="btn btn--line" href="tel:${esc(x.phone.replace(/[^\d+]/g, ''))}" dir="ltr">${esc(x.phone)}</a>` : ''}
         ${safeUrl(x.website) ? `<a class="btn btn--line" href="${esc(x.website)}" target="_blank" rel="noopener">האתר</a>` : ''}
+        <button type="button" class="btn btn--gold" data-add>להוסיף לאירוע</button>
         <button type="button" class="btn btn--line" data-open>כל הפרטים</button>
       </div>
     </div>
   </article>`);
   el.querySelector('[data-open]').addEventListener('click', () => ctx.openHotel?.(x.surveys[x.surveys.length - 1]));
+  el.querySelector('[data-add]').addEventListener('click', () => addToEvent(x));
   return el;
+}
+
+/** owner 24.11: put a place from the catalog into an event's card (its details, photos and history; no availability: that is per date). */
+async function addToEvent(x) {
+  document.querySelector('.ev-sheet')?.remove();
+  let home;
+  try { home = await api('GET', ''); } catch (e) { fail(e); return; }
+  const inIt = new Set(x.surveys.map(s => s.surveyId));
+  const day = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
+  const cards = (home.surveys || []).filter(s => s.manage && !s.closed).sort((a, b) => ((a.to || a.from || '9') >= day ? 0 : 1) - ((b.to || b.from || '9') >= day ? 0 : 1) || String(b.updatedAt || '').localeCompare(String(a.updatedAt || '')));
+  const dmy = d => d ? d.slice(8, 10) + '.' + d.slice(5, 7) + '.' + d.slice(0, 4) : '';
+  const w = h(`<div class="ev-sheet" role="dialog" aria-modal="true" aria-label="להוסיף לאירוע">
+    <div class="ev-sheet__card">
+      <div class="ev-sheet__top"><h2>להוסיף את "${esc(x.name)}" לאירוע</h2><button class="icon" type="button" data-x aria-label="סגירה">✕</button></div>
+      <p class="hint">בוחרים את הכרטיסייה של האירוע. המקום נכנס עם הפרטים, התמונות וההיסטוריה. הזמינות מתחילה כ"לא ידוע", עד שמתקשרים לתאריך של האירוע.</p>
+      <div class="sm-pick">${cards.length ? cards.map(s => inIt.has(s.id) ? `<button type="button" class="btn btn--line" disabled>${esc(s.title)}${s.from ? ' · ' + dmy(s.from) : ''} (כבר שם)</button>` : `<button type="button" class="btn btn--line" data-to="${esc(s.id)}">${esc(s.title)}${s.from ? ' · ' + dmy(s.from) : ''}</button>`).join('') : '<p class="hint">אין כרטיסיות פתוחות. פותחים כרטיסייה חדשה בעמוד בדיקת מלונות ואולמות.</p>'}</div>
+    </div></div>`);
+  const close = () => w.remove();
+  w.addEventListener('click', e => { if (e.target === w) close(); });
+  w.querySelector('[data-x]').addEventListener('click', close);
+  const src = x.surveys[x.surveys.length - 1];
+  w.querySelectorAll('[data-to]').forEach(b => b.addEventListener('click', async () => {
+    b.disabled = true;
+    try {
+      const r = await api('POST', '', { op: 'copy', surveyId: b.dataset.to, fromSurvey: src.surveyId, id: src.hotelId });
+      close(); ctx.toast(r.already ? 'הוא כבר נמצא ב"' + r.toTitle + '"' : 'נוסף ל"' + r.toTitle + '"');
+      x.surveys.push({ surveyId: b.dataset.to, hotelId: r.id, title: r.toTitle });
+    } catch (e) { fail(e); b.disabled = false; }
+  }));
+  document.body.append(w);
 }
 
 /* ---------------- הרשתות (owner 22.11) ----------------
