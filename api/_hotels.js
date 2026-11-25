@@ -585,8 +585,10 @@ export function tableRows(sv, hotels, pref) {
   const rows = list.map(h => [
     h.name || '', photo(h) ? `=IMAGE("${q(photo(h))}")` : '', site(h) ? `=HYPERLINK("${q(site(h))}","לאתר")` : '',
     h.city || '', pref ? PREF_HE[info.get(h).st] : AV_HE[h.avail] || 'לא ידוע', info.get(h).other.map(dmy).join(', '), minPrice(h) ?? '',
-    (h.prices || []).filter(p => p.price > 0).map(p => ([p.level, p.board].filter(Boolean).join(', ') || 'מחיר') + ': ' + Number(p.price).toLocaleString('he-IL') + ' ' + sym(p.currency).trim() + (p.per ? ' ' + p.per : '')).join('\n'),
-    str(h.availText || '', 300),
+    (h.prices || []).filter(p => p.price > 0).map(p => ([p.level, p.board].filter(Boolean).join(', ') || 'מחיר') + ': ' + Number(p.price).toLocaleString('he-IL') + ' ' + sym(p.currency).trim() + (p.per ? ' ' + p.per : '') + (p.note ? ' (' + p.note + ')' : '')).join('\n'),
+    // owner 25.11: everything important that was said (availability, rooms, what is included, extras), not only availability
+    (() => { const parts = [h.availText, h.rooms ? 'חדרים: ' + h.rooms : '', h.summary].map(t => String(t || '').replace(/\s+/g, ' ').trim()).filter(Boolean);
+      return parts.filter((t, i) => !parts.some((o, j) => j !== i && o.length > t.length && o.includes(t))).join('\n').slice(0, 1200); })(),
     asText([h.contact, [h.phone, h.phone2].filter(Boolean).join(' / ')].filter(Boolean).join(' · ')),
     ST_HE[h.status] || '']);
   return [head, ...rows];

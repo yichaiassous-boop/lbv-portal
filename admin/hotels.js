@@ -949,6 +949,8 @@ function hotelView(sv, x) {
       ${safeUrl(x.website) ? `<a class="btn btn--line btn--sm" href="${esc(x.website)}" target="_blank" rel="noopener">לאתר של המלון</a>` : ''}
       ${sv.manage && moveTargets(sv).length ? `<button class="btn btn--line btn--sm" type="button" data-move>להעביר לכרטיסייה אחרת</button><button class="btn btn--line btn--sm" type="button" data-dup>לשכפל לכרטיסייה אחרת</button>` : ''}
       ${sv.manage ? (x.booked ? '<button class="btn btn--line btn--sm" type="button" data-book="0">לבטל "סגרנו איתו"</button>' : '<button class="btn btn--gold btn--sm" type="button" data-book="1">סגרתי עם המקום הזה</button>') : ''}
+      <button class="btn btn--line btn--sm" type="button" data-one>גיליון של המקום הזה</button>
+      <button class="btn btn--line btn--sm" type="button" data-onesum>תקציר של המקום הזה</button>
       ${sv.manage ? '<button class="btn btn--danger btn--sm" type="button" data-del>מחיקת המלון</button>' : ''}
     </div>
     ${x.booked ? `<p class="hs-booked">סגרנו עם המקום הזה לאירוע${dmy(x.booked.slice(0, 10)) ? ' (סומן ב-' + dmy(x.booked.slice(0, 10)) + ')' : ''}.</p>` : ''}
@@ -1007,6 +1009,10 @@ function hotelView(sv, x) {
     if (mailOpen) { try { mailDraft = await api('POST', '', { op: 'draft', surveyId: sv.id, id: x.id }); } catch (e) { fail(e); } }
     again();
   });
+  // owner 25.11: the sheet / the summary of this one place only
+  const one = { ...sv, title: sv.title + ' - ' + (x.name || 'מקום') };
+  $('[data-one]', head)?.addEventListener('click', () => downloadCsv(one, [x], exportPref || sv.prefDate || sv.from || ''));
+  $('[data-onesum]', head)?.addEventListener('click', () => downloadSummary(one, [x], exportPref || sv.prefDate || sv.from || ''));
   $('[data-del]', head)?.addEventListener('click', async () => {
     if (!confirm(`למחוק את "${x.name}" עם כל השיחות והמיילים שלו? אי אפשר לבטל.`)) return;
     try { await api('DELETE', `?survey=${sv.id}&hotel=${x.id}`); openHotel = null; await refreshSurvey(); again(); ctx.toast('נמחק'); } catch (e) { fail(e); }
@@ -1275,6 +1281,12 @@ function exportCard(sv, hotels) {
   $('[data-x]', c).addEventListener('click', () => { exportOpen = false; again(); });
   return c;
 }
+/** owner 25.11: "מה חשוב לדעת" = everything important that was said: availability, rooms, and the call / mail summary
+    (what is included, extras, conditions), not only the availability line. */
+function mustKnow(x) {
+  const parts = [x.availText, x.rooms ? 'חדרים: ' + x.rooms : '', x.summary].map(t => String(t || '').replace(/\s+/g, ' ').trim()).filter(Boolean);
+  return parts.filter((t, i) => !parts.some((o, j) => j !== i && o.length > t.length && o.includes(t))).join('\n').slice(0, 1200);
+}
 function downloadCsv(sv, hotels, pref) {
   // owner 24.11: short and clear, the same columns as the Google sheet; the preferred date first, other dates on the side
   pref = pref || sv.from || '';
@@ -1284,8 +1296,8 @@ function downloadCsv(sv, hotels, pref) {
   const rank = x => { const o = info.get(x); return x.status === 'no' ? 9 : o.st === 'free' ? 0 : o.st === 'maybe' ? 1 : o.other.length ? 2 : o.st === '' ? 3 : 4; };
   const list = [...hotels].sort((a, b) => rank(a) - rank(b) || (a.min ?? 1e12) - (b.min ?? 1e12));
   const rows = list.map(x => [x.name, pic(x), safeUrl(x.website) || '', x.city, pref ? PREF_HE[info.get(x).st] : (AV[x.avail] || AV.unknown)[0], info.get(x).other.map(dmy).join(', '), x.min ?? '',
-    (x.prices || []).filter(p => p.price > 0).map(p => ([p.level, p.board].filter(Boolean).join(', ') || 'מחיר') + ': ' + money(p.price, p.currency) + (p.per ? ' ' + p.per : '')).join('\n'),
-    x.availText, [x.contact, [x.phone, x.phone2].filter(Boolean).join(' / ')].filter(Boolean).join(' · '), ST[x.status] || '']);
+    (x.prices || []).filter(p => p.price > 0).map(p => ([p.level, p.board].filter(Boolean).join(', ') || 'מחיר') + ': ' + money(p.price, p.currency) + (p.per ? ' ' + p.per : '') + (p.note ? ' (' + p.note + ')' : '')).join('\n'),
+    mustKnow(x), [x.contact, [x.phone, x.phone2].filter(Boolean).join(' / ')].filter(Boolean).join(' · '), ST[x.status] || '']);
   saveCsv(sv.title, [head, ...rows]);
 }
 /** owner 25.11: the summary sheet: site, photos, price, availability and one line about the place. Same order as the full sheet. */
