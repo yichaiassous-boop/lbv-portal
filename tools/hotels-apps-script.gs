@@ -94,6 +94,7 @@ function tick() {
     try { replies(st); } catch (e) { console.error('replies', e); }
     try { parses(st); } catch (e) { console.error('parses', e); }
     try { mailScans(Object.assign({}, st, { mailScan: (st.mailScan || []).filter(m => !m.ask) })); } catch (e) { console.error('mailScans', e); }
+    try { inboxMatch(st); } catch (e) { console.error('inboxMatch', e); }   // owner 25.11: mail from a place whose card has no e-mail
     try { webLooks(st); } catch (e) { console.error('webLooks', e); }
     try { funMails(st); } catch (e) { console.error('funMails', e); }   // owner 24.11: the attractions' mail (with the files) and WhatsApp, like the hotels
     try { funReads(st); } catch (e) { console.error('funReads', e); }
@@ -548,6 +549,76 @@ function mailScans(st) {
       site('post', 'mailscan', { surveyId: m.surveyId, hotelId: m.hotelId, email: m.email, ask: !!m.ask, found: items.length, hotelEmail: !m.email && !/noreply|no-reply|mailer-daemon|booking\.com|google\.com/i.test(top) ? top : '' });
     } catch (e) { console.error('mailScan', e); }
   }
+}
+/** owner 25.11: a place's card often has no e-mail (he never had it), so its mail was missed. Every run the robot reads the new
+ *  mail in the inbox (last 3 weeks), asks Gemini which of our places wrote each one (the name can be in English, in the signature,
+ *  in the subject), and files a sure match in that place's card(s): the whole thread, the details read from it, and the sender's
+ *  address as the place's e-mail. Each mail is asked about once. */
+function inboxMatch(st) {
+  const places = st.inboxPlaces || [];
+  if (!places.length || elapsed() > 150) return;
+  const me = Session.getEffectiveUser().getEmail().toLowerCase();
+  const props = PropertiesService.getScriptProperties();
+  let done = []; try { done = JSON.parse(props.getProperty('INBOX_DONE') || '[]'); } catch (e) { done = []; }
+  const known = {}; (st.mailKnown || []).forEach(id => { known[id] = 1; }); done.forEach(id => { known[id] = 1; });
+  const threads = GmailApp.search('in:inbox newer_than:21d -category:promotions -category:social -category:updates', 0, 40);
+  const mails = [];
+  for (const t of threads) {
+    for (const msg of t.getMessages()) {
+      if (known[msg.getId()]) continue;
+      const from = msg.getFrom();
+      if (from.toLowerCase().indexOf(me) >= 0 || /noreply|no-reply|newsletter|mailer-daemon|notification|google\.com|facebookmail|linkedin/i.test(from)) { done.push(msg.getId()); continue; }
+      mails.push({ t: t, msg: msg });
+      if (mails.length >= 8) break;
+    }
+    if (mails.length >= 8) break;
+  }
+  if (!mails.length) { props.setProperty('INBOX_DONE', JSON.stringify(done.slice(-1500))); return; }
+  const prompt = [
+    'La Belle Vie (an event company) asks hotels, halls and venues about dates and prices. Below: our list of places, then some e-mails we received.',
+    'For each e-mail say which ONE place of the list it comes from or is about (the name may be written in English or Hebrew, in the sender, the signature, the subject or the text; e.g. "Dan Jerusalem" = "דן ירושלים").',
+    'place = the number of the place, or -1 when it is not from one of these places (a client, a supplier, an ad, a bank, anything else). sure = true only when you are sure.',
+    '',
+    'PLACES:',
+    places.map((p, i) => i + '. ' + p.name + (p.city ? ' (' + p.city + ')' : '') + (p.contact ? ', contact: ' + p.contact : '') + (p.site ? ', site: ' + p.site : '') + (p.email ? ', e-mail: ' + p.email : '')).join('\n'),
+    '',
+    'E-MAILS:',
+    mails.map((m, i) => '#' + i + '\nFrom: ' + m.msg.getFrom() + '\nSubject: ' + m.msg.getSubject() + '\n' + m.msg.getPlainBody().slice(0, 1500)).join('\n\n----\n\n'),
+  ].join('\n');
+  const schema = { type: 'OBJECT', properties: { matches: { type: 'ARRAY', items: { type: 'OBJECT', properties: { mail: { type: 'INTEGER' }, place: { type: 'INTEGER' }, sure: { type: 'BOOLEAN' } }, required: ['mail', 'place', 'sure'] } } }, required: ['matches'] };
+  let res;
+  try { res = gemini({ text: prompt }, 'Answer for every e-mail.', schema); } catch (e) { console.error('inboxMatch gemini', e); return; }   // not marked: asked again next run
+  for (const x of (res && res.matches) || []) {
+    const m = mails[x.mail];
+    if (!m) continue;
+    done.push(m.msg.getId());
+    const p = x.sure && x.place >= 0 ? places[x.place] : null;
+    if (!p) continue;
+    try {
+      // the whole thread (our questions too), the details read from what the place wrote, and its address
+      const items = [], incoming = [], files = [];
+      for (const msg of m.t.getMessages()) {
+        const out = msg.getFrom().toLowerCase().indexOf(me) >= 0;
+        const body = msg.getPlainBody();
+        const fl = out ? [] : mailFiles(msg);
+        for (const c of p.cards) items.push({ surveyId: c.surveyId, hotelId: c.hotelId, threadId: m.t.getId(), msgId: msg.getId(), at: msg.getDate().toISOString(), from: msg.getFrom(), to: msg.getTo(), out: out, subject: msg.getSubject(), body: body.slice(0, 12000), files: fl.map(f => ({ name: f.name, url: f.url })) });
+        if (!out) { incoming.push('From: ' + msg.getFrom() + '\nDate: ' + msg.getDate().toISOString() + '\nSubject: ' + msg.getSubject() + (fl.length ? '\nAttached files: ' + fl.map(f => f.name).join(', ') : '') + '\n' + body.slice(0, 6000)); files.push.apply(files, fl); }
+        done.push(msg.getId());
+      }
+      site('post', 'replies', { items: items.slice(-50) });
+      const fe = (m.msg.getFrom().match(/[^\s<>"]+@[^\s<>"]+/) || [''])[0].toLowerCase();
+      for (const c of p.cards) {
+        if (incoming.length && elapsed() < 200) {
+          let result = null, error = '';
+          try { result = readMail(incoming.slice(-6).join('\n\n----\n\n'), files.slice(-6), surveyOf(st, c.surveyId), p.name); } catch (e) { error = String(e).slice(0, 280); }
+          site('post', 'parsed', { surveyId: c.surveyId, hotelId: c.hotelId, src: 'mail', result: result, error: error, files: files.map(f => ({ name: f.name, url: f.url })) });
+        }
+        site('post', 'mailscan', { surveyId: c.surveyId, hotelId: c.hotelId, email: '', learn: true, found: items.length, hotelEmail: /booking\.com|google\.com|noreply/i.test(fe) ? '' : fe });
+      }
+      console.log('inboxMatch: ' + m.msg.getSubject() + ' -> ' + p.name);
+    } catch (e) { console.error('inboxMatch file', e); }
+  }
+  props.setProperty('INBOX_DONE', JSON.stringify(done.slice(-1500)));
 }
 /** A new hotel: find it on the web (Google Search through Gemini) - official site, city, phone, e-mail - and take photos from its site. */
 /** Gemini with a fallback: busy (503) or no quota (429) on one model -> the next one. Returns {code, body}. */

@@ -1299,6 +1299,21 @@ async function script(req, res, what, userId, b) {
       if (!h.website) delete h.about;   // text only from the place's own site
       await setJ(K.hotels(sv.id), h.id, h);
     }
+    // owner 25.11: the robot reads new mail by itself and works out which place wrote (a card often has no e-mail):
+    // every place of a live card (one entry per place name, with all its copies) + the mails already filed
+    const inboxPlaces = new Map(), mailKnown = new Set();
+    for (const sv of surveys) {
+      if (!cardLive(sv)) continue;
+      for (const h of await allJ(K.hotels(sv.id))) {
+        for (const l of h.log || []) if (l.msgId) mailKnown.add(l.msgId);
+        if (!h.name || /ללא שם/.test(h.name) || h.status === 'no') continue;
+        const k = norm(h.name);
+        const e = inboxPlaces.get(k) || { name: h.name, city: h.city || '', contact: h.contact || '', email: h.email || '', site: (String(h.website || '').match(/^https?:\/\/(?:www\.)?([^/]+)/i) || [])[1] || '', phone: digits(h.phone).slice(-9), cards: [] };
+        e.cards.push({ surveyId: sv.id, hotelId: h.id, title: sv.title });
+        if (!e.email && h.email) e.email = h.email;
+        inboxPlaces.set(k, e);
+      }
+    }
     for (const sv of surveys) { const j = robotJobs(sv, await allJ(K.hotels(sv.id))); jobs.watch.push(...j.watch); jobs.parses.push(...j.parses); jobs.mailScan.push(...j.mailScan); jobs.webLook.push(...j.webLook); jobs.wa.push(...j.wa); jobs.webRedo.push(...j.webRedo); jobs.relisten.push(...j.relisten); jobs.mailAuto.push(...j.mailAuto); jobs.photoCheck.push(...j.photoCheck); }
     let ilan = { phones: [] };
     if (userId === 'owner') {
@@ -1342,7 +1357,7 @@ async function script(req, res, what, userId, b) {
         .sort((a2, b2) => String(b2.at).localeCompare(String(a2.at))).slice(0, 3)
         .map(c => ({ id: c.id, at: c.at, name: c.name || '', phone: whoOf(c).d, local: !!c.local, text: c.local ? str(c.sum?.transcript || '', 30000) : '' }));
     }
-    return send(res, 200, { sortCalls, sortExamples: sortExamplesOut, funMail, funRead, ilan, windows, mode, surveys: active, outbox, threads, asks, watch: jobs.watch.slice(0, 300), parses: jobs.parses.slice(0, 5), mailScan: jobs.mailScan.concat(jobs.mailAuto).slice(0, 5), photoCheck: jobs.photoCheck.slice(0, 4), webLook: jobs.webLook.slice(0, 3), webRedo: jobs.webRedo.slice(0, 2), relisten: jobs.relisten.slice(0, 1), wa: jobs.wa.slice(0, 300) });
+    return send(res, 200, { inboxPlaces: [...inboxPlaces.values()].slice(0, 200), mailKnown: [...mailKnown].slice(-3000), sortCalls, sortExamples: sortExamplesOut, funMail, funRead, ilan, windows, mode, surveys: active, outbox, threads, asks, watch: jobs.watch.slice(0, 300), parses: jobs.parses.slice(0, 5), mailScan: jobs.mailScan.concat(jobs.mailAuto).slice(0, 5), photoCheck: jobs.photoCheck.slice(0, 4), webLook: jobs.webLook.slice(0, 3), webRedo: jobs.webRedo.slice(0, 2), relisten: jobs.relisten.slice(0, 1), wa: jobs.wa.slice(0, 300) });
   }
 
   // The robot's web-app address (for the phone app) + when the app last sent a recording
@@ -1862,6 +1877,11 @@ async function script(req, res, what, userId, b) {
     if (!h) return send(res, 404, { error: 'not-found' });
     if (b.email) h.mailScan = str(b.email, 160).toLowerCase();
     h.mailAt = now();
+    // owner 25.11: a mail the robot matched to this place by itself: the sender's address becomes the place's e-mail
+    if (b.learn) {
+      const fe = String(b.hotelEmail || '').trim().toLowerCase();
+      if (!h.email && /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(fe)) { h.email = fe.slice(0, 160); h.mailScan = h.email; h.log = [...(h.log || []), { t: 'note', at: now(), by: 'המערכת', text: 'נמצא מייל מהמקום. הכתובת ' + h.email + ' נשמרה בכרטיס' }].slice(-80); }
+    }
     if (b.ask) {
       delete h.mailAsk;
       h.mailAskDone = { at: now(), found: Math.max(0, Math.round(Number(b.found) || 0)), by: b.email ? 'email' : 'name' };
