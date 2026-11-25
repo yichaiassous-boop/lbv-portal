@@ -571,17 +571,23 @@ export { datesSaid, onDate };
  *  then the ones free only on another date (those dates in a column on the side), then unknown, then taken. */
 export function tableRows(sv, hotels, pref) {
   pref = /^\d{4}-\d{2}-\d{2}$/.test(pref || '') ? pref : sv.from || '';
-  const head = ['מקום', 'עיר', pref ? 'ב-' + dmy(pref) : 'זמינות', 'תאריכים חלופיים', 'הכי זול', 'המחירים', 'מה חשוב לדעת', 'איש קשר וטלפון', 'לחזור אליהם', 'סטטוס'];
+  // owner 25.11: a photo and the place's site in the sheet; "לחזור אליהם" is for us, not in this table
+  const head = ['מקום', 'תמונה', 'אתר', 'עיר', pref ? 'ב-' + dmy(pref) : 'זמינות', 'תאריכים חלופיים', 'הכי זול', 'המחירים', 'מה חשוב לדעת', 'איש קשר וטלפון', 'סטטוס'];
+  const q = u => String(u).replace(/"/g, '%22');
+  const photo = h => [...(h.myPhotos || []), ...(h.photos || [])].find(u => /^https:\/\/[^\s"]+$/i.test(u || ''));
+  const site = h => /^https?:\/\/[^\s"]+$/i.test(h.website || '') ? h.website : '';
+  // a bare phone number would lose its leading 0 in the sheet: kept as text
+  const asText = v => /^\+?\d[\d\s\-]*$/.test(String(v || '').trim()) ? "'" + String(v).trim() : v;
   const info = new Map(hotels.map(h => [h, onDate(h, pref, sv.from || '', sv.to || '')]));
   const rank = h => { const o = info.get(h); return h.status === 'no' ? 9 : o.st === 'free' ? 0 : o.st === 'maybe' ? 1 : o.other.length ? 2 : o.st === '' ? 3 : 4; };
   const list = [...hotels].sort((a, b) => rank(a) - rank(b) || (minPrice(a) ?? 1e12) - (minPrice(b) ?? 1e12));
   const sym = c => ({ ILS: '₪', USD: '$', EUR: '€' }[c] || (c ? ' ' + c : '₪'));
   const rows = list.map(h => [
-    h.name || '', h.city || '', pref ? PREF_HE[info.get(h).st] : AV_HE[h.avail] || 'לא ידוע', info.get(h).other.map(dmy).join(', '), minPrice(h) ?? '',
+    h.name || '', photo(h) ? `=IMAGE("${q(photo(h))}")` : '', site(h) ? `=HYPERLINK("${q(site(h))}","לאתר")` : '',
+    h.city || '', pref ? PREF_HE[info.get(h).st] : AV_HE[h.avail] || 'לא ידוע', info.get(h).other.map(dmy).join(', '), minPrice(h) ?? '',
     (h.prices || []).filter(p => p.price > 0).map(p => ([p.level, p.board].filter(Boolean).join(', ') || 'מחיר') + ': ' + Number(p.price).toLocaleString('he-IL') + ' ' + sym(p.currency).trim() + (p.per ? ' ' + p.per : '')).join('\n'),
     str(h.availText || '', 300),
-    [h.contact, [h.phone, h.phone2].filter(Boolean).join(' / ')].filter(Boolean).join(' · '),
-    [dmy(h.followUp), h.followWhat].filter(Boolean).join(': '),
+    asText([h.contact, [h.phone, h.phone2].filter(Boolean).join(' / ')].filter(Boolean).join(' · ')),
     ST_HE[h.status] || '']);
   return [head, ...rows];
 }

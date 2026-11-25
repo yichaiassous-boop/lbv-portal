@@ -740,6 +740,7 @@ function surveyView(pg) {
       <button class="btn btn--gold btn--sm" type="button" data-wa>סיכום לוואטסאפ</button>
       ${safeUrl(sv.sheetUrl) ? `<a class="btn btn--line btn--sm" href="${esc(sv.sheetUrl)}" target="_blank" rel="noopener">הגיליון בגוגל</a>` : ''}
       <button class="btn btn--${exportOpen ? 'gold' : 'line'} btn--sm" type="button" data-csv>ייצוא לגיליון</button>
+      ${hotels.length ? '<button class="btn btn--line btn--sm" type="button" data-sumsheet>גיליון מסוכם</button>' : ''}
       ${sv.manage ? '<button class="btn btn--line btn--sm" type="button" data-share>שיתוף</button><button class="btn btn--line btn--sm" type="button" data-edit>עריכה</button>' : ''}
     </div>
   </section>`);
@@ -747,6 +748,8 @@ function surveyView(pg) {
   $('[data-back]', head).addEventListener('click', () => { compareOpen = false; exportOpen = false; offerLink = null; openSurvey = null; cur = null; openHotel = null; addOpen = false; lookOpen = false; look = { text: '', results: null, open: null }; again(); });
   $('[data-wa]', head).addEventListener('click', () => { const t = waSummary(sv, hotels); window.open('https://wa.me/?text=' + encodeURIComponent(t), '_blank'); });
   $('[data-csv]', head).addEventListener('click', () => { exportOpen = !exportOpen; again(); });
+  // owner 25.11: the summary sheet (site, photos, price, availability, one line) one click away, not hidden inside the export
+  $('[data-sumsheet]', head)?.addEventListener('click', () => downloadSummary(sv, hotels, exportPref || sv.prefDate || sv.from || ''));
   $('[data-share]', head)?.addEventListener('click', () => { shareOpen = !shareOpen; again(); });
   $('[data-edit]', head)?.addEventListener('click', () => { editSurvey = !editSurvey; again(); });
   pg.append(head);
@@ -1266,14 +1269,14 @@ function exportCard(sv, hotels) {
 function downloadCsv(sv, hotels, pref) {
   // owner 24.11: short and clear, the same columns as the Google sheet; the preferred date first, other dates on the side
   pref = pref || sv.from || '';
-  const head = ['מקום', 'עיר', pref ? 'ב-' + dmy(pref) : 'זמינות', 'תאריכים חלופיים', 'הכי זול', 'המחירים', 'מה חשוב לדעת', 'איש קשר וטלפון', 'לחזור אליהם', 'סטטוס'];
+  const head = ['מקום', 'תמונה', 'אתר', 'עיר', pref ? 'ב-' + dmy(pref) : 'זמינות', 'תאריכים חלופיים', 'הכי זול', 'המחירים', 'מה חשוב לדעת', 'איש קשר וטלפון', 'סטטוס'];
+  const pic = x => [...(x.myPhotos || []), ...(x.photos || [])].map(u => /^media\/uploads\//.test(u) ? location.origin + '/' + u : safeUrl(u)).find(Boolean) || '';
   const info = new Map(hotels.map(x => [x, onDate(x, pref, sv.from || '', sv.to || '')]));
   const rank = x => { const o = info.get(x); return x.status === 'no' ? 9 : o.st === 'free' ? 0 : o.st === 'maybe' ? 1 : o.other.length ? 2 : o.st === '' ? 3 : 4; };
   const list = [...hotels].sort((a, b) => rank(a) - rank(b) || (a.min ?? 1e12) - (b.min ?? 1e12));
-  const rows = list.map(x => [x.name, x.city, pref ? PREF_HE[info.get(x).st] : (AV[x.avail] || AV.unknown)[0], info.get(x).other.map(dmy).join(', '), x.min ?? '',
+  const rows = list.map(x => [x.name, pic(x), safeUrl(x.website) || '', x.city, pref ? PREF_HE[info.get(x).st] : (AV[x.avail] || AV.unknown)[0], info.get(x).other.map(dmy).join(', '), x.min ?? '',
     (x.prices || []).filter(p => p.price > 0).map(p => ([p.level, p.board].filter(Boolean).join(', ') || 'מחיר') + ': ' + money(p.price, p.currency) + (p.per ? ' ' + p.per : '')).join('\n'),
-    x.availText, [x.contact, [x.phone, x.phone2].filter(Boolean).join(' / ')].filter(Boolean).join(' · '),
-    [dmy(x.followUp), x.followWhat].filter(Boolean).join(': '), ST[x.status] || '']);
+    x.availText, [x.contact, [x.phone, x.phone2].filter(Boolean).join(' / ')].filter(Boolean).join(' · '), ST[x.status] || '']);
   saveCsv(sv.title, [head, ...rows]);
 }
 /** owner 25.11: the summary sheet: site, photos, price, availability and one line about the place. Same order as the full sheet. */
