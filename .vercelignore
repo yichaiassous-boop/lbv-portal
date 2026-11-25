@@ -7,3 +7,6 @@ tools/
 data/
 .env*
 *.local.json
+
+# the WhatsApp link service runs on its own server (Railway / Google), not on Vercel
+wa/

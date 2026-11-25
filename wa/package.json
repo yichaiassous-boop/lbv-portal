@@ -1,0 +1,20 @@
+{
+  "name": "lbv-wa",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The owner's WhatsApp, linked once like WhatsApp Web: reads the chats with places that have a card, and sends lists slowly",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@hebcal/core": "^5.10.1",
+    "@vercel/blob": "^2.9.0",
+    "@whiskeysockets/baileys": "^7.0.0-rc14",
+    "pino": "^9.14.0",
+    "qrcode": "^1.5.4"
+  }
+}
