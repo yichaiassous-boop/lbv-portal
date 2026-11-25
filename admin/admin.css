@@ -485,3 +485,10 @@ input:focus, textarea:focus, select:focus { outline: none; border-color: var(--g
 .user__pw { grid-column: 1 / -1; display: grid; gap: 6px; font-size: .8rem; color: var(--ink-3, #667); }
 .user__pw .row-tools { flex-wrap: wrap; justify-content: flex-start; }
 .user__pw input { width: 170px; max-width: 100%; }
+
+/* owner 25.11: the way back on the phone */
+.pageback { margin: 0 0 8px; }
+.pageback[hidden] { display: none; }
+.hb__back { border: 0; background: rgba(255,255,255,.12); color: inherit; font: 700 1.2rem/1 inherit; width: 40px; height: 40px; border-radius: 12px; cursor: pointer; flex: none; }
+.hb__back[hidden] { display: none; }
+.hb__back:focus-visible { outline: 2px solid #E3B65C; outline-offset: 2px; }

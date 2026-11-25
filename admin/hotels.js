@@ -415,7 +415,7 @@ function compareCard(sv, hotels) {
   const order = ['available', 'partial', 'unknown', 'full'];
   const rows = [...hotels].filter(x => x.status !== 'no').sort((a, b) => order.indexOf(a.avail) - order.indexOf(b.avail) || (a.min ?? 1e12) - (b.min ?? 1e12));
   const kept = compareCard.state?.sv === sv.id ? compareCard.state : (compareCard.state = { sv: sv.id, pick: {}, price: {}, per: {}, note: {}, intro: '' });
-  const minTxt = x => { const p = (x.prices || []).filter(p => p.price > 0).sort((a, b) => a.price - b.price)[0]; return p ? money(p.price, p.currency) + (p.per ? ' ' + p.per : '') : 'עוד אין מחיר'; };
+  const minTxt = x => { const p = (x.prices || []).filter(p => p.price > 0 && !isExtra(p)).sort((a, b) => a.price - b.price)[0]; return p ? money(p.price, p.currency) + (p.per ? ' ' + p.per : '') : 'עוד אין מחיר'; };
   const c = h(`<section class="card hs-cmp">
     <div class="card__head"><div><h2>השוואה ללקוח</h2><p>מסמנים את המקומות שהלקוח יראה, כותבים לו מחיר ומה חשוב לדעת. המחיר שקיבלנו, הטלפונים והשיחות לא מופיעים אצלו.</p></div></div>
     <label class="field"><span>כותרת הדף (מה שהלקוח רואה למעלה)</span><input data-title placeholder="למשל: חתונה של משפחת כהן"></label>
@@ -1200,6 +1200,8 @@ function mailForm(sv, x) {
   return f;
 }
 
+/** owner 25.11: a fee, a commission or an add-on is never the place's price (same rule as the site) */
+const isExtra = p => /תוספת|עמלה|עמלת|דמי שירות|דמי טיפול|בר אלכוהול|שדרוג|הקמות|הקמה|^\s*%|אחוז/.test([p.level, p.board].join(' ')) || /^\s*(עמלת|עמלה|דמי )/.test(p.note || '');
 /** The hotel's whole history, newest first: the place to find "they told us it's full" weeks later. */
 function timeline(sv, x) {
   const c = h(`<section class="card hs-tl"><div class="card__head"><div><h2>כל ההיסטוריה</h2><p>שיחות, מיילים והערות. אפשר לשלוח כל שיחה כהוכחה.</p></div></div>
@@ -1223,6 +1225,23 @@ function timeline(sv, x) {
   if (waRaw.length && Date.now() - new Date(waRaw[0].at || 0) < 36e5 && !log.some(l => l.t === 'text' && l.src === 'wa' && (l.at || '') >= (waRaw[0].at || ''))) {
     ol.append(h(`<li class="ev ev--wa"><div class="ev__h"><b>${waRaw.length === 1 ? 'הודעת וואטסאפ חדשה' : waRaw.length + ' הודעות וואטסאפ חדשות'}</b><time>${when(waRaw[0].at)}</time></div><p class="hint">הרובוט יסכם מהן את מה שחשוב תוך כמה דקות.</p></li>`));
   }
+  // owner 25.11: a mail or message that is not of this place (another place's offer filed here by mistake) moves to the right card
+  const wrongBtn = sv.manage ? '<div class="row-tools"><button class="btn btn--ghost btn--sm" type="button" data-wrong>זה לא של המקום הזה</button></div><div class="hs-move" data-wrongbox hidden></div>' : '';
+  const wrongWire = (li, l) => {
+    const btn = $('[data-wrong]', li), box = $('[data-wrongbox]', li);
+    if (!btn) return;
+    btn.addEventListener('click', () => {
+      box.hidden = !box.hidden;
+      if (box.hidden) return;
+      box.innerHTML = '<p>לאיזה מקום זה שייך? מה שנקרא ממנו (מחירים, כתובת המייל) עובר איתו.</p><div class="hs-wait__btns">' + (cur?.hotels || []).filter(o => o.id !== x.id).sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'he')).map(o => '<button class="btn btn--gold btn--sm" type="button" data-to2="' + esc(o.id) + '">' + esc(o.name || 'ללא שם') + '</button>').join('') + '<button class="btn btn--line btn--sm" type="button" data-to2="">מקום חדש...</button></div>';
+      box.querySelectorAll('[data-to2]').forEach(b => b.addEventListener('click', async () => {
+        let name = '';
+        if (!b.dataset.to2) { name = (prompt('איך קוראים למקום?') || '').trim(); if (!name) return; }
+        b.disabled = true;
+        try { const r = await api('POST', '', { op: 'moveItem', surveyId: sv.id, id: x.id, at: l.at, t: l.t, into: b.dataset.to2, name }); await refreshSurvey(); ctx.toast('הועבר ל"' + (r.name || '') + '"'); again(); } catch (e2) { fail(e2); b.disabled = false; }
+      }));
+    });
+  };
   for (const l of log) {
     if (l.t === 'call') {
       const [an, ac] = AV[l.avail] || AV.unknown;
@@ -1245,14 +1264,16 @@ function timeline(sv, x) {
         ${out ? `<span>${l.state === 'queued' ? 'בתור לשליחה' : l.state === 'error' ? 'השליחה נכשלה' : 'נשלח'} · אל ${esc(l.to)}</span>` : `<span>מאת ${esc(l.from)}</span>`}</div>
         <p class="ev__subj">${esc(l.subject)}</p><details><summary>התוכן</summary><pre>${esc(l.body)}</pre></details>
         ${(l.files || []).length ? `<div class="row-tools">${l.files.filter(f => safeUrl(f.url)).map(f => `<a class="btn btn--line btn--sm" href="${esc(f.url)}" target="_blank" rel="noopener">${esc(f.name)}</a>`).join('')}</div>` : ''}
-        ${l.error ? `<p class="err">${esc(l.error)}</p>` : ''}</li>`);
+        ${l.error ? `<p class="err">${esc(l.error)}</p>` : ''}${out ? '' : wrongBtn}</li>`);
+      if (!out) wrongWire(li, l);
       ol.append(li);
     } else if (l.t === 'text') {
       const [an, ac] = AV[l.avail] || AV.unknown;
       ol.append(h(`<li class="ev ev--text"><div class="ev__h"><b>${l.src === 'mail' ? 'נקרא מהמיילים' : l.src === 'wa' ? 'נקרא מהוואטסאפ' : 'נקרא מטקסט שהודבק'}</b><time>${when(l.at)}</time>${l.avail && l.avail !== 'unknown' ? `<span class="pill pill--${ac}">${an}</span>` : ''}</div>
         ${l.summary ? `<p>${esc(l.summary)}</p>` : ''}
         ${(l.files || []).filter(f => safeUrl(f.url)).length ? `<div class="row-tools">${l.files.filter(f => safeUrl(f.url)).map(f => `<a class="btn btn--line btn--sm" href="${esc(f.url)}" target="_blank" rel="noopener">לפתוח את הקובץ: ${esc(f.name)}</a>`).join('')}</div>` : ''}
-        ${l.quotes?.length && l.src !== 'wa' ? `<ul class="ev__q">${l.quotes.map(q => `<li>${q.who ? `<b>${esc(q.who)}:</b> ` : ''}"${esc(q.text)}"</li>`).join('')}</ul>` : ''}</li>`));
+        ${l.quotes?.length && l.src !== 'wa' ? `<ul class="ev__q">${l.quotes.map(q => `<li>${q.who ? `<b>${esc(q.who)}:</b> ` : ''}"${esc(q.text)}"</li>`).join('')}</ul>` : ''}${wrongBtn}</li>`));
+      wrongWire(ol.lastElementChild, l);
     } else {
       ol.append(h(`<li class="ev ev--note"><div class="ev__h"><b>הערה</b><time>${when(l.at)}</time>${l.by ? `<span>${esc(l.by)}</span>` : ''}</div><p>${esc(l.text)}</p>${(l.files || []).filter(f => safeUrl(f.url)).length ? `<div class="row-tools">${l.files.filter(f => safeUrl(f.url)).map(f => `<a class="btn btn--line btn--sm" href="${esc(f.url)}" target="_blank" rel="noopener">${esc(f.name)}</a>`).join('')}</div>` : ''}</li>`));
     }
@@ -1375,7 +1396,7 @@ function downloadSummary(sv, hotels, pref) {
   const full = u => /^media\/uploads\//.test(u) ? location.origin + '/' + u : safeUrl(u);
   const line = x => { const t = String(x.about || x.summary || '').replace(/\s+/g, ' ').trim(); const m = t.match(/^.{20,220}?[.!?](\s|$)/); return m ? m[0].trim() : t.slice(0, 220); };
   const rows = [...hotels].sort((a, b) => rank(a) - rank(b) || (a.min ?? 1e12) - (b.min ?? 1e12)).map(x => {
-    const o = info.get(x), cheap = (x.prices || []).filter(p => p.price > 0).sort((a, b) => a.price - b.price)[0];
+    const o = info.get(x), cheap = (x.prices || []).filter(p => p.price > 0 && !isExtra(p)).sort((a, b) => a.price - b.price)[0];
     const av = pref && !o.st && o.other.length ? 'פנוי בתאריך אחר: ' + o.other.map(dmy).join(', ') : (pref ? PREF_HE[o.st] + ' ב-' + dmy(pref) : avOf(x, sv)[0]) + (o.other.length ? '. פנוי גם ב-' + o.other.map(dmy).join(', ') : '');
     return [x.name + (x.city ? ', ' + x.city : ''), safeUrl(x.website) || '', [...(x.myPhotos || []), ...(x.photos || [])].map(full).filter(Boolean).slice(0, 3).join('\n'),
       cheap ? money(cheap.price, cheap.currency) + (cheap.per ? ' ' + cheap.per : '') + ([cheap.level, cheap.board].filter(Boolean).length ? ' (' + [cheap.level, cheap.board].filter(Boolean).join(', ') + ')' : '') : 'עוד אין מחיר',

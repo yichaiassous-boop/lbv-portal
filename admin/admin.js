@@ -346,8 +346,8 @@ const GROUPS = () => [
   { id: 'clients', name: 'כלים ללקוחות', pages: [{ id: 'intake', title: 'טופס ללקוח', sub: 'שולחים ללקוח קישור (או ממלאים בשיחה): איזה אירוע, מתי, כמה אורחים, איפה ובאיזה תקציב. כרטיס האירוע נפתח לבד, ורואים מה מתאים מהמאגר' },
     { id: 'offers', title: 'הצעת מחיר מהמאגר', sub: 'בוחרים מקום, מלון, אטרקציות ואמן מהמאגר, מוסיפים עמלה ומעגלים, משנים כל מחיר ביד. הלקוח רואה רק את המחיר הסופי ומאשר בקישור' }] },
   { id: 'hotels', name: 'מלונות ואולמות', pages: [{ id: 'hotels', title: 'בדיקת מלונות ואולמות', sub: 'מתקשרים למלונות ולאולמות, והמערכת ממלאת לבד מהשיחות: פרטים, זמינות, מחירים, מיילים וסיכום' },
-    { zone: 'smart', id: 'venues', title: 'מאגר האולמות', sub: 'כל אולם וגן אירועים שדיברנו איתו, פעם אחת: חיפוש לפי אזור ומחיר, והאפשרויות הכי טובות קודם' },
-    { zone: 'smart', id: 'catalog', title: 'מאגר המלונות', sub: 'כל מלון שדיברנו איתו, פעם אחת: חיפוש לפי אזור ומחיר, והאפשרויות הכי טובות קודם' }] },
+    { zone: 'smart', id: 'venues', title: 'אולמות וגני אירועים', sub: 'המאגר: כל אולם וגן אירועים שדיברנו איתו, פעם אחת: חיפוש לפי אזור ומחיר, והאפשרויות הכי טובות קודם' },
+    { zone: 'smart', id: 'catalog', title: 'בתי מלון', sub: 'המאגר: כל מלון שדיברנו איתו, פעם אחת: חיפוש לפי אזור ומחיר, והאפשרויות הכי טובות קודם' }] },
   { id: 'calls', name: 'שיחות ומטלות', pages: [{ id: 'calls', title: 'השיחות', sub: 'כל שיחה בטלפון של העבודה, לפי מי התקשר: מלון, אמן, לקוח, אילן. רק הבעלים ומעיין רואים את זה' },
     { id: 'ilan', title: 'מטלות מאילן', sub: 'מה אילן ביקש בשיחות איתו, ורשימה של מה לעשות. רק הבעלים ומעיין רואים את זה' }] },
   { id: 'nets', name: 'הרשתות', pages: [{ id: 'nets', title: 'הרשתות', sub: 'אינסטגרם, טיקטוק ויוטיוב של La Belle Vie ושל האמנים: עוקבים, צפיות וסרטונים' }] },
@@ -397,8 +397,8 @@ function appTiles() {
     { zone: 'work', id: 'events', title: 'לוח אירועים', sub: 'מה, מתי ואיפה', icon: ICON.events },
     { zone: 'work', id: 'artists', title: 'אמנים', sub: 'אהרון מאיר והאמנים שלנו', icon: ICON.artists },
     { zone: 'smart', id: 'hotels', title: 'בדיקת מלונות ואולמות', sub: 'שיחות, מחירים, זמינות', icon: ICON.hotels },
-    { zone: 'smart', id: 'venues', title: 'מאגר האולמות', sub: 'לפי אזור ומחיר', icon: 'M4 21V9l8-6 8 6v12M4 21h16M9 21v-5a3 3 0 0 1 6 0v5M12 8h.01' },
-    { zone: 'smart', id: 'catalog', title: 'מאגר המלונות', sub: 'לפי אזור ומחיר', icon: 'M3 21V8l9-5 9 5v13M9 21v-6h6v6M8 10h.01M12 10h.01M16 10h.01' },
+    { zone: 'smart', id: 'venues', title: 'אולמות וגני אירועים', sub: 'המאגר, לפי אזור ומחיר', icon: 'M4 21V9l8-6 8 6v12M4 21h16M9 21v-5a3 3 0 0 1 6 0v5M12 8h.01' },
+    { zone: 'smart', id: 'catalog', title: 'בתי מלון', sub: 'המאגר, לפי אזור ומחיר', icon: 'M3 21V8l9-5 9 5v13M9 21v-6h6v6M8 10h.01M12 10h.01M16 10h.01' },
     { zone: 'smart', id: 'fun', title: 'מאגר האטרקציות', sub: 'לימי כיף', icon: 'M3 9V7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2a3 3 0 0 0 0 6v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2a3 3 0 0 0 0-6zM14 5v14' },
     { zone: 'smart', id: 'twin', title: 'הכפיל של אילן', sub: 'בגדים, מקום, תנועה ודיבור', icon: 'M12 3a4 4 0 1 1 0 8 4 4 0 0 1 0-8zM4 21v-1a6 6 0 0 1 6-6h4a6 6 0 0 1 6 6v1M17 3l1 2 2 1-2 1-1 2-1-2-2-1 2-1z' },
     { zone: 'smart', id: 'walink', title: 'הוואטסאפ שלי', sub: 'חיבור, ושליחה לרשימה', icon: 'M4 20l1.3-3.9A8 8 0 1 1 8 19.1zM9 9.5c.5 2 2 3.5 4 4l1-1 2 1v1.5c-3.5 0-7-3.5-7-7H10.5l.5 2z' },
@@ -445,14 +445,28 @@ function drawNav() {
   $$('[data-page]', $('#tabs')).forEach(b => b.addEventListener('click', () => go(b.dataset.page)));
   $('#tabs [aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'center' });
 }
+// owner 25.11: on the phone there was no way back (each page replaced the last one): now every page opened from another one
+// is a step back for the phone's Back button, and a "חזרה" button shows above the page.
+let navDepth = 0, navBooted = false;
 function go(p, opts = {}) {
   if (me?.must) p = 'account';   // owner 22.11: first-time password → change it before anything else
   const info = allPages().find(x => x.id === p) || allPages()[0];
+  const prev = page;
   page = info.id;
   $('#pageTitle').textContent = info.title;
   $('#pageSub').textContent = info.sub;
   $('#langPick').hidden = !info.lang;
-  history.replaceState(null, '', '#' + page);
+  if (opts.pop) { /* the phone's Back: the address is already right */ }
+  else if (navBooted && prev !== page) { history.pushState({ lbvPage: page }, '', '#' + page); navDepth++; }
+  else history.replaceState({ lbvPage: page }, '', '#' + page);
+  navBooted = true;
+  const bk = $('#pageBack'); if (bk) bk.hidden = !(navDepth > 0 && page !== 'apphome');
+  // in the phone app the page title is in the top bar: the back arrow goes there, before the title
+  if (IN_APP) {
+    let ab = $('#appBack');
+    if (!ab && $('.hb__brand')) { ab = document.createElement('button'); ab.type = 'button'; ab.id = 'appBack'; ab.className = 'hb__back'; ab.setAttribute('aria-label', 'חזרה'); ab.textContent = '→'; ab.addEventListener('click', () => { if (navDepth > 0) history.back(); else go('apphome'); }); $('.hb__brand').before(ab); }
+    if (ab) ab.hidden = page === 'apphome';
+  }
   drawNav();
   if (IN_APP) {
     $('.hb__brand b').textContent = page === 'apphome' ? 'La Belle Vie' : info.title;
@@ -498,6 +512,14 @@ $$('#langPick button').forEach(b => b.addEventListener('click', () => {
   render();
   pvShow(wide() ? pv.want : pv.on);
 }));
+
+window.addEventListener('popstate', e => {
+  const p = (e.state && e.state.lbvPage) || (location.hash || '').slice(1).split('?')[0];
+  if (!p || p === page || !allPages().some(x => x.id === p)) return;
+  navDepth = Math.max(0, navDepth - 1);
+  go(p, { pop: true });
+});
+$('#pageBack')?.addEventListener('click', () => { if (navDepth > 0) history.back(); });
 
 /* ---------- one tab per part of the site: everything about it, in the site's order ---------- */
 const WIN_SCOPES = { 'w-home': ['top', 'services', 'about', 'team'], 'w-menu': ['header', 'footer'] };

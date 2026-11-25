@@ -323,7 +323,10 @@ function cleanHotel(b, old = {}) {
     log: old.log || [],
   };
 }
-const minPrice = h => { const p = (h.prices || []).map(x => x.price).filter(x => x != null && x > 0); return p.length ? Math.min(...p) : null; };
+/** owner 25.11: "10 ש"ח לאורח" (a production fee) and "80 ש"ח לאורח" (an alcohol bar add-on) were shown as the price of the place:
+ *  a fee, a commission or an add-on is never the place's price. */
+export const isExtra = p => /תוספת|עמלה|עמלת|דמי שירות|דמי טיפול|בר אלכוהול|שדרוג|הקמות|הקמה|^\s*%|אחוז/.test([p.level, p.board].join(' ')) || /^\s*(עמלת|עמלה|דמי )/.test(p.note || '');
+const minPrice = h => { const p = (h.prices || []).filter(x => !isExtra(x)).map(x => x.price).filter(x => x != null && x > 0); return p.length ? Math.min(...p) : null; };
 const brief = h => ({ ...h, log: undefined, calls: (h.log || []).filter(x => x.t === 'call').length, mails: (h.log || []).filter(x => x.t === 'mail-in' || x.t === 'mail-out').length, last: (h.log || []).map(x => x.at).sort().pop() || h.updatedAt, min: minPrice(h) });
 
 /* ---------- who may see / change what ---------- */
@@ -1093,7 +1096,7 @@ export default async function hotelsHandler(req, res) {
       await setJ(key, h.id, h);
       return send(res, 200, { ok: true, photos: h.photos });
     }
-    if (op === 'hotel' || op === 'note' || op === 'mail' || op === 'draft' || op === 'paste' || op === 'photos' || op === 'sheetPics' || op === 'mailNow' || op === 'relisten' || op === 'booked' || op === 'after' || op === 'join') {
+    if (op === 'hotel' || op === 'note' || op === 'mail' || op === 'draft' || op === 'paste' || op === 'photos' || op === 'sheetPics' || op === 'mailNow' || op === 'relisten' || op === 'booked' || op === 'after' || op === 'join' || op === 'moveItem') {
       const sv = await getJ(K.surveys, body.surveyId);
       if (!canSee(s, sv)) return send(res, 404, { error: 'not-found' });
       const key = K.hotels(sv.id);
@@ -1104,6 +1107,31 @@ export default async function hotelsHandler(req, res) {
 
       // owner 25.11: two cards that are one place (it called back from another number, under another name): this card goes into the other one.
       // Its numbers stay on the kept card, so the next call from either number lands there by itself.
+      // owner 25.11: a mail / message filed in the wrong card (חוות רונית's offer landed in קאי רזורט): it moves, with the prices read
+      // from it, to the right card (or a new one). The sender's address goes with it.
+      if (op === 'moveItem') {
+        if (!old || !canManage(s, sv)) return send(res, 404, { error: 'not-found' });
+        const at = str(body.at, 40), t = pick(body.t, ['mail-in', 'text', 'call', 'mail-out'], '');
+        const items = (old.log || []).filter(l => l.t === t && l.at === at);
+        if (!t || !items.length) return send(res, 404, { error: 'not-found' });
+        let to = body.into ? await getJ(key, str(body.into, 40)) : null;
+        if (body.into && (!to || to.id === old.id)) return send(res, 404, { error: 'not-found' });
+        if (!to) { const nm = str(body.name, 120).trim(); if (nm.length < 2) return send(res, 400, { error: 'name' }); to = { ...cleanHotel({ name: nm, status: 'new' }), id: rid('h'), createdAt: now(), log: [] }; }
+        const pk = p => norm(p.level) + '|' + norm(p.board) + '|' + (p.price || '');
+        const moved = items.flatMap(l => l.prices || []);
+        old.log = (old.log || []).filter(l => !items.includes(l));
+        old.prices = (old.prices || []).filter(p => !moved.some(m => pk(m) === pk(p)));
+        to.prices = [...(to.prices || []), ...moved.filter(p => !(to.prices || []).some(q => pk(q) === pk(p)))];
+        to.log = [...(to.log || []), ...items].sort((a, b) => String(a.at).localeCompare(String(b.at))).slice(-80);
+        const fe = items.map(l => (String(l.from || '').match(/[^\s<>"]+@[^\s<>"]+/) || [''])[0].toLowerCase()).find(Boolean) || '';
+        if (fe && String(old.email || '').toLowerCase() === fe) { old.email = ''; delete old.mailScan; }
+        if (fe && !to.email) to.email = fe;
+        old.log.push({ t: 'note', at: now(), by: s.n || '', text: 'הועבר לכרטיס "' + (to.name || '') + '" (לא היה של המקום הזה).' });
+        old.updatedAt = to.updatedAt = now();
+        await setJ(key, old.id, old);
+        await setJ(key, to.id, to);
+        return send(res, 200, { ok: true, id: to.id, name: to.name });
+      }
       if (op === 'join') {
         if (!old || !canManage(s, sv)) return send(res, 404, { error: 'not-found' });
         const keep = await getJ(key, str(body.into, 40));

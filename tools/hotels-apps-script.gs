@@ -527,6 +527,7 @@ function hotelSchema() {
 
 /** owner 25.11: every place offers something different; rooms are not always a Shabbat-chatan stay. */
 var EXTRAS_RULE = [
+  'PRICE OR FEE: a fee or an add-on is never the price of the place. A production / service fee or commission (עמלת הפקה, עמלה, דמי שירות), a percent (10%), an add-on (תוספת בר אלכוהול, תוספת הגשה, שדרוג) or a set-up cost (הקמות): write it as its own price row whose level starts with "תוספת" or "עמלה" (e.g. level "עמלת הפקה", note "10 ₪ לאורח כולל מע"מ"), never as the plate or the room price. A percent goes in the note only, never as a number in price.',
   'EVERY OFFER COUNTS: each place offers something different and it always changes. Write in the summary every extra, gift or condition that was offered (e.g. "מציע גם חדר חתן-כלה באותו מחיר", "הלינה לזוג הצעיר כלולה", "תוספת של 5 חדרים במחיר מיוחד").',
   'ROOMS ARE NOT ALWAYS A STAY: a hall (אולם) for a wedding or an event often offers a room in addition to the hall (a bride-and-groom room, a few rooms for the family). That is NOT a Shabbat-chatan stay. availability.rooms must say what the rooms are and what they come with, in Hebrew, e.g. "חדר חתן-כלה, כלול במחיר האולם" or "7 חדרים ללינה עם ארוחת בוקר לשבת חתן", not only a number.',
   'DATES: if the asked date is taken but another date is free, write each date with its word in availability.text (e.g. "25.3 תפוס, 18.3 פנוי"), so it shows as free on another date.'
