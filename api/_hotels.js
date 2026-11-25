@@ -1096,7 +1096,7 @@ export default async function hotelsHandler(req, res) {
       await setJ(key, h.id, h);
       return send(res, 200, { ok: true, photos: h.photos });
     }
-    if (op === 'hotel' || op === 'note' || op === 'mail' || op === 'draft' || op === 'paste' || op === 'photos' || op === 'sheetPics' || op === 'mailNow' || op === 'relisten' || op === 'booked' || op === 'after' || op === 'join' || op === 'moveItem') {
+    if (op === 'hotel' || op === 'note' || op === 'mail' || op === 'draft' || op === 'paste' || op === 'photos' || op === 'sheetPics' || op === 'mailNow' || op === 'relisten' || op === 'booked' || op === 'after' || op === 'join' || op === 'moveItem' || op === 'setBrief' || op === 'briefText') {
       const sv = await getJ(K.surveys, body.surveyId);
       if (!canSee(s, sv)) return send(res, 404, { error: 'not-found' });
       const key = K.hotels(sv.id);
@@ -1131,6 +1131,17 @@ export default async function hotelsHandler(req, res) {
         await setJ(key, old.id, old);
         await setJ(key, to.id, to);
         return send(res, 200, { ok: true, id: to.id, name: to.name });
+      }
+      // owner 25.11: the brief for the sheet (Ilan) written by hand, when the robot cannot (or wrote it wrong). Kept until something new comes in.
+      if (op === 'briefText') { if (!old) return send(res, 404, { error: 'not-found' }); return send(res, 200, { text: briefText(old), sig: briefSig(old) }); }
+      if (op === 'setBrief') {
+        if (!old || !canManage(s, sv)) return send(res, 404, { error: 'not-found' });
+        const r = body.brief || {};
+        const line = (v, n) => str(v, n).replace(/\s+/g, ' ').trim();
+        old.brief = { guests: line(r.guests, 120), plate: line(r.plate, 160), hall: line(r.hall, 160), extras: (Array.isArray(r.extras) ? r.extras : []).map(x => line(x, 220)).filter(Boolean).slice(0, 8), sig: briefSig(old), at: now(), by: s.n || '' };
+        delete old.briefFail;
+        await setJ(key, old.id, old);
+        return send(res, 200, { ok: true, brief: old.brief });
       }
       if (op === 'join') {
         if (!old || !canManage(s, sv)) return send(res, 404, { error: 'not-found' });
