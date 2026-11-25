@@ -1290,7 +1290,7 @@ function waSummary(sv, hotels) {
   const sorted = [...hotels].filter(x => x.status !== 'no').sort((a, b) => order.indexOf(a.avail) - order.indexOf(b.avail) || (a.min ?? 1e12) - (b.min ?? 1e12));
   for (const x of sorted) {
     lines.push('', `*${x.name}*${x.city ? ' – ' + x.city : ''}`, `${(AV[x.avail] || AV.unknown)[0]}${x.availText ? ': ' + x.availText : ''}`);
-    for (const p of x.prices || []) lines.push(`• ${[p.level, p.board].filter(Boolean).join(' · ') || 'מחיר'}: ${money(p.price, p.currency)}${p.per ? ' ' + p.per : ''}${p.note ? ' (' + p.note + ')' : ''}`);
+    for (const p of (x.prices || []).filter(p => !/עמל/.test([p.level, p.board, p.note].join(' ')))) lines.push(`• ${[p.level, p.board].filter(Boolean).join(' · ') || 'מחיר'}: ${money(p.price, p.currency)}${p.per ? ' ' + p.per : ''}${p.note ? ' (' + p.note + ')' : ''}`);
     if (x.followUp || x.followWhat) lines.push(`לחזור${x.followUp ? ' ב-' + dmy(x.followUp) : ''}${x.followWhat ? ': ' + x.followWhat : ''}`);
   }
   const no = hotels.filter(x => x.status === 'no').map(x => x.name);

@@ -851,7 +851,7 @@ export default async function hotelsHandler(req, res) {
           const last = (ho.log || []).map(l => l.at).filter(Boolean).sort().pop() || ho.updatedAt || ho.createdAt || '';
           const calls = (ho.log || []).filter(l => l.t === 'call').length;
           const kid = p => /ילד|ילדה|ילדים|תינוק|child|kid|enfant|bébé|baby/i.test([p.per, p.level, p.note].join(' '));   // a child's price is not the hotel's price
-          const mp = (ho.prices || []).filter(p => p.price > 0 && !kid(p)).sort((a2, b2) => a2.price - b2.price)[0] || null;
+          const mp = (ho.prices || []).filter(p => p.price > 0 && !kid(p) && !isExtra(p)).sort((a2, b2) => a2.price - b2.price)[0] || null;
           // owner 24.11: a hall / events garden goes to the halls catalog (by its name, or a card about halls)
           const venue = /(^|\s)(אולם|אולמי|אולמות|גן אירועים|גני אירועים|גן|וילה|לופט|venue|hall)(\s|$)/i.test(ho.name) || /אולם|אולמות|venue/i.test([sv.title, sv.kind].join(' '));
           const row = { key, venue, name: ho.name, city: ho.city || '', area: sv.area || '', phone: ho.phone || '', contact: ho.contact || '', website: ho.website || '', rating: ho.rating || null,
