@@ -22,6 +22,8 @@ import { storeReady, cmd, getJ, setJ, allJ, authState, forgetLogin } from './sto
 const PORTAL = (process.env.PORTAL_URL || 'https://lbv-portal-phi.vercel.app').replace(/\/$/, '');
 const K = { state: 'wl:state', cmd: 'wl:cmd', key: 'wl:key', camps: 'wl:camps', day: d => 'wl:day:' + d, keys: 'hs:keys' };
 const DAY_CAP = Number(process.env.WA_DAY_CAP || 150);   // messages a day from a list, at most
+// 25.11 owner: send only. Reading places' chats (and uploading their photos/videos) stays off unless WA_READ=1.
+const READ = process.env.WA_READ === '1';
 const GAP = [35, 95];                                     // seconds between two messages of a list (random in between)
 const log = pino({ level: process.env.LOG_LEVEL || 'warn' });
 const now = () => new Date().toISOString();
@@ -196,7 +198,7 @@ async function connect() {
     sock.ev.on('creds.update', saveCreds);
     sock.ev.on('connection.update', async u => {
       if (u.qr) await setState({ state: 'qr', qr: await QRCode.toDataURL(u.qr, { margin: 1, width: 320 }) });
-      if (u.connection === 'open') { await setState({ state: 'open', me: digits(sock.user?.id?.split(':')[0]), name: sock.user?.name || '' }); refreshKnown(true); }
+      if (u.connection === 'open') { await setState({ state: 'open', me: digits(sock.user?.id?.split(':')[0]), name: sock.user?.name || '' }); if (READ) refreshKnown(true); }
       if (u.connection === 'close') {
         const code = u.lastDisconnect?.error?.output?.statusCode;
         sock = null;
@@ -207,11 +209,11 @@ async function connect() {
         setTimeout(connect, code === DisconnectReason.loggedOut ? 2000 : 5000);
       }
     });
-    sock.ev.on('messages.upsert', async ({ messages, type }) => {
+    if (READ) sock.ev.on('messages.upsert', async ({ messages, type }) => {
       await refreshKnown();
       for (const m of messages) await onMessage(m, type !== 'notify').catch(e => log.error('msg ' + e.message));
     });
-    sock.ev.on('messaging-history.set', async ({ messages }) => {
+    if (READ) sock.ev.on('messaging-history.set', async ({ messages }) => {
       await refreshKnown(true);
       for (const m of messages || []) await onMessage(m, true).catch(e => log.error('hist ' + e.message));
     });
@@ -238,9 +240,9 @@ async function main() {
   if (!storeReady()) { console.error('KV_REST_API_URL / KV_REST_API_TOKEN missing'); process.exit(1); }
   KEY = await portalKey();
   await setState({ state: 'starting' });
-  await refreshKnown(true);
+  if (READ) await refreshKnown(true);
   await connect();
-  setInterval(() => flush().catch(() => {}), 15000);
+  if (READ) setInterval(() => flush().catch(() => {}), 15000);
   setInterval(() => commands().catch(() => {}), 5000);
   setInterval(() => sendTick().catch(e => log.error('send ' + e.message)), 10000);
   budgetCheck().catch(e => log.error(e.message));
