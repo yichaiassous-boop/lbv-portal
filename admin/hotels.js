@@ -1151,15 +1151,15 @@ function timeline(sv, x) {
   const ol = $('.hs-log', c);
   const techNote = l => l.t === 'note' && (l.by === 'המערכת' || /^נוספו \d+ תמונות|^נוספה תמונה|נבדקו ידנית|^הוסרו \d+ תמונות|Error|gemini/i.test(l.text || ''));
   const ours = l => l.t === 'wa' && (/ilan|אילן|belle\s*vie|לה\s*בל\s*וי/i.test(l.from || '') || /^\s*(שיחת וידאו|שיחה קולית|שיחת וידאו פעילה|שיחה שלא נענתה|הודעה זו נמחקה)/.test(l.text || ''));
-  const all = [...(x.log || [])].filter(l => !techNote(l) && !ours(l)).sort((a, b) => (b.at || '').localeCompare(a.at || ''));
+  // owner 25.11: a WhatsApp reading that says nothing ("נמסר שאין לו את המידע בטלפון") is not shown
+  const emptyWa = l => l.t === 'text' && l.src === 'wa' && /אין (לו|לה|להם|לי)? ?(את )?ה?מידע|לא (נמסר|צוין|ידוע|ברור)|אין לי על הטלפון/.test(l.summary || '') && !(l.prices || []).length;
+  const all = [...(x.log || [])].filter(l => !techNote(l) && !ours(l) && !emptyWa(l)).sort((a, b) => (b.at || '').localeCompare(a.at || ''));
   const waRaw = all.filter(l => l.t === 'wa'), log = all.filter(l => l.t !== 'wa');
   if (!log.length && !waRaw.length) ol.append(h('<li class="hint">עוד אין היסטוריה.</li>'));
-  if (waRaw.length) {
-    const read = log.some(l => l.t === 'text' && l.src === 'wa');
-    const li = h(`<li class="ev ev--wa"><div class="ev__h"><b>${waRaw.length === 1 ? 'הודעת וואטסאפ אחת' : waRaw.length + ' הודעות וואטסאפ'}</b><time>${when(waRaw[0].at)}</time></div>
-      <p class="hint">${read ? 'מה שחשוב מהן (מחירים, מה מציעים, פרטים) מסוכם למטה ב"נקרא מהוואטסאפ".' : 'הרובוט יסכם מהן את מה שחשוב תוך כמה דקות.'}</p>
-      <details><summary>להציג את ההודעות</summary>${waRaw.map(l => `<p class="ev__wa"><small>${when(l.at)}${l.from ? ' · ' + esc(l.from) : ''}</small><br>${esc(l.text)}</p>`).join('')}</details></li>`);
-    ol.append(li);
+  // owner 25.11: the WhatsApp messages themselves are not shown (short replies without our questions say nothing);
+  // only what the robot read from them, and only while it is still reading, one line
+  if (waRaw.length && !log.some(l => l.t === 'text' && l.src === 'wa' && (l.at || '') >= (waRaw[0].at || ''))) {
+    ol.append(h(`<li class="ev ev--wa"><div class="ev__h"><b>${waRaw.length === 1 ? 'הודעת וואטסאפ חדשה' : waRaw.length + ' הודעות וואטסאפ חדשות'}</b><time>${when(waRaw[0].at)}</time></div><p class="hint">הרובוט יסכם מהן את מה שחשוב תוך כמה דקות.</p></li>`));
   }
   for (const l of log) {
     if (l.t === 'call') {

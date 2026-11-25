@@ -1525,7 +1525,11 @@ async function script(req, res, what, userId, b) {
     } else if (jobId) h.parse = (h.parse || []).filter(p => p.id !== jobId);
     const r = b.result || {};
     if (b.src === 'wa' && !b.error) { const lastWa = (h.log || []).filter(l => l.t === 'wa').map(l => l.at).sort().pop(); if (lastWa) h.waReadAt = lastWa; delete h.waTry; }
-    if (!b.error && r && (r.summary || (r.prices || []).length || r.availability || r.hotel)) {
+    // owner 25.11: WhatsApp replies are short and come without our questions ("אין לי על הטלפון"): kept only when they
+    // bring a fact (a price, the availability, a detail of the place), never as a summary that says nothing
+    const emptySum = s2 => !String(s2 || '').trim() || /אין (לו|לה|להם|לי)? ?(את )?ה?מידע|לא (נמסר|צוין|ידוע|ברור)|אין לי על הטלפון|ישלח(ו)? (בהמשך|אחר כך|עוד)|בעוד כמה דק/.test(String(s2));
+    const waFact = (r.prices || []).length || ((r.keyQuotes || []).length && !emptySum(r.summary)) || (r.availability?.status && r.availability.status !== 'unknown') || Object.values(r.hotel || {}).some(v => v !== null && v !== undefined && v !== '' && !(Array.isArray(v) && !v.length));
+    if (!b.error && r && (b.src === 'wa' ? waFact : (r.summary || (r.prices || []).length || r.availability || r.hotel))) {
       const src = pick(b.src, ['paste', 'mail', 'wa'], 'paste');
       mergeCall(h, { ...r, hotel: r.hotel || {} }, { t: 'text', src, at: now(), files: (Array.isArray(b.files) ? b.files : []).slice(0, 10).map(f => ({ name: str(f.name, 160), url: link(f.url, 400) })).filter(f => f.name), summary: str(r.summary, 1500), avail: pick(r.availability?.status, AVAIL, 'unknown'), availText: str(r.availability?.text, 400), quotes: (Array.isArray(r.keyQuotes) ? r.keyQuotes : []).slice(0, 8).map(x => ({ time: '', who: str(x.speaker, 40), text: str(x.text, 500) })) });
     } else if (b.error && !busy) h.log = [...(h.log || []), { t: 'note', at: now(), by: 'המערכת', text: 'לא הצלחתי לקרוא את הטקסט: ' + str(b.error, 200) }].slice(-80);
