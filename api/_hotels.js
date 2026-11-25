@@ -569,12 +569,19 @@ const PREF_HE = { free: 'פנוי', maybe: 'בספק', taken: 'תפוס', '': '�
 export { datesSaid, onDate };
 /** owner 24.11: the sheet is short and clear: one row per place. The places free on the preferred date first (cheapest first),
  *  then the ones free only on another date (those dates in a column on the side), then unknown, then taken. */
-export function tableRows(sv, hotels, pref) {
+/** owner 25.11: the sheet links to a photo page on the site (=IMAGE needed a Google approval and looked bad). */
+export function photosLink(h, origin) {
+  const all = [...(h.myPhotos || []), ...(h.photos || [])].map(u => /^media\/uploads\//.test(u || '') ? origin + '/' + u : u).filter(u => /^https:\/\/[^\s"<>]+$/i.test(u || ''));
+  let link = origin + '/hotels/photos.html?n=' + encodeURIComponent(h.name || ''), k = 0;
+  for (const u of [...new Set(all)].slice(0, 12)) { const add = '&u=' + encodeURIComponent(u); if ((link + add).length > 1900) break; link += add; k++; }
+  return k ? { link, k } : null;
+}
+export function tableRows(sv, hotels, pref, origin) {
+  origin = origin || 'https://lbv-portal-phi.vercel.app';
   pref = /^\d{4}-\d{2}-\d{2}$/.test(pref || '') ? pref : sv.from || '';
   // owner 25.11: a photo and the place's site in the sheet; "לחזור אליהם" is for us, not in this table
-  const head = ['מקום', 'תמונה', 'אתר', 'עיר', pref ? 'ב-' + dmy(pref) : 'זמינות', 'תאריכים חלופיים', 'הכי זול', 'המחירים', 'מה חשוב לדעת', 'איש קשר וטלפון', 'סטטוס'];
+  const head = ['מקום', 'תמונות', 'אתר', 'עיר', pref ? 'ב-' + dmy(pref) : 'זמינות', 'תאריכים חלופיים', 'הכי זול', 'המחירים', 'מה חשוב לדעת', 'איש קשר וטלפון', 'סטטוס'];
   const q = u => String(u).replace(/"/g, '%22');
-  const photo = h => [...(h.myPhotos || []), ...(h.photos || [])].find(u => /^https:\/\/[^\s"]+$/i.test(u || ''));
   const site = h => /^https?:\/\/[^\s"]+$/i.test(h.website || '') ? h.website : '';
   // a bare phone number would lose its leading 0 in the sheet: kept as text
   const asText = v => /^\+?\d[\d\s\-]*$/.test(String(v || '').trim()) ? "'" + String(v).trim() : v;
@@ -583,7 +590,7 @@ export function tableRows(sv, hotels, pref) {
   const list = [...hotels].sort((a, b) => rank(a) - rank(b) || (minPrice(a) ?? 1e12) - (minPrice(b) ?? 1e12));
   const sym = c => ({ ILS: '₪', USD: '$', EUR: '€' }[c] || (c ? ' ' + c : '₪'));
   const rows = list.map(h => [
-    h.name || '', photo(h) ? `=IMAGE("${q(photo(h))}")` : '', site(h) ? `=HYPERLINK("${q(site(h))}","לאתר")` : '',
+    h.name || '', (p => p ? `=HYPERLINK("${q(p.link)}","${p.k === 1 ? 'לתמונה' : 'לתמונות (' + p.k + ')'}")` : '')(photosLink(h, origin)), site(h) ? `=HYPERLINK("${q(site(h))}","לאתר")` : '',
     h.city || '', (o => o.st === 'free' || o.st === 'maybe' || !o.other.length ? (pref ? PREF_HE[o.st] : AV_HE[h.avail] || 'לא ידוע') : (o.st === 'taken' || h.avail === 'full' ? 'תפוס, ' : '') + 'פנוי בתאריך אחר')(info.get(h)), info.get(h).other.map(dmy).join(', '), minPrice(h) ?? '',
     (h.prices || []).filter(p => p.price > 0).map(p => ([p.level, p.board].filter(Boolean).join(', ') || 'מחיר') + ': ' + Number(p.price).toLocaleString('he-IL') + ' ' + sym(p.currency).trim() + (p.per ? ' ' + p.per : '') + (p.note ? ' (' + p.note + ')' : '')).join('\n'),
     // owner 25.11: everything important that was said (availability, rooms, what is included, extras), not only availability
@@ -1826,7 +1833,7 @@ async function script(req, res, what, userId, b) {
   if (what === 'export') {
     const sv = await getJ(K.surveys, url(req).get('survey'));
     if (!mine(sv, userId)) return send(res, 404, { error: 'not-found' });
-    return send(res, 200, { title: sv.title, rows: tableRows(sv, await allJ(K.hotels(sv.id)), sv.prefDate) });
+    return send(res, 200, { title: sv.title, rows: tableRows(sv, await allJ(K.hotels(sv.id)), sv.prefDate, `https://${req.headers['x-forwarded-host'] || req.headers.host}`) });
   }
 
   if (what === 'sheet') {
