@@ -1387,6 +1387,19 @@ async function script(req, res, what, userId, b) {
     }
     // owner 25.11: the robot reads new mail by itself and works out which place wrote (a card often has no e-mail):
     // every place of a live card (one entry per place name, with all its copies) + the mails already filed
+    // owner 25.11: a call with a place (sorted "hotel") made outside the survey times was filed nowhere (לה בל, הגן הבוטני, קדמא):
+    // the robot reads it and the site puts it in the right card (or asks which event, as with every call)
+    const placeCalls = [];
+    if ((await openCards(userId)).length) {
+      const since = new Date(Date.now() - 30 * 864e5).toISOString();
+      for (const c of await allJ(K.calls)) {
+        if (placeCalls.length >= 3) break;
+        if (c.owner && c.owner !== userId) continue;
+        if (c.dup || c.sort?.cat !== 'hotel' || String(c.at || '') < since || (c.placeTries || 0) >= 3) continue;
+        if (await kv.hget(K.files, c.id)) continue;
+        placeCalls.push({ id: c.id, name: c.name || '', url: c.url || '', at: c.at, phone: c.phone || '' });
+      }
+    }
     const inboxPlaces = new Map(), mailKnown = new Set();
     for (const sv of surveys) {
       if (!cardLive(sv)) continue;
@@ -1443,7 +1456,7 @@ async function script(req, res, what, userId, b) {
         .sort((a2, b2) => String(b2.at).localeCompare(String(a2.at))).slice(0, 3)
         .map(c => ({ id: c.id, at: c.at, name: c.name || '', phone: whoOf(c).d, local: !!c.local, text: c.local ? str(c.sum?.transcript || '', 30000) : '' }));
     }
-    return send(res, 200, { inboxPlaces: [...inboxPlaces.values()].slice(0, 200), mailKnown: [...mailKnown].slice(-3000), sortCalls, sortExamples: sortExamplesOut, funMail, funRead, ilan, windows, mode, surveys: active, outbox, threads, asks, watch: jobs.watch.slice(0, 300), parses: jobs.parses.slice(0, 5), mailScan: jobs.mailScan.concat(jobs.mailAuto).slice(0, 5), photoCheck: jobs.photoCheck.slice(0, 4), webLook: jobs.webLook.slice(0, 3), webRedo: jobs.webRedo.slice(0, 2), relisten: jobs.relisten.slice(0, 1), wa: jobs.wa.slice(0, 300) });
+    return send(res, 200, { placeCalls, inboxPlaces: [...inboxPlaces.values()].slice(0, 200), mailKnown: [...mailKnown].slice(-3000), sortCalls, sortExamples: sortExamplesOut, funMail, funRead, ilan, windows, mode, surveys: active, outbox, threads, asks, watch: jobs.watch.slice(0, 300), parses: jobs.parses.slice(0, 5), mailScan: jobs.mailScan.concat(jobs.mailAuto).slice(0, 5), photoCheck: jobs.photoCheck.slice(0, 4), webLook: jobs.webLook.slice(0, 3), webRedo: jobs.webRedo.slice(0, 2), relisten: jobs.relisten.slice(0, 1), wa: jobs.wa.slice(0, 300) });
   }
 
   // The robot's web-app address (for the phone app) + when the app last sent a recording
@@ -1485,6 +1498,14 @@ async function script(req, res, what, userId, b) {
     const g = b.gem || {}, n = v => Math.max(0, Math.min(999, Number(v) || 0));
     const runs = ((await getJ(HEALTH, 'runs')) || []).concat([{ at: now(), secs: n(b.secs), killed: !!b.killed, gem: { ok: n(g.ok), busy: n(g.busy), quota: n(g.quota) }, errors: (Array.isArray(b.errors) ? b.errors : []).slice(0, 12).map(e => str(e, 200)) }]).slice(-320);
     await setJ(HEALTH, 'runs', runs);
+    return send(res, 200, { ok: true });
+  }
+  // owner 25.11: the robot is about to read a call with a place that was filed nowhere: counted, so a call that always fails stops after 3
+  if (what === 'placeTry') {
+    const c = await getJ(K.calls, str(b.id, 120));
+    if (!c) return send(res, 404, { error: 'not-found' });
+    c.placeTries = (c.placeTries || 0) + 1;
+    await setJ(K.calls, c.id, c);
     return send(res, 200, { ok: true });
   }
   if (what === 'sorted') {

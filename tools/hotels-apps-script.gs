@@ -89,6 +89,7 @@ function tick() {
     try { photoChecks(st); } catch (e) { console.error('photoChecks', e); }   // owner 24.11 (early): only the place's own site and real photos of it
     try { recordings(st); } catch (e) { console.error('recordings', e); }
     try { relistens(st); } catch (e) { console.error('relistens', e); }   // early: it needs minutes
+    try { placeCallsRun(st); } catch (e) { console.error('placeCalls', e); }   // owner 25.11: calls with a place that were filed nowhere
     try { answerAsks(st); } catch (e) { console.error('asks', e); }
     try { outbox(st); } catch (e) { console.error('outbox', e); }
     try { replies(st); } catch (e) { console.error('replies', e); }
@@ -439,6 +440,24 @@ function sortCalls(st) {
 }
 
 /** "לקרוא את השיחה מחדש": the hotel's calls read again with today's rules; the answer replaces the old reading. */
+/** owner 25.11: a call with a place (sorted "hotel") made outside the survey times was filed nowhere, so its card said "לא ידוע".
+ *  It is read like any survey call and the site puts it in the right card (or asks which event). One per run: a reading takes minutes. */
+function placeCallsRun(st) {
+  for (const c of (st.placeCalls || []).slice(0, 1)) {
+    if (elapsed() > 100) return;
+    const sv = (st.surveys || [])[0];
+    if (!sv) return;
+    try {
+      site('post', 'placeTry', { id: c.id });
+      const f = DriveApp.getFileById(c.id);
+      const at = recordedAt(f);
+      const result = listen(f, sv, at);
+      if (result && result.relevant) { result.hotel = result.hotel || {}; if (!result.hotel.phone) result.hotel.phone = c.phone || phoneOf(f); }
+      site('post', 'call', { surveyId: sv.id, at: at.toISOString(), file: { id: f.getId(), name: f.getName(), url: f.getUrl() }, result: result });
+      console.log('placeCalls: ' + f.getName());
+    } catch (e) { console.error('placeCalls ' + c.name, e); }
+  }
+}
 function relistens(st) {
   for (const j of (st.relisten || []).slice(0, 1)) {
     if (elapsed() > 90) return;   // reading a call takes minutes: start it only early in the run
