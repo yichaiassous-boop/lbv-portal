@@ -526,6 +526,9 @@ function hotelSchema() {
 }
 
 /** owner 25.11: every place offers something different; rooms are not always a Shabbat-chatan stay. */
+// owner 25.11: write the Google sheet now (no Gemini)
+function sheetsNow() { sheets(site('get', 'status')); Logger.log('sheets done'); }
+
 var EXTRAS_RULE = [
   'PRICE OR FEE: a fee or an add-on is never the price of the place. A production / service fee or commission (עמלת הפקה, עמלה, דמי שירות), a percent (10%), an add-on (תוספת בר אלכוהול, תוספת הגשה, שדרוג) or a set-up cost (הקמות): write it as its own price row whose level starts with "תוספת" or "עמלה" (e.g. level "עמלת הפקה", note "10 ₪ לאורח כולל מע"מ"), never as the plate or the room price. A percent goes in the note only, never as a number in price.',
   'EVERY OFFER COUNTS: each place offers something different and it always changes. Write in the summary every extra, gift or condition that was offered (e.g. "מציע גם חדר חתן-כלה באותו מחיר", "הלינה לזוג הצעיר כלולה", "תוספת של 5 חדרים במחיר מיוחד").',
@@ -1110,6 +1113,10 @@ function tidySheet(sh, rows, w) {
   sh.setConditionalFormatRules([]);
   all.setBackgrounds(bg).setFontColors(fg);
   all.setBorder(true, true, true, true, true, true, '#d9d9d9', SpreadsheetApp.BorderStyle.SOLID);
+  // owner 25.11 (3): on the phone the text still went over the next rows: the wrap is set as WRAP (not overflow) and every row
+  // is re-measured to its text (an old fixed height stays otherwise), so a long cell makes its whole row taller.
+  all.setWrapStrategy(SpreadsheetApp.WrapStrategy.WRAP);
+  if (n > 1) { sh.setRowHeightsForced(2, n - 1, 21); sh.autoResizeRows(2, n - 1); SpreadsheetApp.flush(); for (let r = 2; r <= n; r++) sh.setRowHeight(r, Math.round(sh.getRowHeight(r) * 1.35) + 10); }   // the phone app shows the text a little bigger: room to spare
 }
 function sheets(st) {
   for (const sv of st.surveys || []) {
