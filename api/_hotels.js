@@ -30,6 +30,8 @@ import path from 'node:path';
 import { isAuthed, readBody } from './_lib.js';
 import { redis, redisReady } from './_redis.js';
 import { generateClientTokenFromReadWriteToken } from '@vercel/blob/client';
+// owner 26.11: a file shared from the phone (שתף ← LBV): also documents (a price quote, a menu, a contract)
+const SHARE_TYPES = { 'application/pdf': 'pdf', 'application/msword': 'doc', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx', 'application/vnd.ms-excel': 'xls', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx', 'audio/ogg': 'ogg', 'audio/mpeg': 'mp3', 'audio/mp4': 'm4a', 'audio/aac': 'aac' };
 const WA_MEDIA_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'video/mp4', 'video/3gpp', 'video/quicktime'];
 
 /* ---------- storage: Redis hashes / keys (or a local JSON file for the preview server) ---------- */
@@ -745,19 +747,48 @@ export default async function hotelsHandler(req, res) {
     /* ----- owner 25.11: photos and videos a place sends on WhatsApp, from the LBV phone app (WhatsApp keeps them on the phone).
        The phone proves itself with the robot's app secret (it has nothing else); it gets a short upload token for one file,
        puts the file straight in Blob storage, then says whose it is. Only a number that is a place in a card is filed. ----- */
-    if (req.method === 'POST' && (body.op === 'waUp' || body.op === 'waMedia')) {
+    if (req.method === 'POST' && (body.op === 'waUp' || body.op === 'waMedia' || body.op === 'shareList' || body.op === 'shareFile')) {
       const sec = str(body.secret, 128);
       let userId = null;
       if (sec.length >= 32) for (const [id, v] of Object.entries(await kv.hgetall(K.users) || {})) { try { const u = JSON.parse(v); if (u.app?.secret && same(sec, u.app.secret)) { userId = id; break; } } catch (e) {} }
       if (!userId) return send(res, 401, { error: 'secret' });
       if (body.op === 'waUp') {
         const type = str(body.type, 40).toLowerCase(), size = Number(body.size) || 0;
-        if (!WA_MEDIA_TYPES.includes(type)) return send(res, 400, { error: 'type' });
+        if (!WA_MEDIA_TYPES.includes(type) && !(body.share === true && SHARE_TYPES[type])) return send(res, 400, { error: 'type' });
         if (!(size > 0 && size <= 100 * 1024 * 1024)) return send(res, 400, { error: 'size' });
-        const ext = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/heic': 'heic', 'video/mp4': 'mp4', 'video/3gpp': '3gp', 'video/quicktime': 'mov' }[type];
+        const ext = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/heic': 'heic', 'video/mp4': 'mp4', 'video/3gpp': '3gp', 'video/quicktime': 'mov', ...SHARE_TYPES }[type];
         const pathname = 'hotels/wa/' + new Date().toISOString().slice(0, 10) + '-' + rid('w') + '.' + ext;
         const token = await generateClientTokenFromReadWriteToken({ token: process.env.BLOB_READ_WRITE_TOKEN, pathname, allowedContentTypes: [type], maximumSizeInBytes: 100 * 1024 * 1024, addRandomSuffix: true, validUntil: Date.now() + 20 * 60e3 });
         return send(res, 200, { ok: true, token, pathname, storeId: token.split('_')[3] || '' });
+      }
+      // owner 26.11, "שתף ← LBV" on the phone: the places to choose from (the one that wrote last on WhatsApp first), then the file into that card
+      if (body.op === 'shareList') {
+        const guess = digits(body.guess).slice(-9), out = [];
+        for (const sv of (await allJ(K.surveys)).filter(x => mine(x, userId) && !x.archived)) {
+          for (const h of await allJ(K.hotels(sv.id))) {
+            const lastWa = (h.log || []).filter(l => l.t === 'wa').map(l => String(l.at || '')).sort().pop() || '';
+            out.push({ surveyId: sv.id, id: h.id, name: h.name || '', survey: sv.title || '', last: lastWa > String(h.updatedAt || '') ? lastWa : String(h.updatedAt || ''),
+              guess: guess.length >= 8 && [h.phone, h.phone2].some(x => digits(x).slice(-9) === guess) });
+          }
+        }
+        out.sort((a, b) => (b.guess - a.guess) || b.last.localeCompare(a.last));
+        return send(res, 200, { ok: true, places: out.slice(0, 60) });
+      }
+      if (body.op === 'shareFile') {
+        const url = str(body.url, 400), name = str(body.name, 120).replace(/[\r\n]+/g, ' ').trim(), type = str(body.type, 80).toLowerCase();
+        if (!/^https:\/\/[a-z0-9]+\.public\.blob\.vercel-storage\.com\/hotels\/wa\/[\w.\-]+$/i.test(url)) return send(res, 400, { error: 'url' });
+        const sv = await getJ(K.surveys, str(body.surveyId, 40));
+        if (!mine(sv, userId)) return send(res, 404, { error: 'not-found' });
+        const key = K.hotels(sv.id), h = await getJ(key, str(body.id, 40));
+        if (!h) return send(res, 404, { error: 'not-found' });
+        if (!(h.log || []).some(l => (l.files || []).some(f => f.url === url))) {
+          const what = type.startsWith('image/') ? 'תמונה' : type.startsWith('video/') ? 'סרטון' : type.startsWith('audio/') ? 'הקלטה' : 'קובץ';
+          h.log = [...(h.log || []), { t: 'note', at: now(), by: 'שותף מהטלפון', text: what + ' שנשלח מהטלפון' + (name ? ': ' + name : ''), files: [{ name: name || ('לפתוח את ה' + what), url }] }].slice(-80);
+          if (type.startsWith('image/')) h.myPhotos = [...new Set([...(h.myPhotos || []), url])].slice(-40);
+          h.updatedAt = now();
+          await setJ(key, h.id, h);
+        }
+        return send(res, 200, { ok: true, name: h.name || '' });
       }
       const fileUrl = str(body.url, 400), kind = body.kind === 'video' ? 'video' : 'image', d = digits(body.phone).slice(-9);
       if (!/^https:\/\/[a-z0-9]+\.public\.blob\.vercel-storage\.com\/hotels\/wa\/[\w.\-]+$/i.test(fileUrl)) return send(res, 400, { error: 'url' });
