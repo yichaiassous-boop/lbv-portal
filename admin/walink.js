@@ -40,7 +40,7 @@ export async function walinkPage(pg, c) {
   let d;
   try { d = await api('GET'); } catch (e) { pg.innerHTML = ''; fail(e); return; }
   pg.innerHTML = '';
-  pg.append(linkCard(d), newCard(d), ...d.camps.map(campCard));
+  pg.append(linkCard(d), oneCard(d), newCard(d), ...d.camps.map(campCard));
   // while waiting for a scan or while a list is going out: refresh by itself
   const busy = ['qr', 'starting', 'reconnecting', 'off'].includes(d.state.state) || d.camps.some(x => x.status === 'run');
   if (busy) timer = setTimeout(() => { if (document.body.contains(pg) && !pg.querySelector('textarea:focus, input:focus')) ctx.rerender(); }, d.state.state === 'qr' ? 8000 : 20000);
@@ -61,6 +61,37 @@ function linkCard(d) {
     try { await api('POST', { op: b.dataset.op }); ctx.toast(b.dataset.op === 'logout' ? 'מנתק. עוד רגע יופיע קוד חדש' : 'מנסה שוב', 'ok'); setTimeout(ctx.rerender, 4000); }
     catch (e) { fail(e); b.disabled = false; }
   }));
+  return el;
+}
+
+/* ---------- one message to one person (owner 26.11) ---------- */
+// The same slow sender as the lists, with one person in it: it goes out within a few seconds and shows below with its status.
+let one = { phone: '', text: '' };
+function oneCard(d) {
+  const open = d.state?.state === 'open';
+  const el = h(`<section class="card wl-one">
+    <h2>הודעה לאדם אחד</h2>
+    <p class="hint">כותבים מספר והודעה, והיא נשלחת מהוואטסאפ שלך תוך כמה שניות.</p>
+    <label class="field"><span>מספר טלפון</span><input name="phone" type="tel" inputmode="tel" dir="ltr" maxlength="30" placeholder="050-1234567"></label>
+    <label class="field"><span>ההודעה</span><textarea name="text" rows="4" maxlength="3000"></textarea></label>
+    <div class="row-tools"><button type="button" class="btn btn--gold" data-one${open ? '' : ' disabled'}>לשלוח</button>${open ? '' : '<span class="hint">אפשר לשלוח רק כשהוואטסאפ מחובר</span>'}</div>
+  </section>`);
+  const p = el.querySelector('[name="phone"]'), t = el.querySelector('[name="text"]');
+  p.value = one.phone; t.value = one.text;
+  p.addEventListener('input', () => { one.phone = p.value; });
+  t.addEventListener('input', () => { one.text = t.value; });
+  el.querySelector('[data-one]').addEventListener('click', async e => {
+    const digits = one.phone.replace(/\D/g, '');
+    if (digits.length < 9) return ctx.toast('המספר לא שלם', 'err');
+    if (!one.text.trim()) return ctx.toast('כותבים את ההודעה', 'err');
+    if (!confirm(`לשלוח את ההודעה ל-${one.phone.trim()}?`)) return;
+    e.target.disabled = true;
+    try {
+      await api('POST', { op: 'camp', title: 'הודעה ל-' + one.phone.trim(), text: one.text, list: [{ phone: one.phone.trim(), name: '' }] });
+      one = { phone: '', text: '' };
+      ctx.toast('ההודעה נשלחת', 'ok'); ctx.rerender();
+    } catch (err) { fail(err); e.target.disabled = false; }
+  });
   return el;
 }
 
