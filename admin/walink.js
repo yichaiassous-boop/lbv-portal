@@ -32,7 +32,7 @@ const STATE = {
   billing: ['נעצר: גוגל רצתה לחייב', 'כמו שביקשת, ברגע שהופיע חיוב השרת כיבה את עצמו. שום דבר לא נקרא ולא נשלח. כדי להפעיל שוב צריך להחליט אם לשלם, או לעבור לשרת אחר.'],
 };
 const CAMP = { run: 'נשלחת', pause: 'בהפסקה', stop: 'נעצרה', done: 'הסתיימה' };
-const ITEM = { ok: 'נשלח', wait: 'ממתין', fail: 'לא נשלח', nowa: 'אין לו וואטסאפ', bad: 'מספר לא תקין' };
+const ITEM = { ok: 'נשלח', wait: 'ממתין', sending: 'בשליחה (לא נשלח שוב לבד)', fail: 'לא נשלח', nowa: 'אין לו וואטסאפ', bad: 'מספר לא תקין' };
 
 export async function walinkPage(pg, c) {
   ctx = c; clearTimeout(timer);

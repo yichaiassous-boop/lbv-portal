@@ -8,11 +8,18 @@ export const storeReady = () => Boolean(url() && token());
 
 /** Several commands in one request: [["HGET","h","f"], …] → their results. */
 export async function redis(commands) {
-  const r = await fetch(url() + '/pipeline', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(commands),
-  });
+  // owner 26.11: the connection to the store dropped for a moment now and then ("fetch failed"): try again before giving up
+  let r;
+  for (let n = 0; ; n++) {
+    try {
+      r = await fetch(url() + '/pipeline', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token()}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(commands),
+      });
+      break;
+    } catch (e) { if (n >= 3) throw e; await new Promise(ok => setTimeout(ok, 1500 * (n + 1))); }
+  }
   if (!r.ok) throw new Error('redis ' + r.status);
   return (await r.json()).map(x => { if (x.error) throw new Error('redis ' + x.error); return x.result; });
 }

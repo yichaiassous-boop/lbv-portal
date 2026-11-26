@@ -149,7 +149,14 @@ async function budgetCheck() {
   execFile('sudo', ['/sbin/shutdown', '-h', 'now'], () => {});
 }
 
+// owner 26.11: one tick at a time (a slow store call must never let two ticks pick the same person)
+let ticking = false;
 async function sendTick() {
+  if (ticking) return;
+  ticking = true;
+  try { await sendOne(); } finally { ticking = false; }
+}
+async function sendOne() {
   if (billingStop || state.state !== 'open' || Date.now() < nextSendAt || quiet()) return;
   const camps = (await allJ(K.camps)).filter(c => c.status === 'run' && Date.parse(c.at || 0) <= Date.now()).sort((a, b) => String(a.at).localeCompare(String(b.at)));
   const c = camps[0];
@@ -159,6 +166,11 @@ async function sendTick() {
   if (sentToday >= DAY_CAP) { if (c.note !== 'cap') { c.note = 'cap'; await setJ(K.camps, c.id, c); } return; }
   const it = (c.items || []).find(x => x.st === 'wait');
   if (!it) { c.status = 'done'; c.doneAt = now(); delete c.note; await setJ(K.camps, c.id, c); return; }
+  // owner 26.11: one message went out ~40 times: it was sent, then saving "sent" failed, so it stayed "waiting" and went again.
+  // Now it is saved as "being sent" first (if that fails, nothing is sent), and never sent again by itself.
+  it.st = 'sending'; it.at = now();
+  await setJ(K.camps, c.id, c);
+  nextSendAt = Date.now() + (GAP[0] + Math.random() * (GAP[1] - GAP[0])) * 1000;
   const jid = toJid(it.phone);
   try {
     if (!jid) throw Object.assign(new Error('bad'), { st: 'bad' });
@@ -166,21 +178,25 @@ async function sendTick() {
     if (!w?.exists) throw Object.assign(new Error('nowa'), { st: 'nowa' });
     await sock.sendMessage(w.jid || jid, { text: fill(c.text, it) });
     it.st = 'ok'; it.at = now(); c.errs = 0;
-    await cmd('INCR', K.day(today)); await cmd('EXPIRE', K.day(today), 3 * 864e5);
   } catch (e) {
     it.st = e.st || 'fail'; it.at = now(); it.err = String(e.message || e).slice(0, 120);
     if (!e.st) c.errs = (c.errs || 0) + 1;
     if (c.errs >= 3) { c.status = 'pause'; c.note = 'errors'; }   // WhatsApp keeps refusing: stop and let the owner look
   }
+  if (it.st === 'ok') { try { await cmd('INCR', K.day(today)); await cmd('EXPIRE', K.day(today), 3 * 864e5); } catch (e) {} }
   if (c.note === 'cap') delete c.note;
   c.sent = c.items.filter(x => x.st === 'ok').length;
   c.failed = c.items.filter(x => x.st !== 'ok' && x.st !== 'wait').length;
   if (!c.items.some(x => x.st === 'wait') && c.status === 'run') { c.status = 'done'; c.doneAt = now(); }
-  const cur = await getJ(K.camps, c.id);   // the owner may have paused / stopped / deleted it meanwhile
-  if (!cur) return;
-  if (cur.status !== 'run' && c.status === 'run') c.status = cur.status;
-  await setJ(K.camps, c.id, c);
-  nextSendAt = Date.now() + (GAP[0] + Math.random() * (GAP[1] - GAP[0])) * 1000;
+  for (let n = 0; n < 5; n++) {   // saving the result: tried again, and even if it fails the item stays "being sent" (never resent)
+    try {
+      const cur = await getJ(K.camps, c.id);   // the owner may have paused / stopped / deleted it meanwhile
+      if (!cur) return;
+      if (cur.status !== 'run' && c.status === 'run') c.status = cur.status;
+      await setJ(K.camps, c.id, c);
+      return;
+    } catch (e) { await sleep(3000); }
+  }
 }
 
 /* ---------- the connection ---------- */
