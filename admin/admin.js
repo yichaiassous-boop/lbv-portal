@@ -379,7 +379,7 @@ function pageAllowed(id) {
   if (id === 'hotels' || id === 'catalog' || id === 'venues') return has('hotels');
   if (id === 'nets') return has('nets');
   if (id === 'twin') return !!me && me.role === 'owner';   // owner 24.11: Ilan's twin (api/_twin.js), costs money, owner only
-  if (id === 'walink') return !!me && me.role === 'owner';   // owner 25.11: his own linked WhatsApp (api/_walink.js): only he sees it
+  if (id === 'walink') return !!me && (me.role === 'owner' || me.id === 'cad5d8ff-c32d-4df9-918e-38cfd1d315d8');   // owner 26.11: and מעיין   // owner 25.11: his own linked WhatsApp (api/_walink.js): only he sees it
   if (id === 'calls') return !!me && (me.role === 'owner' || me.id === 'cad5d8ff-c32d-4df9-918e-38cfd1d315d8');   // owner 22.11: includes the calls with Ilan → like the Ilan tab   // each sees only their own surveys and those shared with them
   if (id === 'ilan') return !!me && (me.role === 'owner' || me.id === 'cad5d8ff-c32d-4df9-918e-38cfd1d315d8');   // only the owner and מעיין (owner 19.11: Ilan must never see it, not even for a moment)
   if (id === 'remote') return has('remote');

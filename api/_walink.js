@@ -25,7 +25,9 @@ export default async function walinkHandler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   const s = isAuthed(req);
   if (!s) return send(res, 401, { error: 'login' });
-  if (s.r !== 'owner') return send(res, 403, { error: 'forbidden' });
+  // owner 26.11: the owner and מעיין only (nobody else sees or sends); disconnecting stays the owner's
+  const MAAYAN = 'cad5d8ff-c32d-4df9-918e-38cfd1d315d8';
+  if (s.r !== 'owner' && s.id !== MAAYAN) return send(res, 403, { error: 'forbidden' });
   if (!redisReady()) return send(res, 503, { error: 'not-configured' });
 
   if (req.method === 'GET') {
@@ -44,6 +46,7 @@ export default async function walinkHandler(req, res) {
   try { b = await readBody(req); } catch (e) { return send(res, 400, { error: 'bad-json' }); }
   const op = str(b.op, 20);
 
+  if (op === 'logout' && s.r !== 'owner') return send(res, 403, { error: 'forbidden' });
   if (op === 'logout' || op === 'restart') {
     await redis([['SET', K.cmd, op, 'EX', 600]]);
     return send(res, 200, { ok: true });
