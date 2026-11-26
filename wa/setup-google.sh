@@ -17,6 +17,7 @@ cd /opt/lbv/lbv-portal/wa && sudo -u lbvwa npm ci --omit=dev --ignore-scripts --
 SUB=$(curl -fs -H 'Metadata-Flavor: Google' http://metadata.google.internal/computeMetadata/v1/instance/attributes/budget-sub || true)
 touch /etc/lbv-wa.env && chmod 600 /etc/lbv-wa.env
 grep -q '^PORTAL_URL=' /etc/lbv-wa.env || echo 'PORTAL_URL=https://lbv-portal-phi.vercel.app' >> /etc/lbv-wa.env
+grep -q '^WA_READ=' /etc/lbv-wa.env || echo 'WA_READ=1' >> /etc/lbv-wa.env   # owner 26.11: read the places' chats too
 if [ -n "$SUB" ]; then sed -i '/^BUDGET_SUB=/d' /etc/lbv-wa.env; echo "BUDGET_SUB=$SUB" >> /etc/lbv-wa.env; fi
 echo 'lbvwa ALL=(root) NOPASSWD: /sbin/shutdown' > /etc/sudoers.d/lbvwa && chmod 440 /etc/sudoers.d/lbvwa
 # pasting the three keys: asked one by one, not shown on the screen
